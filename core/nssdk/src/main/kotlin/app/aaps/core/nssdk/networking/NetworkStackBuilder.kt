@@ -37,7 +37,7 @@ internal object NetworkStackBuilder {
         logger: HttpLoggingInterceptor.Logger
     ): Retrofit =
         Retrofit.Builder()
-            .baseUrl("https://$baseUrl/api/")
+            .baseUrl("http://$baseUrl/api/")
             .client(
                 getOkHttpClient(
                     context = context,
@@ -57,7 +57,7 @@ internal object NetworkStackBuilder {
         logger: HttpLoggingInterceptor.Logger
     ): Retrofit =
         Retrofit.Builder()
-            .baseUrl("https://$baseUrl/api/")
+            .baseUrl("http://$baseUrl/api/")
             .client(getAuthRefreshOkHttpClient(context = context, logging = logging, logger = logger))
             .addConverterFactory(GsonConverterFactory.create(provideGson()))
             .build()

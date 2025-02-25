@@ -397,8 +397,8 @@ class AutomationPlugin @Inject constructor(
             ActionProfileSwitch(injector),
             ActionSendSMS(injector)
         )
-        if (config.isEngineeringMode() && config.isDev())
-            actions.add(ActionRunAutotune(injector))
+
+        actions.add(ActionRunAutotune(injector))
 
         return actions.toList()
     }
