@@ -261,7 +261,7 @@ class NSClientService : DaggerService() {
         } else if (!nsEnabled) {
             rxBus.send(EventNSClientNewLog("● NSCLIENT", "disabled"))
             rxBus.send(EventNSClientStatus("Disabled"))
-        } else if (nsURL != "" && (nsURL.lowercase(Locale.getDefault()).startsWith("https://"))) {
+        } else if (nsURL != "" && (nsURL.lowercase(Locale.getDefault()).startsWith("http://"))) {
             try {
                 rxBus.send(EventNSClientStatus("Connecting ..."))
                 val opt = IO.Options().also { it.forceNew = true }
@@ -283,9 +283,6 @@ class NSClientService : DaggerService() {
                 rxBus.send(EventNSClientNewLog("● NSCLIENT", "Wrong URL syntax"))
                 rxBus.send(EventNSClientStatus("Wrong URL syntax"))
             }
-        } else if (nsURL.lowercase(Locale.getDefault()).startsWith("http://")) {
-            rxBus.send(EventNSClientNewLog("● NSCLIENT", "NS URL not encrypted"))
-            rxBus.send(EventNSClientStatus("Not encrypted"))
         } else {
             rxBus.send(EventNSClientNewLog("● NSCLIENT", "No NS URL specified"))
             rxBus.send(EventNSClientStatus("Not configured"))
