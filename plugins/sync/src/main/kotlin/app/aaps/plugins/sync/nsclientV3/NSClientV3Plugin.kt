@@ -351,7 +351,7 @@ class NSClientV3Plugin @Inject constructor(
     private fun setClient() {
         if (nsAndroidClient == null)
             nsAndroidClient = NSAndroidClientImpl(
-                baseUrl = preferences.get(StringKey.NsClientUrl).lowercase().replace("https://", "").replace(Regex("/$"), ""),
+                baseUrl = preferences.get(StringKey.NsClientUrl).lowercase().replace("http://", "").replace(Regex("/$"), ""),
                 accessToken = preferences.get(StringKey.NsClientAccessToken),
                 context = context,
                 logging = l.findByName(LTag.NSCLIENT.tag).enabled && (config.isEngineeringMode() || config.isDev()),
@@ -818,8 +818,7 @@ class NSClientV3Plugin @Inject constructor(
             initialExpandedChildrenCount = 0
             addPreference(
                 AdaptiveStringPreference(
-                    ctx = context, stringKey = StringKey.NsClientUrl, dialogMessage = R.string.ns_client_url_dialog_message, title = R.string.ns_client_url_title,
-                    validatorParams = DefaultEditTextValidator.Parameters(testType = EditTextValidator.TEST_HTTPS_URL)
+                    ctx = context, stringKey = StringKey.NsClientUrl, dialogMessage = R.string.ns_client_url_dialog_message, title = R.string.ns_client_url_title
                 )
             )
             addPreference(
