@@ -8,6 +8,7 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
 import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -378,7 +379,10 @@ class AutotunePlugin @Inject constructor(
         }
         profilePlugin.currentProfileIndex = indexLocalProfile
         profilePlugin.currentProfile()?.dia = newProfile.dia
-        profilePlugin.currentProfile()?.basal = newProfile.basal()
+        // Don't touch basal if on MDI
+        if(activePlugin.activePump.model() != PumpType.MDI) {
+            profilePlugin.currentProfile()?.basal = newProfile.basal()
+        }
         profilePlugin.currentProfile()?.ic = newProfile.ic(circadian)
         profilePlugin.currentProfile()?.isf = newProfile.isf(circadian)
         profilePlugin.storeSettings(timestamp = dateUtil.now())
