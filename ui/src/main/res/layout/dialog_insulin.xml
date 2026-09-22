@@ -21,6 +21,8 @@
 
             <CheckBox android:id="@+id/record_only" style="@style/Widget.App.CheckBox" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="@string/do_not_bolus_record_only" />
 
+            <CheckBox android:id="@+id/record_basal_insulin" style="@style/Widget.App.CheckBox" android:layout_width="wrap_content" android:layout_height="match_parent" android:text="@string/record_basal_insulin" />
+
         </LinearLayout>
 
         <LinearLayout android:id="@+id/time_layout" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">

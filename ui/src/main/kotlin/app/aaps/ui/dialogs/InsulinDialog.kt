@@ -21,6 +21,8 @@ import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.notifications.Notification
+import app.aaps.core.interfaces.notifications.NotificationUserMessage
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -31,8 +33,12 @@ import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.utils.HardLimits
+import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.SafeParse
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
@@ -54,6 +60,8 @@ import io.reactivex.rxjava3.kotlin.plusAssign
 import java.text.DecimalFormat
 import java.util.LinkedList
 import java.util.concurrent.TimeUnit
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.max
@@ -74,11 +82,16 @@ class InsulinDialog : DialogFragmentWithDate() {
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var decimalFormatter: DecimalFormatter
+    @Inject lateinit var hardLimits: HardLimits
+    @Inject lateinit var rxBus: RxBus
     @Inject lateinit var loop: Loop
 
     private var queryingProtection = false
     private var lastPosition: Int? = null
     private var showPosition = false
+
+    private val BASAL_DOSE_REGEX = Regex("(?i)\\bLantus\\s*[:#]?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*U\\b")
+
     private val disposable = CompositeDisposable()
     private var _binding: DialogInsulinBinding? = null
 
@@ -97,7 +110,7 @@ class InsulinDialog : DialogFragmentWithDate() {
     }
 
     private fun validateInputs() {
-        val maxInsulin = constraintChecker.getMaxBolusAllowed().value()
+        val maxInsulin = if (binding.recordBasalInsulin.isChecked) hardLimits.maxBolus() else constraintChecker.getMaxBolusAllowed().value()
         if (abs(binding.time.value.toInt()) > 12 * 60) {
             binding.time.value = 0.0
             ToastUtils.warnToast(context, app.aaps.core.ui.R.string.constraint_applied)
@@ -127,15 +140,15 @@ class InsulinDialog : DialogFragmentWithDate() {
         super.onViewCreated(view, savedInstanceState)
 
         val pump = activePlugin.activePump
-        if (config.AAPSCLIENT) {
+        val recordOnlyForced = config.AAPSCLIENT || loop.runningMode.isPumpSuspended() || !pump.isInitialized()
+        val maxInsulin = constraintChecker.getMaxBolusAllowed().value()
+
+        if (recordOnlyForced) {
             binding.recordOnly.isChecked = true
             binding.recordOnly.isEnabled = false
         }
-        val maxInsulin = constraintChecker.getMaxBolusAllowed().value()
 
         if (loop.runningMode.isPumpSuspended() || !pump.isInitialized()) {
-            binding.recordOnly.isChecked = true
-            binding.recordOnly.isEnabled = false
             binding.recordOnly.setTextColor(rh.gac(app.aaps.core.ui.R.attr.warningColor))
             binding.header.setBackgroundColor(rh.gac(app.aaps.core.ui.R.attr.ribbonWarningColor))
             binding.headerText.setTextColor(rh.gac(app.aaps.core.ui.R.attr.ribbonTextWarningColor))
@@ -195,6 +208,33 @@ class InsulinDialog : DialogFragmentWithDate() {
             binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
             InjectionPosition.suggestNext(lastPosition)?.let { binding.positionLayout.position.setText(it.toString()) }
         }
+
+        // Basal (long-acting) insulin recording - MDI only
+        binding.recordBasalInsulin.visibility = (activePlugin.activePump is VirtualPump).toVisibility()
+        if (activePlugin.activePump !is VirtualPump) binding.recordBasalInsulin.isChecked = false
+        binding.recordBasalInsulin.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                binding.recordOnly.isChecked = true
+                binding.recordOnly.isEnabled = false
+                binding.startEatingSoonTt.isChecked = false
+                binding.startEatingSoonTt.isEnabled = false
+                binding.amount.setParams(
+                    binding.amount.value, 0.0, hardLimits.maxBolus(),
+                    activePlugin.activePump.pumpDescription.bolusStep,
+                    decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep),
+                    false, binding.okcancel.ok, textWatcher
+                )
+            } else {
+                binding.recordOnly.isEnabled = !recordOnlyForced
+                binding.startEatingSoonTt.isEnabled = true
+                binding.amount.setParams(
+                    binding.amount.value, 0.0, maxInsulin,
+                    activePlugin.activePump.pumpDescription.bolusStep,
+                    decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep),
+                    false, binding.okcancel.ok, textWatcher
+                )
+            }
+        }
     }
 
     override fun onDestroyView() {
@@ -207,24 +247,48 @@ class InsulinDialog : DialogFragmentWithDate() {
         if (_binding == null) return false
         val pumpDescription = activePlugin.activePump.pumpDescription
         val insulin = SafeParse.stringToDouble(binding.amount.text)
-        val insulinAfterConstraints = constraintChecker.applyBolusConstraints(ConstraintObject(insulin, aapsLogger)).value()
+        val recordBasalChecked = binding.recordBasalInsulin.isChecked
+        // basal insulin is record-only, bolus delivery constraints do not apply
+        val insulinAfterConstraints =
+            if (recordBasalChecked) insulin
+            else constraintChecker.applyBolusConstraints(ConstraintObject(insulin, aapsLogger)).value()
         val actions: LinkedList<String?> = LinkedList()
         val units = profileFunction.getUnits()
         val unitLabel = if (units == GlucoseUnit.MMOL) rh.gs(app.aaps.core.ui.R.string.mmol) else rh.gs(app.aaps.core.ui.R.string.mgdl)
         val recordOnlyChecked = binding.recordOnly.isChecked
         val eatingSoonChecked = binding.startEatingSoonTt.isChecked
+        val previousBasalDose =
+            if (recordBasalChecked) findLastBasalDose() ?: profileFunction.getProfile()?.baseBasalSum()
+            else null
 
         if (insulinAfterConstraints > 0) {
-            actions.add(
-                rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + decimalFormatter.toPumpSupportedBolus(insulinAfterConstraints, activePlugin.activePump.pumpDescription.bolusStep)
-                    .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
-            )
-            if (recordOnlyChecked)
-                actions.add(rh.gs(app.aaps.core.ui.R.string.bolus_recorded_only).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor))
-            if (abs(insulinAfterConstraints - insulin) > pumpDescription.pumpType.determineCorrectBolusStepSize(insulinAfterConstraints))
+            if (recordBasalChecked) {
                 actions.add(
-                    rh.gs(app.aaps.core.ui.R.string.bolus_constraint_applied_warn, insulin, insulinAfterConstraints).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor)
+                    rh.gs(R.string.record_basal_insulin) + ": " + decimalFormatter.toPumpSupportedBolus(insulinAfterConstraints, activePlugin.activePump.pumpDescription.bolusStep)
+                        .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
                 )
+                previousBasalDose?.let { previousDose ->
+                    if (!basalMatchesProfile(insulinAfterConstraints, previousDose))
+                        actions.add(
+                            rh.gs(
+                                R.string.basal_insulin_profile_updated, insulinAfterConstraints, previousDose,
+                                insulinAfterConstraints,
+                                max(Round.roundTo(insulinAfterConstraints / 24.0, 0.01), 0.01)
+                            ).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor)
+                        )
+                }
+            } else {
+                actions.add(
+                    rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + decimalFormatter.toPumpSupportedBolus(insulinAfterConstraints, activePlugin.activePump.pumpDescription.bolusStep)
+                        .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
+                )
+                if (recordOnlyChecked)
+                    actions.add(rh.gs(app.aaps.core.ui.R.string.bolus_recorded_only).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor))
+                if (abs(insulinAfterConstraints - insulin) > pumpDescription.pumpType.determineCorrectBolusStepSize(insulinAfterConstraints))
+                    actions.add(
+                        rh.gs(app.aaps.core.ui.R.string.bolus_constraint_applied_warn, insulin, insulinAfterConstraints).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor)
+                    )
+            }
         }
         val eatingSoonTTDuration = preferences.get(IntKey.OverviewEatingSoonDuration)
         val eatingSoonTT = preferences.get(UnitDoubleKey.OverviewEatingSoonTarget)
@@ -276,13 +340,16 @@ class InsulinDialog : DialogFragmentWithDate() {
                         ).subscribe()
                     }
                     if (insulinAfterConstraints > 0) {
-                        val detailedBolusInfo = DetailedBolusInfo()
-                        detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
-                        detailedBolusInfo.insulin = insulinAfterConstraints
-                        detailedBolusInfo.context = context
-                        detailedBolusInfo.notes = notes
-                        detailedBolusInfo.timestamp = time
-                        if (recordOnlyChecked) {
+                        if (recordBasalChecked) {
+                            recordBasalInsulin(insulinAfterConstraints, notes, time, previousBasalDose)
+                        } else {
+                            val detailedBolusInfo = DetailedBolusInfo()
+                            detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
+                            detailedBolusInfo.insulin = insulinAfterConstraints
+                            detailedBolusInfo.context = context
+                            detailedBolusInfo.notes = notes
+                            detailedBolusInfo.timestamp = time
+                            if (recordOnlyChecked) {
                             disposable += persistenceLayer.insertOrUpdateBolus(
                                 bolus = detailedBolusInfo.createBolus(),
                                 action = Action.BOLUS,
@@ -307,6 +374,7 @@ class InsulinDialog : DialogFragmentWithDate() {
                                 }
                             })
                         }
+                        }
                     }
                 })
             }
@@ -315,6 +383,92 @@ class InsulinDialog : DialogFragmentWithDate() {
                 OKDialog.show(activity, rh.gs(app.aaps.core.ui.R.string.bolus), rh.gs(app.aaps.core.ui.R.string.no_action_selected))
             }
         return true
+    }
+
+    private fun basalMatchesProfile(amount: Double, previousDose: Double): Boolean =
+        abs(amount - previousDose) <= max(1.0, previousDose * 0.1)
+
+    private fun findLastBasalDose(): Double? =
+        try {
+            persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), false)
+                .blockingGet()
+                .sortedByDescending { it.timestamp }
+                .firstNotNullOfOrNull { extractBasalDose(it.note) }
+        } catch (e: Exception) {
+            null
+        }
+
+    private fun extractBasalDose(note: String?): Double? =
+        note?.let { BASAL_DOSE_REGEX.find(it)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull() }
+
+    private fun recordBasalInsulin(amount: Double, notes: String, time: Long, previousDose: Double?) {
+        val doseText = decimalFormatter.toPumpSupportedBolus(amount, activePlugin.activePump.pumpDescription.bolusStep)
+        val basalNotes = "Lantus " + doseText + "U" + if (notes.isNotEmpty()) " $notes" else ""
+        disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE(
+                timestamp = time,
+                type = TE.Type.NOTE,
+                note = basalNotes,
+                glucoseUnit = profileFunction.getUnits()
+            ),
+            timestamp = time,
+            action = Action.CAREPORTAL,
+            source = Sources.InsulinDialog,
+            note = basalNotes,
+            listValues = listOf(
+                ValueWithUnit.TEType(TE.Type.NOTE),
+                ValueWithUnit.Insulin(amount)
+            )
+        ).subscribe()
+        updateBasalProfileIfNeeded(amount, previousDose)
+    }
+
+    private fun updateBasalProfileIfNeeded(amount: Double, previousDose: Double?) {
+        previousDose ?: return
+        if (basalMatchesProfile(amount, previousDose)) return
+
+        val profileSource = activePlugin.activeProfileSource
+        val profileStore = profileSource.profile ?: return
+        val profileList = profileStore.getProfileList()
+        val index = profileList.indexOf(profileFunction.getOriginalProfileName())
+        // only touch a local profile we can positively identify
+        val singleProfile = if (index >= 0) {
+            profileSource.currentProfileIndex = index
+            profileSource.currentProfile()
+        } else null
+        if (singleProfile == null) {
+            rxBus.send(
+                EventNewNotification(
+                    NotificationUserMessage(rh.gs(R.string.basal_insulin_profile_update_failed, amount, previousDose), Notification.NORMAL)
+                )
+            )
+            return
+        }
+        val flatRate = max(Round.roundTo(amount / 24.0, 0.01), 0.01)
+        singleProfile.basal = JSONArray().put(JSONObject().put("time", "00:00").put("timeAsSeconds", 0).put("value", flatRate))
+        profileSource.storeSettings(timestamp = dateUtil.now())
+        val newStore = profileSource.profile ?: return
+        if (profileFunction.createProfileSwitch(
+                profileStore = newStore,
+                profileName = singleProfile.name,
+                durationInMinutes = 0,
+                percentage = 100,
+                timeShiftInHours = 0,
+                timestamp = dateUtil.now(),
+                action = Action.PROFILE_SWITCH,
+                source = Sources.InsulinDialog,
+                note = rh.gs(R.string.record_basal_insulin),
+                listValues = listOf(ValueWithUnit.SimpleString(singleProfile.name))
+            )
+        )
+            rxBus.send(
+                EventNewNotification(
+                    NotificationUserMessage(
+                        rh.gs(R.string.basal_insulin_profile_updated, amount, previousDose, amount, flatRate),
+                        Notification.NORMAL
+                    )
+                )
+            )
     }
 
     override fun onResume() {

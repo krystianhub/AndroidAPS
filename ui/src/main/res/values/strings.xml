@@ -69,6 +69,9 @@
 
     <!-- InsulinDialog -->
     <string name="do_not_bolus_record_only">Do not bolus, record only</string>
+    <string name="record_basal_insulin">Record basal insulin (MDI)</string>
+    <string name="basal_insulin_profile_updated">Basal insulin %1$.2fU differs from previous basal insulin %2$.2fU. Profile basal updated to %3$.2fU (flat %4$.3f U/h).</string>
+    <string name="basal_insulin_profile_update_failed">Basal insulin %1$.2fU differs from previous basal insulin %2$.2fU, but profile could not be updated (no local profile).</string>
 
     <!-- ProfileSwitchDialog -->
     <string name="reuse_profile_pct_hours">Reuse %1$d%% %2$dh</string>
