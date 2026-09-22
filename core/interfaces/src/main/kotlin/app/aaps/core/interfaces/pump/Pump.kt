@@ -216,8 +216,15 @@ interface Pump {
      */
     fun model(): PumpType
 
-    /**
-     * Serial number
+    /**     * MDI fork: true when the user runs multiple daily injections via the virtual pump
+     * configured as "MDI" (bolus-only capabilities). Prefer this over `is VirtualPump`
+     * for MDI-specific behavior, since VirtualPump also covers emulated real pumps
+     * (e.g. "Generic AAPS", Accu-Chek Combo) which have temp basal / extended bolus
+     * capabilities and should keep the pump-like UX.
+     */
+    fun isMDI(): Boolean = model() == PumpType.MDI
+
+    /**     * Serial number
      *
      * Real serial number from device or "unique" generated for paired pump if not possible
      */

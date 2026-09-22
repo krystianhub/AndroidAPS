@@ -19,7 +19,6 @@ import app.aaps.core.interfaces.overview.Overview
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.OverviewMenus
 import app.aaps.core.interfaces.plugin.ActivePlugin
-import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -267,8 +266,8 @@ class OverviewPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewHypoDuration, title = R.string.hypo_duration))
                 addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.OverviewHypoTarget, title = R.string.hypo_target))
             })
-            // MDI (virtual pump): prime/fill buttons are hidden - hide their settings too
-            if (activePlugin.activePump !is VirtualPump) {
+            // MDI: prime/fill buttons are hidden - hide their settings too
+            if (!activePlugin.activePump.isMDI()) {
                 addPreference(preferenceManager.createPreferenceScreen(context).apply {
                     key = "prime_fill_settings"
                     title = rh.gs(R.string.fill_bolus_title)
@@ -289,16 +288,16 @@ class OverviewPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowPositionInDialogs, title = R.string.overview_show_position_field_in_dialogs_title))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 val pump = activePlugin.activePump
-                val isVirtualPump = pump is VirtualPump
+                val isMDI = pump.isMDI()
                 key = "statuslights_overview_advanced"
                 title = rh.gs(app.aaps.core.ui.R.string.statuslights)
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowStatusLights, title = R.string.show_statuslights))
-                // MDI (virtual pump): cannula/insulin/reservoir/battery lights are hidden - hide their thresholds too
-                if (!isVirtualPump) {
+                // MDI: cannula/insulin/reservoir/battery lights are hidden - hide their thresholds too
+                if (!isMDI) {
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewCageWarning, title = R.string.statuslights_cage_warning))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewCageCritical, title = R.string.statuslights_cage_critical))
                 }
-                if (pump.pumpDescription.isPatchPump.not() && !isVirtualPump) {
+                if (pump.pumpDescription.isPatchPump.not() && !isMDI) {
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewIageWarning, title = R.string.statuslights_iage_warning))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewIageCritical, title = R.string.statuslights_iage_critical))
                 }
@@ -306,7 +305,7 @@ class OverviewPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewSageCritical, title = R.string.statuslights_sage_critical))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewSbatWarning, title = R.string.statuslights_sbat_warning))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewSbatCritical, title = R.string.statuslights_sbat_critical))
-                if (!isVirtualPump) {
+                if (!isMDI) {
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewResWarning, title = R.string.statuslights_res_warning))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewResCritical, title = R.string.statuslights_res_critical))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewBattWarning, title = R.string.statuslights_bat_warning))
@@ -322,14 +321,14 @@ class OverviewPlugin @Inject constructor(
                                             })
                 )
             })
-            // MDI (virtual pump): partial bolus wizard and superbolus are pump-enactment features
-            if (activePlugin.activePump !is VirtualPump) {
+            // MDI: partial bolus wizard and superbolus are pump-enactment features
+            if (!activePlugin.activePump.isMDI()) {
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewBolusPercentage, dialogMessage = R.string.deliverpartofboluswizard, title = app.aaps.core.ui.R.string.partialboluswizard))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewResetBolusPercentageTime, dialogMessage = R.string.deliver_part_of_boluswizard_reset_time, title = app.aaps.core.ui.R.string.partialboluswizard_reset_time))
             }
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusAdvisor, summary = R.string.enable_bolus_advisor_summary, title = R.string.enable_bolus_advisor))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))
-            if (activePlugin.activePump !is VirtualPump) {
+            if (!activePlugin.activePump.isMDI()) {
                 addPreference(preferenceManager.createPreferenceScreen(context).apply {
                     key = "overview_advanced_settings"
                     title = rh.gs(app.aaps.core.ui.R.string.advanced_settings_title)

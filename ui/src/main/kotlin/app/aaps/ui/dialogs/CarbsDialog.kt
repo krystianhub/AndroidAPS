@@ -26,7 +26,6 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.protection.ProtectionCheck.Protection.BOLUS
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
-import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -132,9 +131,9 @@ class CarbsDialog : DialogFragmentWithDate() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        // MDI (virtual pump): "Start xxx TT" options are useless - hide them all
-        val isVirtualPump = activePlugin.activePump is VirtualPump
-        if (isVirtualPump) {
+        // MDI: "Start xxx TT" options are useless - hide them all
+        val isMDI = activePlugin.activePump.isMDI()
+        if (isMDI) {
             binding.activityTt.visibility = View.GONE
             binding.eatingSoonTt.visibility = View.GONE
             binding.hypoTt.visibility = View.GONE

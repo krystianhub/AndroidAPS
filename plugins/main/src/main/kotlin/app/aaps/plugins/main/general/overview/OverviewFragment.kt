@@ -54,7 +54,6 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.BolusProgressData
-import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -708,10 +707,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
         runOnUiThread {
             _binding ?: return@runOnUiThread
-            // MDI fork: show the loop mode icon also for the virtual pump (MDI) - open loop
-            // recommendations work without temp basals, and the icon is the only entry point
-            // to the Loop dialog.
-            if (pump.pumpDescription.isTempBasalCapable || pump is VirtualPump) {
+            // MDI fork: show the loop mode icon also for MDI (virtual pump configured as MDI) -
+            // open loop recommendations work without temp basals, and the icon is the only entry
+            // point to the Loop dialog.
+            if (pump.pumpDescription.isTempBasalCapable || pump.isMDI()) {
                 binding.infoLayout.apsMode.visibility = View.VISIBLE
                 binding.infoLayout.apsModeText.visibility = View.VISIBLE
                 when (loop.runningMode) {
@@ -962,7 +961,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Status lights
         val pump = activePlugin.activePump
         val isPatchPump = pump.pumpDescription.isPatchPump
-        val isVirtualPump = pump is VirtualPump
+        val isMDI = pump.isMDI()
         binding.statusLightsLayout.apply {
             cannulaOrPatch.setImageResource(if (isPatchPump) app.aaps.core.objects.R.drawable.ic_patch_pump_outline else R.drawable.ic_cp_age_cannula)
             cannulaOrPatch.contentDescription = rh.gs(if (isPatchPump) R.string.statuslights_patch_pump_age else R.string.statuslights_cannula_age)
@@ -973,14 +972,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 || (pump.model() != PumpType.ACCU_CHEK_COMBO && pump.model() != PumpType.OMNIPOD_DASH)
             pbLevel.visibility = useBatteryLevel.toVisibility()
             statusLightsLayout.visibility = (preferences.get(BooleanKey.OverviewShowStatusLights) || config.AAPSCLIENT).toVisibility()
-            // MDI (virtual pump): battery/reservoir/cannula/insulin-age lights are meaningless - hide them
-            cannulaOrPatch.visibility = (!isVirtualPump).toVisibility()
-            cannulaAge.visibility = (!isVirtualPump).toVisibility()
-            insulinAge.visibility = (!isVirtualPump && isPatchPump.not()).toVisibility()
-            reservoirLevel.visibility = (!isVirtualPump).toVisibility()
-            batteryLayout.visibility = (isVirtualPump || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
-            lastBolusLayout.visibility = isVirtualPump.toVisibility()
-            lastBasalLayout.visibility = isVirtualPump.toVisibility()
+            // MDI: battery/reservoir/cannula/insulin-age lights are meaningless - hide them
+            cannulaOrPatch.visibility = (!isMDI).toVisibility()
+            cannulaAge.visibility = (!isMDI).toVisibility()
+            insulinAge.visibility = (!isMDI && isPatchPump.not()).toVisibility()
+            reservoirLevel.visibility = (!isMDI).toVisibility()
+            batteryLayout.visibility = (isMDI || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
+            lastBolusLayout.visibility = isMDI.toVisibility()
+            lastBasalLayout.visibility = isMDI.toVisibility()
         }
         statusLightHandler.updateStatusLights(
             binding.statusLightsLayout.cannulaAge,
@@ -992,7 +991,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.statusLightsLayout.pbAge,
             binding.statusLightsLayout.pbLevel
         )
-        if (isVirtualPump) {
+        if (isMDI) {
             statusLightHandler.updateLastBolusLight(binding.statusLightsLayout.lastBolusAge)
             statusLightHandler.updateLastBasalLight(binding.statusLightsLayout.lastBasalAge)
         }

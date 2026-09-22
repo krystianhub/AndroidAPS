@@ -28,7 +28,6 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
-import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -199,7 +198,7 @@ class InsulinDialog : DialogFragmentWithDate() {
         binding.timeLabel.labelFor = binding.time.editTextId
 
         binding.positionLayout.root.visibility =
-            (preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump is VirtualPump).toVisibility()
+            (preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump.isMDI()).toVisibility()
         showPosition = binding.positionLayout.root.visibility == View.VISIBLE
         if (showPosition) {
             lastPosition = InjectionPosition.findLastPosition(
@@ -210,11 +209,11 @@ class InsulinDialog : DialogFragmentWithDate() {
         }
 
         // Basal (long-acting) insulin recording - MDI only
-        binding.recordBasalInsulin.visibility = (activePlugin.activePump is VirtualPump).toVisibility()
-        if (activePlugin.activePump !is VirtualPump) binding.recordBasalInsulin.isChecked = false
+        binding.recordBasalInsulin.visibility = activePlugin.activePump.isMDI().toVisibility()
+        if (!activePlugin.activePump.isMDI()) binding.recordBasalInsulin.isChecked = false
         // MDI: eating-soon TT from the insulin dialog is useless (no pump to enact anything with)
-        binding.startEatingSoonTt.visibility = (activePlugin.activePump !is VirtualPump).toVisibility()
-        if (activePlugin.activePump is VirtualPump) binding.startEatingSoonTt.isChecked = false
+        binding.startEatingSoonTt.visibility = (!activePlugin.activePump.isMDI()).toVisibility()
+        if (activePlugin.activePump.isMDI()) binding.startEatingSoonTt.isChecked = false
         binding.recordBasalInsulin.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 binding.recordOnly.isChecked = true
