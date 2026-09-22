@@ -2,6 +2,12 @@
 
 This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS) (based on latest upstream `master`) with changes targeted at **MDI users** (multiple daily injections, pen users running the app in "virtual pump" mode). This fork makes the app genuinely useful as a decision-support tool with pens.
 
+> ## ⚠️ WARNING — READ THIS FIRST
+>
+> **These changes were vibe-coded for personal purposes only.** They have been heavily reviewed by an experienced developer, but they are **not** tested to upstream standards, **not** reviewed or endorsed by the AndroidAPS project, and come with **no guarantees of correctness or safety whatsoever**.
+>
+> This software controls insulin dosing decisions. Bugs here can have serious health consequences. **Use it entirely at your own risk.** If you are not prepared to read the code and fully understand every change yourself, do not use this fork.
+
 ## What's different from upstream
 
 ### 1. Open Loop works in MDI mode
@@ -31,7 +37,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 
 ## Safety
 
-This fork relaxes some upstream safety gates (objectives, loop-in-MDI) and is intended for **personal use by an experienced MDI user**. It is not reviewed or endorsed by the AndroidAPS project. Do not use it without understanding what each change does — see the upstream project's documentation and warnings first.
+This fork relaxes some upstream safety gates (objectives, loop-in-MDI) and is intended for **personal use by an experienced MDI user**. See the warning at the top of this file.
 
 ## Building
 
