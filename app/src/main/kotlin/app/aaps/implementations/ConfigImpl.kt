@@ -54,7 +54,7 @@ class ConfigImpl @Inject constructor(
     override fun showUserActionsOnWatchOnly(): Boolean = showUserActionsOnWatchOnly ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("show_user_actions_on_watch_only") != null).also { showUserActionsOnWatchOnly = it }
     override fun ignoreNightscoutV3Errors(): Boolean = ignoreNightscoutV3Errors ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("ignore_nightscout_v3_errors") != null).also { ignoreNightscoutV3Errors = it }
     override fun doNotSendSmsOnProfileChange(): Boolean = doNotSendSmsOnProfileChange ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("do_not_send_sms_on_profile_change") != null).also { doNotSendSmsOnProfileChange = it }
-    override fun enableAutotune(): Boolean = enableAutotune ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("enable_autotune") != null).also { enableAutotune = it }
+    override fun enableAutotune(): Boolean = true // MDI fork: autotune always available (upstream requires an "enable_autotune" flag file)
     override fun enableOmnipodDriftCompensation(): Boolean = enableOmnipodDriftCompensation ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("omnipod_drift_compensation") != null).also { enableOmnipodDriftCompensation = it }
     override fun disableLeakCanary(): Boolean = disableLeakCanary ?: (fileListProvider.get().ensureExtraDirExists()?.findFile("disable_leakcanary") != null).also { disableLeakCanary = it }
 }
