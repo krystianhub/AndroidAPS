@@ -210,8 +210,8 @@ class HealthConnectPlugin @Inject constructor(
 
     /**
      * Rebuilds SC records for the buckets touched by the given steps records. The rolling
-     * 10/15/30/60/180-min windows depend on the surrounding 3 hours of buckets, so the full
-     * window is re-read and only the affected buckets are re-stored.
+     * 10/15/30/60/180-min windows only look backward, so every bucket from the first touched
+     * one onward is re-stored.
      */
     private suspend fun rebuildSteps(client: HealthConnectClient, changed: List<StepsRecord>) {
         val earliest = changed.minOf { it.startTime.toEpochMilli() }
@@ -219,7 +219,8 @@ class HealthConnectPlugin @Inject constructor(
         val response = client.readRecords(
             ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = range)
         )
-        storeSteps(response.records, affectedBuckets = changed.map { it.endTime.toEpochMilli() / T.mins(5).msecs() * T.mins(5).msecs() }.toSet())
+        val fromBucket = earliest / T.mins(5).msecs() * T.mins(5).msecs() + T.mins(5).msecs()
+        storeSteps(response.records, fromBucket = fromBucket)
     }
 
     /** Full read of the last [READ_WINDOW], then obtains a changes token for future incremental reads. */
@@ -246,49 +247,70 @@ class HealthConnectPlugin @Inject constructor(
         aapsLogger.debug(LTag.HEALTHCONNECT, "Full read: ${hrResponse.records.size} HR and ${stepsResponse.records.size} steps records")
     }
 
-    /** Stores HR samples from the given records. */
+    /**
+     * Stores HR samples from the given records.
+     *
+     * HC samples are instants, but HR consumers expect a sampling duration (the graph draws
+     * each sample as a bar of that width and automation averages weighted by duration), so a
+     * duration is derived per sample from the gap to the next sample, falling back to the
+     * record span and finally to one minute.
+     */
     private fun storeHeartRate(records: List<HeartRateRecord>) {
+        val defaultDuration = T.mins(1).msecs()
         for (record in records) {
-            for (sample in record.samples) {
+            val samples = record.samples
+            for ((index, sample) in samples.withIndex()) {
                 val bpm = sample.beatsPerMinute ?: continue
                 val ts = sample.time.toEpochMilli()
-                persistenceLayer.insertOrUpdateHeartRate(
-                    HR(
-                        timestamp = ts,
-                        duration = 0L,
-                        beatsPerMinute = bpm.toDouble(),
-                        device = DEVICE_NAME
-                    )
-                ).subscribe()
+                val nextTs = samples.getOrNull(index + 1)?.time?.toEpochMilli() ?: 0L
+                val duration = when {
+                    nextTs > ts                    -> nextTs - ts
+                    record.endTime > record.startTime -> (record.endTime.toEpochMilli() - ts).coerceAtLeast(defaultDuration)
+                    else                           -> defaultDuration
+                }
+                val hr = HR(
+                    timestamp = ts,
+                    duration = duration,
+                    beatsPerMinute = bpm.toDouble(),
+                    device = DEVICE_NAME
+                )
+                // reuse the existing row for this timestamp to avoid duplicates on re-import
+                val existing = persistenceLayer.getHeartRatesFromTimeToTime(ts, ts)
+                    .firstOrNull { it.device == DEVICE_NAME }
+                if (existing != null) hr.id = existing.id
+                persistenceLayer.insertOrUpdateHeartRate(hr).subscribe()
             }
         }
     }
 
     /**
      * Builds SC records with 5/10/15/30/60/180-min rolling windows from raw steps records.
-     * When [affectedBuckets] is non-null, only those buckets are stored (incremental rebuild);
-     * otherwise all buckets in the batch are stored (full read).
+     * When [fromBucket] is non-null, only buckets at or after it are stored (incremental
+     * rebuild); otherwise all buckets in the batch are stored (full read).
      */
-    private fun storeSteps(records: List<StepsRecord>, affectedBuckets: Set<Long>? = null) {
+    private fun storeSteps(records: List<StepsRecord>, fromBucket: Long? = null) {
         // flatten to (bucketEnd, steps) per 5-min bucket
         val buckets = LinkedHashMap<Long, Int>()
         for (record in records) {
             val start = record.startTime.toEpochMilli()
             val end = record.endTime.toEpochMilli()
-            var bucketEnd = end / T.mins(5).msecs() * T.mins(5).msecs()
-            while (bucketEnd > start) {
+            if (end <= start) continue
+            // first bucket boundary at or after start; a record ending exactly on a boundary
+            // belongs to the bucket ending there
+            var bucketEnd = (start / T.mins(5).msecs() + 1) * T.mins(5).msecs()
+            while (bucketEnd <= end) {
                 val overlapStart = max(start, bucketEnd - T.mins(5).msecs())
                 val overlapEnd = min(end, bucketEnd)
                 if (overlapEnd > overlapStart) {
-                    val fraction = (overlapEnd - overlapStart).toDouble() / (end - start).coerceAtLeast(1)
+                    val fraction = (overlapEnd - overlapStart).toDouble() / (end - start)
                     buckets[bucketEnd] = (buckets.getOrDefault(bucketEnd, 0) + record.count * fraction).toInt()
                 }
-                bucketEnd -= T.mins(5).msecs()
+                bucketEnd += T.mins(5).msecs()
             }
         }
         val sortedBuckets = buckets.toSortedMap()
         for ((bucketEnd, steps5min) in sortedBuckets) {
-            if (affectedBuckets != null && bucketEnd !in affectedBuckets) continue
+            if (fromBucket != null && bucketEnd < fromBucket) continue
             var steps10 = 0
             var steps15 = 0
             var steps30 = 0
@@ -304,19 +326,22 @@ class HealthConnectPlugin @Inject constructor(
                     window <= 36 -> steps180 += b
                 }
             }
-            persistenceLayer.insertOrUpdateStepsCount(
-                SC(
-                    duration = T.mins(5).msecs(),
-                    timestamp = bucketEnd,
-                    steps5min = steps5min,
-                    steps10min = steps10,
-                    steps15min = steps15,
-                    steps30min = steps30,
-                    steps60min = steps60,
-                    steps180min = steps180,
-                    device = DEVICE_NAME
-                )
-            ).subscribe()
+            val sc = SC(
+                duration = T.mins(5).msecs(),
+                timestamp = bucketEnd,
+                steps5min = steps5min,
+                steps10min = steps10,
+                steps15min = steps15,
+                steps30min = steps30,
+                steps60min = steps60,
+                steps180min = steps180,
+                device = DEVICE_NAME
+            )
+            // reuse the existing row for this bucket to avoid duplicates on re-import
+            val existing = persistenceLayer.getStepsCountFromTimeToTime(bucketEnd, bucketEnd)
+                .firstOrNull { it.device == DEVICE_NAME }
+            if (existing != null) sc.id = existing.id
+            persistenceLayer.insertOrUpdateStepsCount(sc).subscribe()
         }
     }
 
