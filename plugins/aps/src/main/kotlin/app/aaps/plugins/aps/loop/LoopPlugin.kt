@@ -95,6 +95,7 @@ import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
 import kotlin.math.abs
+import kotlin.math.floor
 
 @Singleton
 class LoopPlugin @Inject constructor(
@@ -138,6 +139,7 @@ class LoopPlugin @Inject constructor(
     private val disposable = CompositeDisposable()
     override var lastBgTriggeredRun: Long = 0
     private var carbsSuggestionsSuspendedUntil: Long = 0
+    private var lastPenSuggestion: Long = 0
     private var prevCarbsreq = 0
     override var lastRun: LastRun? = null
     override var closedLoopEnabled: Constraint<Boolean>? = null
@@ -656,22 +658,28 @@ class LoopPlugin @Inject constructor(
                         lastRun.smbSetByPump = null
                     }
                 } else {
-                    // LGS
-                    if (resultAfterConstraints.isChangeRequested && allowNotification) {
-                        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-                        builder.setSmallIcon(app.aaps.core.ui.R.drawable.notif_icon)
-                            .setContentTitle(rh.gs(R.string.open_loop_new_suggestion))
-                            .setContentText(resultAfterConstraints.resultAsString())
-                            .setAutoCancel(true)
-                            .setPriority(Notification.IMPORTANCE_HIGH)
-                            .setCategory(Notification.CATEGORY_ALARM)
-                            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                        if (preferences.get(BooleanKey.WearControl)) {
-                            builder.setLocalOnly(true)
+                    // OPEN_LOOP
+                    if (allowNotification) {
+                        if (!pump.pumpDescription.isTempBasalCapable) {
+                            // MDI mode: temp basal changes cannot be administered with a pen;
+                            // suggest manual boluses rounded to the pen's minimum step instead
+                            presentPenBolusSuggestion(resultAfterConstraints, profile)
+                        } else if (resultAfterConstraints.isChangeRequested) {
+                            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+                            builder.setSmallIcon(app.aaps.core.ui.R.drawable.notif_icon)
+                                .setContentTitle(rh.gs(R.string.open_loop_new_suggestion))
+                                .setContentText(resultAfterConstraints.resultAsString())
+                                .setAutoCancel(true)
+                                .setPriority(Notification.IMPORTANCE_HIGH)
+                                .setCategory(Notification.CATEGORY_ALARM)
+                                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                            if (preferences.get(BooleanKey.WearControl)) {
+                                builder.setLocalOnly(true)
+                            }
+                            presentSuggestion(builder, resultAfterConstraints.resultAsString())
+                        } else {
+                            dismissSuggestion()
                         }
-                        presentSuggestion(builder, resultAfterConstraints.resultAsString())
-                    } else if (allowNotification) {
-                        dismissSuggestion()
                     }
                 }
                 rxBus.send(EventLoopUpdateGui())
@@ -685,6 +693,40 @@ class LoopPlugin @Inject constructor(
         carbsSuggestionsSuspendedUntil = System.currentTimeMillis() + durationMinutes * 60 * 1000
         aapsLogger.debug(LTag.CORE, "CarbSuggestion disabled until ${dateUtil.dateAndTimeAndSecondsString(carbsSuggestionsSuspendedUntil)}")
         dismissSuggestion()
+    }
+
+    /**
+     * Pen users (MDI) cannot administer temp basals. Convert the APS request (a 30m temp basal
+     * correction, or an SMB) into a manual bolus suggestion rounded down to the pen's minimum
+     * step (0.5 U for the MDI pump type). Basal reductions are not administrable and dismiss
+     * the suggestion instead.
+     *
+     * Uses the built-in Notification mechanism (EventNewNotification -> NotificationStore) so the
+     * suggestion is raised as a system notification AND displayed in the Overview main screen's
+     * notifications list.
+     */
+    private fun presentPenBolusSuggestion(result: APSResult, profile: Profile) {
+        val pump = activePlugin.activePump
+        val bolusStep = pump.pumpDescription.bolusStep
+        var suggestedUnits = result.smb
+        if (result.isTempBasalRequested) {
+            // the APS expresses basal corrections as a 30m temp: extra units = (rate - basal) * 0.5h
+            val extraUnits = (result.rate - profile.getBasal()) * T.mins(30).msecs() / T.hours(1).msecs()
+            if (extraUnits > 0) suggestedUnits += extraUnits
+        }
+        // round down to the pen's minimum step — under-dosing is safer than over-dosing
+        val roundedUnits = floor(suggestedUnits / bolusStep) * bolusStep
+        if (roundedUnits < bolusStep) {
+            // nothing actionable with a pen
+            rxBus.send(EventDismissNotification(Notification.PEN_BOLUS_SUGGESTION))
+            return
+        }
+        // throttle: do not re-suggest within 30 minutes
+        if (lastPenSuggestion + T.mins(30).msecs() > dateUtil.now()) return
+        lastPenSuggestion = dateUtil.now()
+        val text = rh.gs(R.string.bolus_suggestion_text, String.format("%.1f", roundedUnits)) + "\n" + result.reason
+        val notification = Notification(Notification.PEN_BOLUS_SUGGESTION, text, Notification.LOW, validMinutes = 30)
+        rxBus.send(EventNewNotification(notification))
     }
 
     private fun presentSuggestion(builder: NotificationCompat.Builder, contentText: String) {
@@ -734,6 +776,11 @@ class LoopPlugin @Inject constructor(
 
     override fun acceptChangeRequest() {
         val profile = profileFunction.getProfile() ?: return
+        // Pen users (MDI) cannot enact temp basals; just dismiss the suggestion
+        if (!activePlugin.activePump.pumpDescription.isTempBasalCapable) {
+            rxBus.send(EventDismissNotification(Notification.PEN_BOLUS_SUGGESTION))
+            return
+        }
         lastRun?.let { lastRun ->
             lastRun.constraintsProcessed?.let { constraintsProcessed ->
                 applyTBRRequest(constraintsProcessed, profile, object : Callback() {
