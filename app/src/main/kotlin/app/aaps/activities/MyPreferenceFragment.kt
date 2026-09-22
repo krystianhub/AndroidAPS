@@ -24,6 +24,7 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.protection.PasswordCheck
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.protection.ProtectionCheck.ProtectionType.BIOMETRIC
 import app.aaps.core.interfaces.protection.ProtectionCheck.ProtectionType.CUSTOM_PASSWORD
 import app.aaps.core.interfaces.protection.ProtectionCheck.ProtectionType.CUSTOM_PIN
@@ -518,7 +519,9 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
             key = "pump_settings"
             title = rh.gs(app.aaps.core.ui.R.string.pump)
             initialExpandedChildrenCount = 0
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.PumpBtWatchdog, title = app.aaps.core.ui.R.string.btwatchdog_title, summary = app.aaps.core.ui.R.string.btwatchdog_summary))
+            // MDI (virtual pump): BT watchdog is meaningless - no pump connection to watch
+            if (activePlugin.activePump !is VirtualPump)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.PumpBtWatchdog, title = app.aaps.core.ui.R.string.btwatchdog_title, summary = app.aaps.core.ui.R.string.btwatchdog_summary))
         }
     }
 
@@ -536,8 +539,11 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
             initialExpandedChildrenCount = 0
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AlertMissedBgReading, title = R.string.enable_missed_bg_readings_alert))
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.AlertsStaleDataThreshold, title = app.aaps.plugins.sync.R.string.ns_alarm_stale_data_value_label))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AlertPumpUnreachable, title = R.string.enable_pump_unreachable_alert))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.AlertsPumpUnreachableThreshold, title = R.string.pump_unreachable_threshold))
+            // MDI (virtual pump): pump is always "reachable" - pump-unreachable alert is meaningless
+            if (activePlugin.activePump !is VirtualPump) {
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AlertPumpUnreachable, title = R.string.enable_pump_unreachable_alert))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.AlertsPumpUnreachableThreshold, title = R.string.pump_unreachable_threshold))
+            }
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AlertCarbsRequired, title = R.string.enable_carbs_req_alert))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AlertUrgentAsAndroidNotification, title = app.aaps.core.ui.R.string.raise_notifications_as_android_notifications))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.AlertIncreaseVolume, title = R.string.gradually_increase_notification_volume))

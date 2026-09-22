@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.protection.ProtectionCheck
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.actions.CustomAction
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -302,6 +303,13 @@ class ActionsFragment : DaggerFragment() {
             }
         }
         checkPumpCustomActions()
+
+        // MDI (virtual pump): hide the "Actions" card entirely when no action button is visible
+        val actionsCardVisible = listOf(
+            binding.profileSwitch, binding.tempTarget, binding.setTempBasal, binding.cancelTempBasal,
+            binding.extendedBolus, binding.extendedBolusCancel, binding.fill, binding.pumpBatteryChange
+        ).any { it.visibility == View.VISIBLE }
+        binding.actions.visibility = actionsCardVisible.toVisibility()
 
     }
 

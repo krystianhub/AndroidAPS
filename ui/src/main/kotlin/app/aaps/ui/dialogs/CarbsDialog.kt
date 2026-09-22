@@ -26,6 +26,8 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.protection.ProtectionCheck.Protection.BOLUS
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.VirtualPump
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -56,6 +58,7 @@ class CarbsDialog : DialogFragmentWithDate() {
 
     @Inject lateinit var ctx: Context
     @Inject lateinit var rh: ResourceHelper
+    @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var constraintChecker: ConstraintsChecker
     @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var iobCobCalculator: IobCobCalculator
@@ -129,6 +132,14 @@ class CarbsDialog : DialogFragmentWithDate() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // MDI (virtual pump): "Start xxx TT" options are useless - hide them all
+        val isVirtualPump = activePlugin.activePump is VirtualPump
+        if (isVirtualPump) {
+            binding.activityTt.visibility = View.GONE
+            binding.eatingSoonTt.visibility = View.GONE
+            binding.hypoTt.visibility = View.GONE
+            binding.hypoTt.isChecked = false
+        }
         if (preferences.get(BooleanKey.OverviewUseBolusReminder)) {
             glucoseStatusProvider.glucoseStatusData?.let { glucoseStatus ->
                 if (glucoseStatus.glucose + 3 * glucoseStatus.delta < 70.0)

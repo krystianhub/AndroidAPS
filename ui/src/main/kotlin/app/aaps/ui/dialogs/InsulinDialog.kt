@@ -212,18 +212,24 @@ class InsulinDialog : DialogFragmentWithDate() {
         // Basal (long-acting) insulin recording - MDI only
         binding.recordBasalInsulin.visibility = (activePlugin.activePump is VirtualPump).toVisibility()
         if (activePlugin.activePump !is VirtualPump) binding.recordBasalInsulin.isChecked = false
+        // MDI: eating-soon TT from the insulin dialog is useless (no pump to enact anything with)
+        binding.startEatingSoonTt.visibility = (activePlugin.activePump !is VirtualPump).toVisibility()
+        if (activePlugin.activePump is VirtualPump) binding.startEatingSoonTt.isChecked = false
         binding.recordBasalInsulin.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
                 binding.recordOnly.isChecked = true
                 binding.recordOnly.isEnabled = false
                 binding.startEatingSoonTt.isChecked = false
                 binding.startEatingSoonTt.isEnabled = false
+                // prefill with the last recorded basal (Lantus) dose
+                val lastBasalDose = findLastBasalDose()
                 binding.amount.setParams(
-                    binding.amount.value, 0.0, hardLimits.maxBolus(),
+                    lastBasalDose ?: binding.amount.value, 0.0, hardLimits.maxBolus(),
                     activePlugin.activePump.pumpDescription.bolusStep,
                     decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep),
                     false, binding.okcancel.ok, textWatcher
                 )
+                if (lastBasalDose != null) binding.amount.value = lastBasalDose
             } else {
                 binding.recordOnly.isEnabled = !recordOnlyForced
                 binding.startEatingSoonTt.isEnabled = true
