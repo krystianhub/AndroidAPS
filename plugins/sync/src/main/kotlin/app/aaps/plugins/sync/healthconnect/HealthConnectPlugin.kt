@@ -102,12 +102,6 @@ class HealthConnectPlugin @Inject constructor(
 
     suspend fun hasAllPermissions(): Boolean = grantedPermissions().containsAll(REQUIRED_PERMISSIONS.map { it })
 
-    /** Intent launching the Health Connect permissions screen for this app. */
-    fun createPermissionIntent(): Intent {
-        val contract = PermissionController.createRequestPermissionResultContract()
-        return contract.createIntent(context, REQUIRED_PERMISSIONS)
-    }
-
     override fun onStart() {
         super.onStart()
         disposable += rxBus
@@ -344,7 +338,7 @@ class HealthConnectPlugin @Inject constructor(
                 app.aaps.core.validators.preferences.AdaptiveIntentPreference(
                     ctx = context, intentKey = app.aaps.core.keys.IntentKey.HealthConnectPermissions,
                     title = R.string.healthconnect_grant_permissions, summary = R.string.healthconnect_permissions_missing,
-                    intent = createPermissionIntent()
+                    intent = Intent(context, HealthConnectPermissionsRationaleActivity::class.java)
                 )
             )
         }
