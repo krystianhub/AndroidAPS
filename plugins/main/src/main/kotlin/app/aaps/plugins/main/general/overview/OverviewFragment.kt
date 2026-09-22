@@ -708,7 +708,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
         runOnUiThread {
             _binding ?: return@runOnUiThread
-            if (pump.pumpDescription.isTempBasalCapable) {
+            // MDI fork: show the loop mode icon also for the virtual pump (MDI) - open loop
+            // recommendations work without temp basals, and the icon is the only entry point
+            // to the Loop dialog.
+            if (pump.pumpDescription.isTempBasalCapable || pump is VirtualPump) {
                 binding.infoLayout.apsMode.visibility = View.VISIBLE
                 binding.infoLayout.apsModeText.visibility = View.VISIBLE
                 when (loop.runningMode) {
