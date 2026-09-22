@@ -74,6 +74,9 @@
             android:exported="true" />
 
         <!-- Health Connect permissions rationale (required by Health Connect on API < 34) -->
+        <activity
+            android:name="app.aaps.plugins.sync.healthconnect.HealthConnectPermissionsRationaleActivity"
+            android:exported="false" />
         <activity-alias
             android:name="ViewPermissionUsageActivity"
             android:exported="true"
