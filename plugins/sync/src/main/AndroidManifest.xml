@@ -12,6 +12,12 @@
         android:label="AAPS WEAR DATA"
         android:protectionLevel="signature" />
 
+    <queries>
+        <!-- Package visibility for the Health Connect APK (required on API < 34,
+             otherwise getSdkStatus() reports SDK_UNAVAILABLE) -->
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
     <application>
 
         <service
@@ -80,10 +86,15 @@
         <activity-alias
             android:name="ViewPermissionUsageActivity"
             android:exported="true"
-            android:targetActivity="app.aaps.plugins.sync.healthconnect.HealthConnectPermissionsRationaleActivity"
-            android:permission="android.permission.health.READ_HEART_RATE">
+            android:targetActivity="app.aaps.plugins.sync.healthconnect.HealthConnectPermissionsRationaleActivity">
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+            <!-- Permission handling for Android 14 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
 
