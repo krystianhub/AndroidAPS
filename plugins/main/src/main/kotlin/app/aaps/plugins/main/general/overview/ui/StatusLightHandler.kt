@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.widget.TextView
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
+import app.aaps.core.data.time.T
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -128,6 +129,32 @@ class StatusLightHandler @Inject constructor(
         }
     }
 
+    /**
+     * Shows time since the last recorded basal (Lantus) injection, parsed from NOTE therapy
+     * events ("Lantus xU ..."). Intended for MDI (virtual pump).
+     */
+    fun updateLastBasalLight(view: TextView?) {
+        view ?: return
+        val lastBasal = try {
+            persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), false)
+                .blockingGet()
+                .sortedByDescending { it.timestamp }
+                .firstNotNullOfOrNull { te -> extractBasalDose(te.note)?.let { te } }
+        } catch (e: Exception) {
+            null
+        }
+        if (lastBasal != null) {
+            val diff = dateUtil.computeDiff(lastBasal.timestamp, System.currentTimeMillis())
+            val hours = diff[TimeUnit.HOURS] ?: 0L
+            val minutes = diff[TimeUnit.MINUTES] ?: 0L
+            view.text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
+            view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
+        } else {
+            view.text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+            view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
+        }
+    }
+
     @SuppressLint("SetTextI18n")
     private fun handleLevel(view: TextView?, criticalSetting: IntKey, warnSetting: IntKey, level: Double, units: String) {
         val resUrgent = preferences.get(criticalSetting)
@@ -172,4 +199,9 @@ class StatusLightHandler @Inject constructor(
         }
         return diff[TimeUnit.DAYS].toString() + days + diff[TimeUnit.HOURS] + hours
     }
+
+    private val BASAL_DOSE_REGEX = Regex("(?i)\\bLantus\\s*[:#]?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*U\\b")
+
+    private fun extractBasalDose(note: String?): Double? =
+        note?.let { BASAL_DOSE_REGEX.find(it)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull() }
 }

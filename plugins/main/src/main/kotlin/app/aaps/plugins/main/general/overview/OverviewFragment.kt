@@ -977,6 +977,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             reservoirLevel.visibility = (!isVirtualPump).toVisibility()
             batteryLayout.visibility = (isVirtualPump || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
             lastBolusLayout.visibility = isVirtualPump.toVisibility()
+            lastBasalLayout.visibility = isVirtualPump.toVisibility()
         }
         statusLightHandler.updateStatusLights(
             binding.statusLightsLayout.cannulaAge,
@@ -988,7 +989,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.statusLightsLayout.pbAge,
             binding.statusLightsLayout.pbLevel
         )
-        if (isVirtualPump) statusLightHandler.updateLastBolusLight(binding.statusLightsLayout.lastBolusAge)
+        if (isVirtualPump) {
+            statusLightHandler.updateLastBolusLight(binding.statusLightsLayout.lastBolusAge)
+            statusLightHandler.updateLastBasalLight(binding.statusLightsLayout.lastBasalAge)
+        }
     }
 
     private fun bolusIob(): IobTotal = iobCobCalculator.calculateIobFromBolus().round()
