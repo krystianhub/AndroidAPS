@@ -185,12 +185,13 @@ class PumpSyncImplementation @Inject constructor(
             .blockingGet()
     }
 
-    override fun syncBolusWithPumpId(timestamp: Long, amount: Double, type: BS.Type?, pumpId: Long, pumpType: PumpType, pumpSerial: String): Boolean {
+    override fun syncBolusWithPumpId(timestamp: Long, amount: Double, type: BS.Type?, pumpId: Long, pumpType: PumpType, pumpSerial: String, notes: String?): Boolean {
         if (!confirmActivePump(timestamp, pumpType, pumpSerial)) return false
         val bolus = BS(
             timestamp = timestamp,
             amount = amount,
             type = type ?: BS.Type.NORMAL,
+            notes = notes,
             ids = IDs(
                 pumpId = pumpId,
                 pumpType = pumpType,

@@ -216,7 +216,8 @@ open class VirtualPumpPlugin @Inject constructor(
                     type = detailedBolusInfo.bolusType,
                     pumpId = dateUtil.now(),
                     pumpType = pumpType ?: PumpType.GENERIC_AAPS,
-                    pumpSerial = serialNumber()
+                    pumpSerial = serialNumber(),
+                    notes = detailedBolusInfo.notes
                 )
         }
         return result

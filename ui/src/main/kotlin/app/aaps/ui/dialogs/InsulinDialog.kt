@@ -26,6 +26,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -33,10 +34,12 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.SafeParse
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.objects.constraints.ConstraintObject
+import app.aaps.core.objects.wizard.InjectionPosition
 import app.aaps.core.objects.extensions.formatColor
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.extensions.toVisibility
@@ -74,6 +77,8 @@ class InsulinDialog : DialogFragmentWithDate() {
     @Inject lateinit var loop: Loop
 
     private var queryingProtection = false
+    private var lastPosition: Int? = null
+    private var showPosition = false
     private val disposable = CompositeDisposable()
     private var _binding: DialogInsulinBinding? = null
 
@@ -179,6 +184,17 @@ class InsulinDialog : DialogFragmentWithDate() {
         }
         binding.insulinLabel.labelFor = binding.amount.editTextId
         binding.timeLabel.labelFor = binding.time.editTextId
+
+        binding.positionLayout.root.visibility =
+            (preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump is VirtualPump).toVisibility()
+        showPosition = binding.positionLayout.root.visibility == View.VISIBLE
+        if (showPosition) {
+            lastPosition = InjectionPosition.findLastPosition(
+                persistenceLayer.getBolusesFromTimeToTime(dateUtil.now() - T.days(3).msecs(), dateUtil.now(), false)
+            )
+            binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
+            InjectionPosition.suggestNext(lastPosition)?.let { binding.positionLayout.position.setText(it.toString()) }
+        }
     }
 
     override fun onDestroyView() {
@@ -226,7 +242,15 @@ class InsulinDialog : DialogFragmentWithDate() {
         if (timeOffset != 0)
             actions.add(rh.gs(app.aaps.core.ui.R.string.time) + ": " + dateUtil.dateAndTimeString(time))
 
-        val notes = binding.notesLayout.notes.text.toString()
+        var notes = binding.notesLayout.notes.text.toString()
+        if (showPosition) {
+            SafeParse.stringToInt(binding.positionLayout.position.text.toString())?.let { position ->
+                if (position in 1..InjectionPosition.MAX_POSITION) {
+                    notes = InjectionPosition.appendToNotes(notes, position)
+                    actions.add(rh.gs(app.aaps.core.ui.R.string.position_label) + ": " + position)
+                }
+            }
+        }
         if (notes.isNotEmpty())
             actions.add(rh.gs(app.aaps.core.ui.R.string.notes_label) + ": " + notes)
 

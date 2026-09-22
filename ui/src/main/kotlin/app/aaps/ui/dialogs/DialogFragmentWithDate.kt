@@ -120,6 +120,9 @@ abstract class DialogFragmentWithDate : DaggerDialogFragment() {
         (view.findViewById<View>(app.aaps.core.ui.R.id.notes_layout))?.visibility =
             preferences.get(BooleanKey.OverviewShowNotesInDialogs).toVisibility()
 
+        (view.findViewById<View>(app.aaps.core.ui.R.id.position_layout))?.visibility =
+            preferences.get(BooleanKey.OverviewShowPositionInDialogs).toVisibility()
+
         (view.findViewById<Button>(app.aaps.core.ui.R.id.ok))?.setOnClickListener {
             synchronized(okClicked) {
                 if (okClicked.get()) {

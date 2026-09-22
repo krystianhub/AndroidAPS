@@ -8,6 +8,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import app.aaps.core.data.model.TE
+import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
@@ -19,6 +20,7 @@ import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -26,9 +28,12 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.SafeParse
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.objects.constraints.ConstraintObject
+import app.aaps.core.objects.wizard.InjectionPosition
 import app.aaps.core.objects.extensions.formatColor
 import app.aaps.core.ui.dialogs.OKDialog
+import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.ui.R
@@ -56,6 +61,8 @@ class TreatmentDialog : DialogFragmentWithDate() {
     @Inject lateinit var decimalFormatter: DecimalFormatter
 
     private var queryingProtection = false
+    private var lastPosition: Int? = null
+    private var showPosition = false
     private var _binding: DialogTreatmentBinding? = null
 
     private val disposable = CompositeDisposable()
@@ -127,6 +134,17 @@ class TreatmentDialog : DialogFragmentWithDate() {
         binding.recordOnlyLayout.visibility = View.GONE
         binding.insulinLabel.labelFor = binding.insulin.editTextId
         binding.carbsLabel.labelFor = binding.carbs.editTextId
+
+        binding.positionLayout.root.visibility =
+            (preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump is VirtualPump).toVisibility()
+        showPosition = binding.positionLayout.root.visibility == View.VISIBLE
+        if (showPosition) {
+            lastPosition = InjectionPosition.findLastPosition(
+                persistenceLayer.getBolusesFromTimeToTime(dateUtil.now() - T.days(3).msecs(), dateUtil.now(), false)
+            )
+            binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
+            InjectionPosition.suggestNext(lastPosition)?.let { binding.positionLayout.position.setText(it.toString()) }
+        }
     }
 
     override fun onDestroyView() {
@@ -182,6 +200,11 @@ class TreatmentDialog : DialogFragmentWithDate() {
                     detailedBolusInfo.insulin = insulinAfterConstraints
                     detailedBolusInfo.carbs = carbsAfterConstraints.toDouble()
                     detailedBolusInfo.context = context
+                    if (showPosition) {
+                        SafeParse.stringToInt(binding.positionLayout.position.text.toString())?.let { position ->
+                            if (position in 1..InjectionPosition.MAX_POSITION) detailedBolusInfo.notes = "pos $position"
+                        }
+                    }
                     if (recordOnlyChecked) {
                         if (detailedBolusInfo.insulin > 0)
                             disposable += persistenceLayer.insertOrUpdateBolus(

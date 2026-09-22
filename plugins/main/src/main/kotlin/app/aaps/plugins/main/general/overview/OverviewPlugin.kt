@@ -282,6 +282,7 @@ class OverviewPlugin @Inject constructor(
             })
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShortTabTitles, title = R.string.short_tabtitles))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowNotesInDialogs, title = R.string.overview_show_notes_field_in_dialogs_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowPositionInDialogs, title = R.string.overview_show_position_field_in_dialogs_title))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 val pump = activePlugin.activePump
                 key = "statuslights_overview_advanced"

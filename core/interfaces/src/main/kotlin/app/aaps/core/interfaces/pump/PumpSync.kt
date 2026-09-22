@@ -213,7 +213,7 @@ interface PumpSync {
      * @param pumpSerial    pump serial number
      * @return true if new record is created
      **/
-    fun syncBolusWithPumpId(timestamp: Long, amount: Double, type: BS.Type?, pumpId: Long, pumpType: PumpType, pumpSerial: String): Boolean
+    fun syncBolusWithPumpId(timestamp: Long, amount: Double, type: BS.Type?, pumpId: Long, pumpType: PumpType, pumpSerial: String, notes: String? = null): Boolean
 
     /**
      * Synchronization of carbs

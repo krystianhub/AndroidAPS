@@ -25,6 +25,7 @@ import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -47,6 +48,7 @@ import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.extensions.valueToUnits
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.InjectionPosition
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.toast.ToastUtils
@@ -83,6 +85,8 @@ class WizardDialog : DaggerDialogFragment() {
     private val handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
 
     private var queryingProtection = false
+    private var lastPosition: Int? = null
+    private var showPosition = false
     private var wizard: BolusWizard? = null
     private var calculatedPercentage = 100
     private var calculatedCorrection = 0.0
@@ -154,6 +158,8 @@ class WizardDialog : DaggerDialogFragment() {
         binding.sbCheckbox.visibility = useSuperBolus.toVisibility()
         binding.superBolusRow.visibility = useSuperBolus.toVisibility()
         binding.notesLayout.root.visibility = preferences.get(BooleanKey.OverviewShowNotesInDialogs).toVisibility()
+        showPosition = preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump is VirtualPump
+        binding.positionLayout.root.visibility = showPosition.toVisibility()
 
         val maxCarbs = constraintChecker.getMaxCarbsAllowed().value()
         val maxCorrection = constraintChecker.getMaxBolusAllowed().value()
@@ -388,6 +394,12 @@ class WizardDialog : DaggerDialogFragment() {
             return
         }
 
+        // Injection position tracking (MDI)
+        if (showPosition)
+            lastPosition = InjectionPosition.findLastPosition(
+                persistenceLayer.getBolusesFromTimeToTime(dateUtil.now() - T.days(3).msecs(), dateUtil.now(), false)
+            )
+
         // IOB calculation
         val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
         val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
@@ -399,6 +411,11 @@ class WizardDialog : DaggerDialogFragment() {
             }
             if (notesPassedIntoWizard.isNotBlank()) {
                 binding.notesLayout.notes.setText(notesPassedIntoWizard)
+            }
+
+            if (showPosition) {
+                binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
+                InjectionPosition.suggestNext(lastPosition)?.let { binding.positionLayout.position.setText(it.toString()) }
             }
 
             val profileList: ArrayList<CharSequence> = profileStore.getProfileList()
@@ -473,6 +490,13 @@ class WizardDialog : DaggerDialogFragment() {
 
         val carbTime = SafeParse.stringToInt(binding.carbTimeInput.text)
 
+        var notes = binding.notesLayout.notes.text.toString()
+        if (showPosition) {
+            SafeParse.stringToInt(binding.positionLayout.position.text.toString())?.let { position ->
+                if (position in 1..InjectionPosition.MAX_POSITION) notes = InjectionPosition.appendToNotes(notes, position)
+            }
+        }
+
         wizard = bolusWizardProvider.get().doCalc(
             specificProfile, profileName, tempTarget, carbsAfterConstraint, cob, bg, correction, preferences.get(IntKey.OverviewBolusPercentage),
             binding.bgCheckbox.isChecked,
@@ -483,7 +507,7 @@ class WizardDialog : DaggerDialogFragment() {
             binding.ttCheckbox.isChecked,
             binding.bgTrendCheckbox.isChecked,
             binding.alarm.isChecked,
-            binding.notesLayout.notes.text.toString(),
+            notes,
             carbTime,
             usePercentage = usePercentage,
             totalPercentage = percentageCorrection.toDouble()
