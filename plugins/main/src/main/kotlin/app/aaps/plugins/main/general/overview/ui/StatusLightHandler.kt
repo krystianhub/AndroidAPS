@@ -2,6 +2,7 @@ package app.aaps.plugins.main.general.overview.ui
 
 import android.annotation.SuppressLint
 import android.widget.TextView
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.interfaces.configuration.Config
@@ -20,6 +21,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -104,6 +106,25 @@ class StatusLightHandler @Inject constructor(
             view?.text = therapyEvent.age(rh.shortTextMode(), rh, dateUtil)
         } else {
             view?.text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        }
+    }
+
+    /**
+     * Shows time since the last bolus (hours and minutes). Intended for MDI (virtual pump),
+     * where pump-specific status lights (battery, reservoir, cannula age) are meaningless.
+     */
+    fun updateLastBolusLight(view: TextView?) {
+        view ?: return
+        val lastBolus = persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)
+        if (lastBolus != null) {
+            val diff = dateUtil.computeDiff(lastBolus.timestamp, System.currentTimeMillis())
+            val hours = diff[TimeUnit.HOURS]
+            val minutes = diff[TimeUnit.MINUTES]
+            view.text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
+            view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
+        } else {
+            view.text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+            view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
         }
     }
 

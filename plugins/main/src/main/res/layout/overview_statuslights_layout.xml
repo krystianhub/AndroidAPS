@@ -122,4 +122,27 @@
 
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/last_bolus_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:focusable="true"
+        android:gravity="center"
+        tools:ignore="UseCompoundDrawables">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:contentDescription="@string/statuslights_last_bolus_age"
+            app:srcCompat="@drawable/ic_cp_age_last_bolus" />
+
+        <TextView
+            android:id="@+id/last_bolus_age"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:lines="1"
+            tools:text="2h15m" />
+
+    </LinearLayout>
+
 </com.google.android.flexbox.FlexboxLayout>

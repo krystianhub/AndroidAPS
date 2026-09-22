@@ -54,6 +54,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.BolusProgressData
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -958,6 +959,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Status lights
         val pump = activePlugin.activePump
         val isPatchPump = pump.pumpDescription.isPatchPump
+        val isVirtualPump = pump is VirtualPump
         binding.statusLightsLayout.apply {
             cannulaOrPatch.setImageResource(if (isPatchPump) app.aaps.core.objects.R.drawable.ic_patch_pump_outline else R.drawable.ic_cp_age_cannula)
             cannulaOrPatch.contentDescription = rh.gs(if (isPatchPump) R.string.statuslights_patch_pump_age else R.string.statuslights_cannula_age)
@@ -968,6 +970,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 || (pump.model() != PumpType.ACCU_CHEK_COMBO && pump.model() != PumpType.OMNIPOD_DASH)
             pbLevel.visibility = useBatteryLevel.toVisibility()
             statusLightsLayout.visibility = (preferences.get(BooleanKey.OverviewShowStatusLights) || config.AAPSCLIENT).toVisibility()
+            // MDI (virtual pump): battery/reservoir/cannula/insulin-age lights are meaningless - hide them
+            cannulaOrPatch.visibility = (!isVirtualPump).toVisibility()
+            cannulaAge.visibility = (!isVirtualPump).toVisibility()
+            insulinAge.visibility = (!isVirtualPump && isPatchPump.not()).toVisibility()
+            reservoirLevel.visibility = (!isVirtualPump).toVisibility()
+            batteryLayout.visibility = (isVirtualPump || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
+            lastBolusLayout.visibility = isVirtualPump.toVisibility()
         }
         statusLightHandler.updateStatusLights(
             binding.statusLightsLayout.cannulaAge,
@@ -979,6 +988,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.statusLightsLayout.pbAge,
             binding.statusLightsLayout.pbLevel
         )
+        if (isVirtualPump) statusLightHandler.updateLastBolusLight(binding.statusLightsLayout.lastBolusAge)
     }
 
     private fun bolusIob(): IobTotal = iobCobCalculator.calculateIobFromBolus().round()
