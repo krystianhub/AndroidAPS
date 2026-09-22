@@ -70,11 +70,15 @@
             </intent-filter>
         </activity>
         <activity
-        android:name="app.aaps.plugins.sync.tidepool.auth.AuthFlowIn"
-        android:exported="true" />
+            android:name="app.aaps.plugins.sync.tidepool.auth.AuthFlowIn"
+            android:exported="true" />
 
         <!-- Health Connect permissions rationale (required by Health Connect on API < 34) -->
-        <activity-alias android:name="ViewPermissionUsageActivity" android:exported="true" android:targetActivity="app.aaps.plugins.sync.healthconnect.HealthConnectPermissionsRationaleActivity" android:permission="android.permission.health.READ_HEART_RATE">
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity="app.aaps.plugins.sync.healthconnect.HealthConnectPermissionsRationaleActivity"
+            android:permission="android.permission.health.READ_HEART_RATE">
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
