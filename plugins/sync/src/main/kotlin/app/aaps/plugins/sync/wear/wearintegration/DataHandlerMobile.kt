@@ -68,6 +68,7 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
+import app.aaps.plugins.sync.healthconnect.HealthConnectPlugin
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -127,6 +128,7 @@ class DataHandlerMobile @Inject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val importExportPrefs: ImportExportPrefs,
     private val decimalFormatter: DecimalFormatter,
+    private val healthConnectPlugin: HealthConnectPlugin,
     private val bolusWizardProvider: Provider<BolusWizard>,
     private val pumpStatusProvider: PumpStatusProvider
 ) {
@@ -1880,8 +1882,12 @@ class DataHandlerMobile @Inject constructor(
         rxBus.send(EventMobileToWear(EventData.ConfirmAction(rh.gs(app.aaps.core.ui.R.string.error), errorMessage, returnCommand = EventData.Error(dateUtil.now())))) // ignore return path
     }
 
-    /** Stores heart rate events coming from the Wear device. */
+    /** Stores heart rate events coming from the Wear device. Skipped when Health Connect is the active HR source. */
     private fun handleHeartRate(actionHeartRate: EventData.ActionHeartRate) {
+        if (healthConnectPlugin.isHealthConnectEnabled) {
+            aapsLogger.debug(LTag.WEAR, "Heart rate from Wear ignored - Health Connect integration is enabled")
+            return
+        }
         aapsLogger.debug(LTag.WEAR, "Heart rate received $actionHeartRate from ${actionHeartRate.sourceNodeId}")
         val hr = HR(
             duration = actionHeartRate.duration,
@@ -1893,6 +1899,10 @@ class DataHandlerMobile @Inject constructor(
     }
 
     private fun handleStepsCount(actionStepsRate: EventData.ActionStepsRate) {
+        if (healthConnectPlugin.isHealthConnectEnabled) {
+            aapsLogger.debug(LTag.WEAR, "Steps from Wear ignored - Health Connect integration is enabled")
+            return
+        }
         aapsLogger.debug(LTag.WEAR, "Steps count received $actionStepsRate from ${actionStepsRate.sourceNodeId}")
         val stepsCount = SC(
             duration = actionStepsRate.duration,

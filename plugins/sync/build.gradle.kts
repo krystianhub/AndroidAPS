@@ -54,6 +54,9 @@ dependencies {
     api(libs.com.garmin.connectiq) { artifact { type = "aar" } }
     androidTestImplementation(libs.com.garmin.connectiq) { artifact { type = "aar" } }
 
+    // Health Connect (HR + steps)
+    api(libs.androidx.health.connect)
+
     ksp(libs.com.google.dagger.compiler)
     ksp(libs.com.google.dagger.android.processor)
 }

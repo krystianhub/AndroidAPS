@@ -114,6 +114,18 @@
     <string name="garmin_local_http_server_port">Local HTTP server port</string>
     <string name="garmin_local_http_server">Local HTTP server</string>
 
+    <!-- HealthConnectPlugin -->
+    <string name="healthconnect">Health Connect</string>
+    <string name="healthconnect_shortname">HC</string>
+    <string name="healthconnect_description">Read heart rate and steps from Android Health Connect</string>
+    <string name="healthconnect_use">Use Health Connect</string>
+    <string name="healthconnect_use_summary">Read heart rate and steps from Health Connect. Requires granting AAPS read permissions.</string>
+    <string name="healthconnect_grant_permissions">Grant permissions</string>
+    <string name="healthconnect_permissions_missing">Health Connect permissions missing. Tap to grant access to heart rate and steps.</string>
+    <string name="healthconnect_permissions_granted">Health Connect permissions granted</string>
+    <string name="healthconnect_not_available">Health Connect is not available on this device. Install it from the Play Store.</string>
+    <string name="healthconnect_read_error">Health Connect read failed</string>
+
     <!--    Wear-->
     <string name="wear_shortname">WEAR</string>
     <string name="description_wear">Monitor and control AAPS using your WearOS watch.</string>
