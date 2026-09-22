@@ -9,6 +9,7 @@ import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.pump.WarnColors
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.stats.TddCalculator
@@ -32,6 +33,7 @@ class StatusLightHandler @Inject constructor(
     private val preferences: Preferences,
     private val dateUtil: DateUtil,
     private val activePlugin: ActivePlugin,
+    private val profileFunction: ProfileFunction,
     private val warnColors: WarnColors,
     private val config: Config,
     private val persistenceLayer: PersistenceLayer,
@@ -113,25 +115,61 @@ class StatusLightHandler @Inject constructor(
     /**
      * Shows time since the last bolus (hours and minutes). Intended for MDI (virtual pump),
      * where pump-specific status lights (battery, reservoir, cannula age) are meaningless.
+     *
+     * Text color follows the pharmacokinetics of the *configured* insulin type (oref curve,
+     * peak + DIA from the active insulin plugin and profile):
+     * - activity near peak (>= 80% of max)  -> green (full effect)
+     * - ramping up / fading (10-80%)        -> orange
+     * - just injected, onset (< 10%)        -> neutral
+     * - worn off, tail (< 10% after peak)   -> red
      */
     fun updateLastBolusLight(view: TextView?) {
         view ?: return
         val lastBolus = persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)
-        if (lastBolus != null) {
+        if (lastBolus != null && lastBolus.amount > 0) {
             val diff = dateUtil.computeDiff(lastBolus.timestamp, System.currentTimeMillis())
-            val hours = diff[TimeUnit.HOURS]
-            val minutes = diff[TimeUnit.MINUTES]
+            val hours = diff[TimeUnit.HOURS] ?: 0L
+            val minutes = diff[TimeUnit.MINUTES] ?: 0L
             view.text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
-            view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
+            view.setTextColor(rh.gac(view.context, bolusColorAttr(lastBolus, System.currentTimeMillis())))
         } else {
             view.text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
             view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
         }
     }
 
+    /** Normalized insulin activity fraction (0..~1) of [bolus] at [atTime], per the active insulin curve. */
+    private fun bolusActivityFraction(bolus: BS, atTime: Long): Double {
+        val insulin = activePlugin.activeInsulin
+        val dia = profileFunction.getProfile()?.dia?.takeIf { it > 0 } ?: insulin.dia
+        val result = insulin.iobCalcForTreatment(bolus, atTime, dia)
+        return if (bolus.amount > 0) result.activityContrib / bolus.amount else 0.0
+    }
+
+    private fun bolusColorAttr(bolus: BS, now: Long): Int {
+        val insulin = activePlugin.activeInsulin
+        val peakTime = bolus.timestamp + T.mins(insulin.peak.toLong()).msecs()
+        val fMax = bolusActivityFraction(bolus, peakTime)
+        val ratio = if (fMax > 0) bolusActivityFraction(bolus, now) / fMax else 0.0
+        val afterPeak = now >= peakTime
+        return when {
+            ratio >= 0.8   -> app.aaps.core.ui.R.attr.metadataTextOkColor       // full effect
+            ratio < 0.1    -> if (afterPeak) app.aaps.core.ui.R.attr.urgentColor // worn off
+                              else app.aaps.core.ui.R.attr.defaultTextColor      // just injected, onset
+            else           -> app.aaps.core.ui.R.attr.metadataTextWarningColor  // ramping up / fading
+        }
+    }
+
     /**
      * Shows time since the last recorded basal (Lantus) injection, parsed from NOTE therapy
      * events ("Lantus xU ..."). Intended for MDI (virtual pump).
+     *
+     * Text color follows the Lantus action curve (~24h total):
+     * - 0-2h   onset, barely working        -> neutral
+     * - 2-4h   ramping up                   -> orange
+     * - 4-18h  plateau, full effect         -> green
+     * - 18-22h fading                       -> orange
+     * - 22h+  worn off / overdue            -> red
      */
     fun updateLastBasalLight(view: TextView?) {
         view ?: return
@@ -148,7 +186,18 @@ class StatusLightHandler @Inject constructor(
             val hours = diff[TimeUnit.HOURS] ?: 0L
             val minutes = diff[TimeUnit.MINUTES] ?: 0L
             view.text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
-            view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
+            val hoursSince = hours + minutes / 60.0
+            view.setTextColor(
+                rh.gac(
+                    view.context, when {
+                        hoursSince < 2.0  -> app.aaps.core.ui.R.attr.defaultTextColor      // onset, not yet active
+                        hoursSince < 4.0  -> app.aaps.core.ui.R.attr.metadataTextWarningColor // ramping up
+                        hoursSince < 18.0 -> app.aaps.core.ui.R.attr.metadataTextOkColor   // full effect
+                        hoursSince < 22.0 -> app.aaps.core.ui.R.attr.metadataTextWarningColor // fading
+                        else              -> app.aaps.core.ui.R.attr.urgentColor           // worn off / overdue
+                    }
+                )
+            )
         } else {
             view.text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
             view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
