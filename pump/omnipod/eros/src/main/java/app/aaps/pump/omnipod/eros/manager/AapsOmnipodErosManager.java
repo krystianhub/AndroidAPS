@@ -740,7 +740,8 @@ public class AapsOmnipodErosManager {
                 detailedBolusInfo.getBolusType(),
                 detailedBolusInfo.getBolusPumpId(),
                 detailedBolusInfo.getPumpType(),
-                serialNumber());
+                serialNumber(),
+                null);
 
     }
 
