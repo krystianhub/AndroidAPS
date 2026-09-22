@@ -69,7 +69,9 @@ class SafetyPlugin @Inject constructor(
      * Constraints interface
      */
     override fun isLoopInvocationAllowed(value: Constraint<Boolean>): Constraint<Boolean> {
-        if (!activePlugin.activePump.pumpDescription.isTempBasalCapable) value.set(false, rh.gs(R.string.pumpisnottempbasalcapable), this)
+        // Loop invocation (APS computation) is allowed without temp basals (e.g. MDI mode):
+        // recommendations/predictions are computed, but closed-loop enactment stays blocked
+        // because the pump cannot accept temp basals.
         return value
     }
 

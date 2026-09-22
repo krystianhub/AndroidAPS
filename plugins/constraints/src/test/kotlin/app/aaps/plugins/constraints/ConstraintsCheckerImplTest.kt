@@ -142,7 +142,7 @@ class ConstraintsCheckerImplTest : TestBaseWithProfile() {
             Objective8(preferences, rh, dateUtil),
             Objective9(preferences, rh, dateUtil)
         )
-        objectivesPlugin = ObjectivesPlugin(aapsLogger, rh, preferences, config, objectives)
+        objectivesPlugin = ObjectivesPlugin(aapsLogger, rh, preferences, config, dateUtil, objectives)
         objectivesPlugin.onStart()
         danaRPlugin = DanaRPlugin(
             aapsLogger, rh, preferences, commandQueue, aapsSchedulers, rxBus, context, constraintChecker, activePlugin, danaPump, dateUtil, fabricPrivacy, pumpSync,

@@ -92,11 +92,11 @@ class SafetyPluginTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun pumpDescriptionShouldLimitLoopInvocation() {
+    fun pumpDescriptionShouldNotLimitLoopInvocation() {
+        // Loop invocation (APS computation) is allowed even without temp basal capability (MDI support)
         pumpDescription.isTempBasalCapable = false
         val c = safetyPlugin.isLoopInvocationAllowed(ConstraintObject(true, aapsLogger))
-        assertThat(c.getReasons()).isEqualTo("Safety: Pump is not temp basal capable")
-        assertThat(c.value()).isFalse()
+        assertThat(c.value()).isTrue()
     }
 
     @Test

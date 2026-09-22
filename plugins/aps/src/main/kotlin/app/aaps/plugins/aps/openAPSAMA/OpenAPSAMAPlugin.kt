@@ -100,22 +100,12 @@ class OpenAPSAMAPlugin @Inject constructor(
     override var lastAPSResult: APSResult? = null
 
     override fun specialEnableCondition(): Boolean {
-        return try {
-            val pump = activePlugin.activePump
-            pump.pumpDescription.isTempBasalCapable
-        } catch (_: Exception) {
-            // may fail during initialization
-            true
-        }
+        // APS computation only needs BG + bolus/TDD data, not temp basals; allow MDI users.
+        return true
     }
 
     override fun specialShowInListCondition(): Boolean {
-        try {
-            val pump = activePlugin.activePump
-            return pump.pumpDescription.isTempBasalCapable
-        } catch (_: Exception) {
-            return true
-        }
+        return true
     }
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {

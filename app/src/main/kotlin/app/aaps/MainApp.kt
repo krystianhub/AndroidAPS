@@ -234,8 +234,9 @@ class MainApp : DaggerApplication() {
         if (preferences.get(UnitDoubleKey.OverviewHypoTarget) == 0.0) preferences.remove(UnitDoubleKey.OverviewHypoTarget)
         if (preferences.get(UnitDoubleKey.OverviewLowMark) == 0.0) preferences.remove(UnitDoubleKey.OverviewLowMark)
         if (preferences.get(UnitDoubleKey.OverviewHighMark) == 0.0) preferences.remove(UnitDoubleKey.OverviewHighMark)
+        // Simple mode is disabled by default (experienced users); force off for existing installs too
         if (preferences.getIfExists(BooleanKey.GeneralSimpleMode) == null)
-            preferences.put(BooleanKey.GeneralSimpleMode, !preferences.get(BooleanKey.GeneralSetupWizardProcessed))
+            preferences.put(BooleanKey.GeneralSimpleMode, false)
         // Migrate from OpenAPSSMBDynamicISFPlugin
         if (sp.getBoolean("ConfigBuilder_APS_OpenAPSSMBDynamicISFPlugin_Enabled", false)) {
             sp.remove("ConfigBuilder_APS_OpenAPSSMBDynamicISFPlugin_Enabled")

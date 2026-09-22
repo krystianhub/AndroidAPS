@@ -172,21 +172,13 @@ open class OpenAPSSMBPlugin @Inject constructor(
     }
 
     override fun specialEnableCondition(): Boolean {
-        return try {
-            activePlugin.activePump.pumpDescription.isTempBasalCapable
-        } catch (_: Exception) {
-            // may fail during initialization
-            true
-        }
+        // APS computation (predictions, dynISF) only needs BG + bolus/TDD data, not temp basals;
+        // allow MDI (virtual pump) users to run the APS in open loop.
+        return true
     }
 
     override fun specialShowInListCondition(): Boolean {
-        try {
-            val pump = activePlugin.activePump
-            return pump.pumpDescription.isTempBasalCapable
-        } catch (_: Exception) {
-            return true
-        }
+        return true
     }
 
     override fun preprocessPreferences(preferenceFragment: PreferenceFragmentCompat) {

@@ -17,7 +17,7 @@ enum class BooleanKey(
     override val exportable: Boolean = true
 ) : BooleanPreferenceKey {
 
-    GeneralSimpleMode("simple_mode", true),
+    GeneralSimpleMode("simple_mode", false),
     GeneralSetupWizardProcessed("startupwizard_processed", false),
     OverviewKeepScreenOn("keep_screen_on", false, calculatedDefaultValue = true),
     OverviewShowTreatmentButton("show_treatment_button", false, defaultedBySM = true, hideParentScreenIfHidden = true),

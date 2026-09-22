@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -31,6 +32,7 @@ class ObjectivesPlugin @Inject constructor(
     rh: ResourceHelper,
     preferences: Preferences,
     config: Config,
+    val dateUtil: DateUtil,
     val objectives: List<@JvmSuppressWildcards Objective>
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
@@ -44,6 +46,23 @@ class ObjectivesPlugin @Inject constructor(
     ownPreferences = listOf(ObjectivesBooleanComposedKey::class.java, ObjectivesLongComposedKey::class.java),
     aapsLogger, rh, preferences
 ), PluginConstraints, Objectives {
+
+    /**
+     * Tutorials (objectives) are disabled: mark every objective as started and accomplished
+     * so no functionality is gated. The objectives screen remains visible as an informational
+     * checklist showing all objectives as accomplished.
+     */
+    private fun unlockAllObjectives() {
+        val now = dateUtil.now()
+        for (objective in objectives) {
+            if (objective.startedOn == 0L) objective.startedOn = now
+            if (objective.accomplishedOn == 0L) objective.accomplishedOn = now
+        }
+    }
+
+    override fun onStart() {
+        unlockAllObjectives()
+    }
 
     fun reset() {
         for (objective in objectives) {

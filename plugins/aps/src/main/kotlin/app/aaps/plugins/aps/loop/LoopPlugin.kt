@@ -175,13 +175,10 @@ class LoopPlugin @Inject constructor(
     }
 
     override fun specialEnableCondition(): Boolean {
-        return try {
-            val pump = activePlugin.activePump
-            pump.pumpDescription.isTempBasalCapable
-        } catch (_: Exception) {
-            // may fail during initialization
-            true
-        }
+        // Allow the loop plugin in MDI mode (virtual pump): open-loop APS recommendations,
+        // predictions and dynISF work without temp basals. Closed-loop enactment remains
+        // blocked because the pump cannot accept temp basals.
+        return true
     }
 
     override fun minutesToEndOfSuspend(): Int =

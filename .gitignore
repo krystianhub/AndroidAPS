@@ -33,3 +33,14 @@ wear/pumpcontrol/*
 /buildSrc/.kotlin
 .claude/settings.local.json
 .claude/CLAUDE_COMMANDS.md
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml

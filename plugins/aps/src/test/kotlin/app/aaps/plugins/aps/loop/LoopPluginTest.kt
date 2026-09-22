@@ -84,9 +84,9 @@ class LoopPluginTest : TestBaseWithProfile() {
         // Plugin is enabled by default
         assertThat(loopPlugin.isEnabled()).isTrue()
 
-        // No temp basal capable pump should disable plugin
+        // Loop plugin is enabled regardless of temp basal capability (MDI support)
         virtualPumpPlugin.pumpDescription.isTempBasalCapable = false
-        assertThat(loopPlugin.specialEnableCondition()).isFalse()
+        assertThat(loopPlugin.specialEnableCondition()).isTrue()
         virtualPumpPlugin.pumpDescription.isTempBasalCapable = true
 
         // Fragment is hidden by default

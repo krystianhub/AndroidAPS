@@ -62,7 +62,7 @@ class ObjectivesPluginTest : TestBaseWithProfile() {
             Objective8(emulatedPreferences, rh, dateUtil),
             Objective9(emulatedPreferences, rh, dateUtil)
         )
-        objectivesPlugin = ObjectivesPlugin(aapsLogger, rh, emulatedPreferences, config, objectives)
+        objectivesPlugin = ObjectivesPlugin(aapsLogger, rh, emulatedPreferences, config, dateUtil, objectives)
         objectivesPlugin.onStart()
         whenever(rh.gs(R.string.objectivenotstarted)).thenReturn("Objective %1\$d not started")
         whenever(rh.gs(R.string.objectivenotfinished)).thenReturn("Objective %1\$d not finished")
