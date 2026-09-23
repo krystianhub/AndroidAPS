@@ -186,15 +186,22 @@ class CarbsDialog : DialogFragmentWithDate() {
             binding.carbs.announceValue()
         }
 
-        // Hypo treatment button: adds the configured carbs amount (e.g. one glucose chew) and prefills the note
-        binding.hypoTreatment.contentDescription = rh.gs(app.aaps.core.ui.R.string.hypo_treatment_note)
-        binding.hypoTreatment.setOnClickListener {
-            binding.carbs.value = max(0.0, binding.carbs.value + preferences.get(IntKey.OverviewHypoTreatmentCarbs))
-            if (binding.notesLayout.notes.text.isNullOrBlank()) {
-                binding.notesLayout.notes.setText(rh.gs(app.aaps.core.ui.R.string.hypo_treatment_note))
+        // Hypo treatment button: adds the configured carbs amount (e.g. one glucose chew) and prefills the note.
+        // A value of 0 (or an empty setting) disables and hides the button.
+        val hypoTreatmentCarbs = preferences.get(IntKey.OverviewHypoTreatmentCarbs)
+        if (hypoTreatmentCarbs > 0) {
+            binding.hypoTreatment.visibility = View.VISIBLE
+            binding.hypoTreatment.contentDescription = rh.gs(app.aaps.core.ui.R.string.hypo_treatment_note)
+            binding.hypoTreatment.setOnClickListener {
+                binding.carbs.value = max(0.0, binding.carbs.value + preferences.get(IntKey.OverviewHypoTreatmentCarbs))
+                if (binding.notesLayout.notes.text.isNullOrBlank()) {
+                    binding.notesLayout.notes.setText(rh.gs(app.aaps.core.ui.R.string.hypo_treatment_note))
+                }
+                validateInputs()
+                binding.carbs.announceValue()
             }
-            validateInputs()
-            binding.carbs.announceValue()
+        } else {
+            binding.hypoTreatment.visibility = View.GONE
         }
 
         setOnValueChangedListener { eventTime: Long ->

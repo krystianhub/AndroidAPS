@@ -23,7 +23,7 @@ enum class IntKey(
     OverviewCarbsButtonIncrement1("carbs_button_increment_1", 5, -50, 50, defaultedBySM = true, dependency = BooleanKey.OverviewShowCarbsButton),
     OverviewCarbsButtonIncrement2("carbs_button_increment_2", 10, -50, 50, defaultedBySM = true, dependency = BooleanKey.OverviewShowCarbsButton),
     OverviewCarbsButtonIncrement3("carbs_button_increment_3", 20, -50, 50, defaultedBySM = true, dependency = BooleanKey.OverviewShowCarbsButton),
-    OverviewHypoTreatmentCarbs("hypo_treatment_carbs", 4, 1, 50, defaultedBySM = true, dependency = BooleanKey.OverviewShowCarbsButton),
+    OverviewHypoTreatmentCarbs("hypo_treatment_carbs", 4, 0, 50, defaultedBySM = true, dependency = BooleanKey.OverviewShowCarbsButton),
     OverviewEatingSoonDuration("eatingsoon_duration", 45, 15, 120, defaultedBySM = true, hideParentScreenIfHidden = true),
     OverviewActivityDuration("activity_duration", 90, 15, 600, defaultedBySM = true),
     OverviewHypoDuration("hypo_duration", 60, 15, 180, defaultedBySM = true),

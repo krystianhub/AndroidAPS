@@ -44,6 +44,8 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.put
 import app.aaps.core.objects.extensions.store
+import app.aaps.core.validators.DefaultEditTextValidator
+import app.aaps.core.validators.EditTextValidator
 import app.aaps.core.validators.preferences.AdaptiveClickPreference
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
 import app.aaps.core.validators.preferences.AdaptiveIntPreference
@@ -245,6 +247,17 @@ class OverviewPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewCarbsButtonIncrement1, dialogMessage = R.string.carb_increment_button_message, title = R.string.firstcarbsincrement))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewCarbsButtonIncrement2, dialogMessage = R.string.carb_increment_button_message, title = R.string.secondcarbsincrement))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewCarbsButtonIncrement3, dialogMessage = R.string.carb_increment_button_message, title = R.string.thirdcarbsincrement))
+                addPreference(
+                    AdaptiveIntPreference(
+                        ctx = context, intKey = IntKey.OverviewHypoTreatmentCarbs, dialogMessage = R.string.hypo_treatment_carbs_message, title = R.string.hypo_treatment_carbs,
+                        validatorParams = DefaultEditTextValidator.Parameters(
+                            emptyAllowed = true,
+                            testType = EditTextValidator.TEST_NUMERIC_RANGE,
+                            minNumber = IntKey.OverviewHypoTreatmentCarbs.min,
+                            maxNumber = IntKey.OverviewHypoTreatmentCarbs.max
+                        )
+                    )
+                )
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewHypoTreatmentCarbs, dialogMessage = R.string.hypo_treatment_carbs_message, title = R.string.hypo_treatment_carbs))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowCgmButton, summary = R.string.show_cgm_button_summary, title = R.string.cgm))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowCalibrationButton, summary = R.string.show_calibration_button_summary, title = app.aaps.core.ui.R.string.calibration))
