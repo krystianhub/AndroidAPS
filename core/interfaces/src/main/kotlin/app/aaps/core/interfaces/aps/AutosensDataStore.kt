@@ -10,10 +10,26 @@ interface AutosensDataStore {
 
     val dataLock: Any
 
+    /** Classification of raw BG reading spacing, computed when bucketed data is created. */
+    enum class DataSpacing {
+        /** Readings natively spaced at ~5 min intervals (e.g. Dexcom). */
+        FIVE_MIN,
+        /** Readings regularly spaced *denser* than 5 min (e.g. 1-min Libre 2 via Juggluco). */
+        DENSE_REGULAR,
+        /** Readings sparse or irregularly spaced; bucketing interpolates over real gaps. */
+        IRREGULAR
+    }
+
     var bgReadings: List<GV>
     var autosensDataTable: LongSparseArray<AutosensData>
     var bucketedData: MutableList<InMemoryGlucoseValue>?
     var lastUsed5minCalculation: Boolean?
+
+    /**
+     * How the raw BG readings are spaced, as detected during the last bucketed data creation.
+     * Null until the first calculation ran.
+     */
+    var dataSpacing: DataSpacing?
 
     /**
      * Return last valid (>39) InMemoryGlucoseValue from bucketed data or null if db is empty

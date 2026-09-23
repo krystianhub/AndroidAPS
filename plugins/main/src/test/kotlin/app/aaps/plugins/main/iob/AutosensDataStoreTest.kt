@@ -6,6 +6,7 @@ import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensData
+import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.implementation.iob.AutosensDataObject
 import app.aaps.plugins.main.iob.iobCobCalculator.data.AutosensDataStoreObject
 import app.aaps.shared.tests.TestBaseWithProfile
@@ -376,6 +377,95 @@ class AutosensDataStoreTest : TestBaseWithProfile() {
         )
         autosensDataStore.bgReadings = bgReadingList
         assertThat(autosensDataStore.isAbout5minData(aapsLogger)).isTrue()
+    }
+
+    /** MDI fork: dense regular data (e.g. Libre 2 via Juggluco, 1-min readings) must classify as DENSE_REGULAR. */
+    @Test
+    fun detectDataSpacingTest() {
+        val bgReadingList: MutableList<GV> = ArrayList()
+
+        // 1-minute spaced readings -> DENSE_REGULAR
+        for (i in 0 until 10) {
+            bgReadingList.add(
+                GV(
+                    raw = 0.0,
+                    noise = 0.0,
+                    value = 100.0,
+                    timestamp = now + T.mins(-i.toLong()).msecs(),
+                    sourceSensor = SourceSensor.LIBRE_2,
+                    trendArrow = TrendArrow.FLAT
+                )
+            )
+        }
+        autosensDataStore.bgReadings = bgReadingList
+        autosensDataStore.dataSpacing = autosensDataStore.detectDataSpacing(dateUtil)
+        assertThat(autosensDataStore.dataSpacing).isEqualTo(AutosensDataStore.DataSpacing.DENSE_REGULAR)
+
+        // old gap (outside the recent window) must not classify current data as irregular
+        bgReadingList.add(
+            GV(
+                raw = 0.0,
+                noise = 0.0,
+                value = 100.0,
+                timestamp = now + T.mins(-45).msecs(),
+                sourceSensor = SourceSensor.LIBRE_2,
+                trendArrow = TrendArrow.FLAT
+            )
+        )
+        autosensDataStore.bgReadings = bgReadingList
+        autosensDataStore.dataSpacing = autosensDataStore.detectDataSpacing(dateUtil)
+        assertThat(autosensDataStore.dataSpacing).isEqualTo(AutosensDataStore.DataSpacing.DENSE_REGULAR)
+
+        // irregular spacing (mixed gaps) -> IRREGULAR
+        bgReadingList.clear()
+        bgReadingList.add(
+            GV(
+                raw = 0.0,
+                noise = 0.0,
+                value = 100.0,
+                timestamp = now + T.mins(-20).msecs(),
+                sourceSensor = SourceSensor.LIBRE_2,
+                trendArrow = TrendArrow.FLAT
+            )
+        )
+        bgReadingList.add(
+            GV(
+                raw = 0.0,
+                noise = 0.0,
+                value = 100.0,
+                timestamp = now + T.mins(-19).msecs(),
+                sourceSensor = SourceSensor.LIBRE_2,
+                trendArrow = TrendArrow.FLAT
+            )
+        )
+        bgReadingList.add(
+            GV(
+                raw = 0.0,
+                noise = 0.0,
+                value = 100.0,
+                timestamp = now + T.mins(-14).msecs(),
+                sourceSensor = SourceSensor.LIBRE_2,
+                trendArrow = TrendArrow.FLAT
+            )
+        )
+        bgReadingList.add(
+            GV(
+                raw = 0.0,
+                noise = 0.0,
+                value = 100.0,
+                timestamp = now + T.mins(-9).msecs(),
+                sourceSensor = SourceSensor.LIBRE_2,
+                trendArrow = TrendArrow.FLAT
+            )
+        )
+        autosensDataStore.bgReadings = bgReadingList
+        autosensDataStore.dataSpacing = autosensDataStore.detectDataSpacing(dateUtil)
+        assertThat(autosensDataStore.dataSpacing).isEqualTo(AutosensDataStore.DataSpacing.IRREGULAR)
+
+        // too few readings -> IRREGULAR
+        autosensDataStore.bgReadings = bgReadingList.subList(0, 2)
+        autosensDataStore.dataSpacing = autosensDataStore.detectDataSpacing(dateUtil)
+        assertThat(autosensDataStore.dataSpacing).isEqualTo(AutosensDataStore.DataSpacing.IRREGULAR)
     }
 
     @Test

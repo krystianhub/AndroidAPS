@@ -60,6 +60,15 @@ class BgQualityCheckPluginTest : TestBase() {
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.RECALCULATED)
         assertThat(plugin.icon()).isEqualTo(R.drawable.ic_baseline_warning_24_yellow)
+        // dense regular data (e.g. Libre 2 via Juggluco, 1-min readings) is clean
+        whenever(autosensDataStore.dataSpacing).thenReturn(AutosensDataStore.DataSpacing.DENSE_REGULAR)
+        plugin.processBgData()
+        assertThat(plugin.state).isEqualTo(BgQualityCheck.State.FIVE_MIN_DATA)
+        assertThat(plugin.icon()).isEqualTo(0)
+        whenever(autosensDataStore.dataSpacing).thenReturn(null)
+        plugin.processBgData()
+        assertThat(plugin.state).isEqualTo(BgQualityCheck.State.RECALCULATED)
+        assertThat(plugin.icon()).isEqualTo(R.drawable.ic_baseline_warning_24_yellow)
 
         val superData: MutableList<GV> = ArrayList()
         superData.add(
@@ -108,6 +117,7 @@ class BgQualityCheckPluginTest : TestBase() {
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.FIVE_MIN_DATA)
         whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
+        whenever(autosensDataStore.dataSpacing).thenReturn(AutosensDataStore.DataSpacing.IRREGULAR)
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.RECALCULATED)
 
@@ -223,6 +233,7 @@ class BgQualityCheckPluginTest : TestBase() {
         whenever(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(identicalData)
 
         whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
+        whenever(autosensDataStore.dataSpacing).thenReturn(AutosensDataStore.DataSpacing.IRREGULAR)
         plugin.processBgData()
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.DOUBLED)
 
@@ -542,6 +553,80 @@ class BgQualityCheckPluginTest : TestBase() {
         )
         plugin.processBgData() // must be at least 45 min old
         assertThat(plugin.state).isNotEqualTo(BgQualityCheck.State.FLAT)
+    }
+
+    /** MDI fork: dense regular data (e.g. Libre 2 via Juggluco, 1-min readings) is classified clean by the store. */
+    @Test
+    fun denseRegularDataTest() {
+        // 1-minute spaced readings, like Libre 2 via Juggluco
+        val denseData: MutableList<GV> = ArrayList()
+        for (i in 0 until 10) {
+            denseData.add(
+                GV(
+                    raw = 0.0,
+                    noise = 0.0,
+                    value = 100.0,
+                    timestamp = now + T.mins(-i.toLong()).msecs(),
+                    sourceSensor = SourceSensor.LIBRE_2,
+                    trendArrow = TrendArrow.FLAT
+                )
+            )
+        }
+        whenever(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(denseData)
+        whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
+        whenever(autosensDataStore.dataSpacing).thenReturn(AutosensDataStore.DataSpacing.DENSE_REGULAR)
+        plugin.processBgData()
+        assertThat(plugin.state).isEqualTo(BgQualityCheck.State.FIVE_MIN_DATA)
+        assertThat(plugin.icon()).isEqualTo(0)
+
+        // irregular spacing (mixed gaps) must still warn
+        val irregularData: MutableList<GV> = ArrayList()
+        irregularData.add(
+            GV(
+                raw = 0.0,
+                noise = 0.0,
+                value = 100.0,
+                timestamp = now + T.mins(-20).msecs(),
+                sourceSensor = SourceSensor.LIBRE_2,
+                trendArrow = TrendArrow.FLAT
+            )
+        )
+        irregularData.add(
+            GV(
+                raw = 0.0,
+                noise = 0.0,
+                value = 100.0,
+                timestamp = now + T.mins(-19).msecs(),
+                sourceSensor = SourceSensor.LIBRE_2,
+                trendArrow = TrendArrow.FLAT
+            )
+        )
+        irregularData.add(
+            GV(
+                raw = 0.0,
+                noise = 0.0,
+                value = 100.0,
+                timestamp = now + T.mins(-14).msecs(),
+                sourceSensor = SourceSensor.LIBRE_2,
+                trendArrow = TrendArrow.FLAT
+            )
+        )
+        irregularData.add(
+            GV(
+                raw = 0.0,
+                noise = 0.0,
+                value = 100.0,
+                timestamp = now + T.mins(-9).msecs(),
+                sourceSensor = SourceSensor.LIBRE_2,
+                trendArrow = TrendArrow.FLAT
+            )
+        )
+        whenever(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(irregularData)
+        whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
+        whenever(autosensDataStore.dataSpacing).thenReturn(AutosensDataStore.DataSpacing.IRREGULAR)
+        plugin.processBgData()
+        assertThat(plugin.state).isEqualTo(BgQualityCheck.State.RECALCULATED)
+        assertThat(plugin.icon()).isEqualTo(R.drawable.ic_baseline_warning_24_yellow)
     }
 
     @Test

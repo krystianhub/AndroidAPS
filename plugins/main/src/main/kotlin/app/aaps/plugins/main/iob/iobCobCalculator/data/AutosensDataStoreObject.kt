@@ -7,6 +7,7 @@ import app.aaps.core.data.model.GV
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.AutosensDataStore
+import app.aaps.core.interfaces.aps.AutosensDataStore.DataSpacing
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.utils.DateUtil
@@ -19,10 +20,14 @@ class AutosensDataStoreObject : AutosensDataStore {
 
     override val dataLock = Any()
     override var lastUsed5minCalculation: Boolean? = null // true if used 5min bucketed data
+    override var dataSpacing: DataSpacing? = null
 
     companion object {
 
         const val IRREGULAR_DATA_SEC = 30L
+
+        /** How far back [detectDataSpacing] inspects readings. */
+        private const val RECENT_WINDOW_MIN = 30L
     }
 
     // we need to make sure that bucketed_data will always have the same timestamp for correct use of cached values
@@ -198,7 +203,31 @@ class AutosensDataStoreObject : AutosensDataStore {
             reset()
         }
         lastUsed5minCalculation = fiveMinData
+        dataSpacing = detectDataSpacing(dateUtil)
         if (fiveMinData) createBucketedData5min(aapsLogger, dateUtil) else createBucketedDataRecalculated(aapsLogger, dateUtil)
+    }
+
+    /**
+     * Classify how the *recent* raw BG readings are spaced. Only the recent window is inspected:
+     * the store holds ~34h of history (24h + max dia), and a single old gap (sensor warmup, phone
+     * reboot, missed readings overnight) must not classify *current* data as irregular.
+     */
+    internal fun detectDataSpacing(dateUtil: DateUtil): DataSpacing {
+        synchronized(dataLock) {
+            val windowStart = dateUtil.now() - T.mins(RECENT_WINDOW_MIN).msecs()
+            val recent = bgReadings.takeWhile { it.timestamp >= windowStart } // newest at index 0
+            if (recent.size < 3) return DataSpacing.IRREGULAR
+
+            var totalDiff = 0L
+            for (i in 1 until recent.size) {
+                val diff = recent[i - 1].timestamp - recent[i].timestamp
+                // denser than 5 min but not doubled/erratic: between 15 s and 4.5 min
+                if (diff < T.secs(15).msecs() || diff > T.mins(4).plus(T.secs(30)).msecs()) return DataSpacing.IRREGULAR
+                totalDiff += diff
+            }
+            val averageDiff = totalDiff / (recent.size - 1)
+            return if (averageDiff < T.mins(4).plus(T.secs(30)).msecs()) DataSpacing.DENSE_REGULAR else DataSpacing.IRREGULAR
+        }
     }
 
     fun findNewer(time: Long): GV? {

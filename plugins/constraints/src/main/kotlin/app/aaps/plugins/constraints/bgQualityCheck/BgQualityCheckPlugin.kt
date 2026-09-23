@@ -3,6 +3,7 @@ package app.aaps.plugins.constraints.bgQualityCheck
 import androidx.annotation.DrawableRes
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.PluginConstraints
@@ -87,6 +88,13 @@ class BgQualityCheckPlugin @Inject constructor(
             state = BgQualityCheck.State.FLAT
             message = rh.gs(R.string.a11y_bg_quality_flat)
         } else if (iobCobCalculator.ads.lastUsed5minCalculation == true) {
+            state = BgQualityCheck.State.FIVE_MIN_DATA
+            message = "Data is clean"
+        } else if (iobCobCalculator.ads.lastUsed5minCalculation == false && iobCobCalculator.ads.dataSpacing == AutosensDataStore.DataSpacing.DENSE_REGULAR) {
+            // MDI fork: sources like Juggluco/Libre 2 deliver readings every 1 minute. The bucketing
+            // path is "recalculated" (not natively 5-min spaced), but the data is denser and regular -
+            // quality is fine, no warning needed. Classification is computed where the data is
+            // processed (AutosensDataStoreObject.detectDataSpacing), the plugin only maps it to a state.
             state = BgQualityCheck.State.FIVE_MIN_DATA
             message = "Data is clean"
         } else if (iobCobCalculator.ads.lastUsed5minCalculation == false) {
