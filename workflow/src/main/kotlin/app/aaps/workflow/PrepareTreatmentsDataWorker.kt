@@ -5,6 +5,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.HR
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.BolusDataPoint
 import app.aaps.core.graph.data.CarbsDataPoint
@@ -26,11 +27,14 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
+import kotlin.math.max
+import kotlin.math.min
 
 class PrepareTreatmentsDataWorker(
     context: Context,
@@ -121,7 +125,7 @@ class PrepareTreatmentsDataWorker(
         data.overviewData.epsSeries = PointsWithLabelGraphSeries(filteredEps.toTypedArray())
 
         data.overviewData.heartRateGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>(
-            persistenceLayer.getHeartRatesFromTimeToTime(fromTime, endTime)
+            smoothHeartRate(persistenceLayer.getHeartRatesFromTimeToTime(fromTime, endTime))
                 .map { hr -> HeartRateDataPoint(hr, rh) }
                 .toTypedArray()).apply { color = rh.gac(null, app.aaps.core.ui.R.attr.heartRateColor) }
 
@@ -137,6 +141,33 @@ class PrepareTreatmentsDataWorker(
 
     private fun addUpperChartMargin(maxBgValue: Double) =
         if (profileUtil.units == GlucoseUnit.MGDL) Round.roundTo(maxBgValue, 40.0) + 80 else Round.roundTo(maxBgValue, 2.0) + 4
+
+    /**
+     * Smooths HR samples with a duration-weighted rolling average over the last N minutes
+     * (N = [IntNonKey.HeartRateSmoothing], 1 = off), mirroring the Wear sender's
+     * key_heart_rate_smoothing. Keeps the 1-minute resolution of the samples - only the
+     * values are averaged, so the graph stays fine-grained but less spiky.
+     */
+    private fun smoothHeartRate(heartRates: List<HR>): List<HR> {
+        val windowMinutes = preferences.get(IntNonKey.HeartRateSmoothing)
+        if (windowMinutes <= 1 || heartRates.isEmpty()) return heartRates
+        val window = T.mins(windowMinutes.toLong()).msecs()
+        return heartRates.map { hr ->
+            val from = hr.timestamp - window
+            var weighted = 0.0
+            var duration = 0L
+            for (other in heartRates) {
+                // include samples overlapping [from, hr.timestamp]; weight by the overlap
+                val start = other.timestamp - other.duration
+                val overlap = minOf(other.timestamp, hr.timestamp) - maxOf(start, from)
+                if (overlap > 0) {
+                    weighted += other.beatsPerMinute * overlap
+                    duration += overlap
+                }
+            }
+            if (duration > 0) hr.copy(beatsPerMinute = weighted / duration) else hr
+        }
+    }
 
     private fun getNearestBg(overviewData: OverviewData, date: Long): Double {
         overviewData.bgReadingsArray.let { bgReadingsArray ->

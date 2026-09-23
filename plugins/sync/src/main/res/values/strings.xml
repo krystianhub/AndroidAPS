@@ -125,6 +125,8 @@
     <string name="healthconnect_permissions_granted">Health Connect permissions granted</string>
     <string name="healthconnect_not_available">Health Connect is not available on this device. Install it from the Play Store.</string>
     <string name="healthconnect_read_error">Health Connect read failed</string>
+    <string name="healthconnect_hr_smoothing">Heart rate smoothing</string>
+    <string name="healthconnect_hr_smoothing_summary">Average heart rate over the last N minutes to smooth the graph (1 = off, max 15)</string>
 
     <!--    Wear-->
     <string name="wear_shortname">WEAR</string>

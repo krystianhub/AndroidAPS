@@ -25,6 +25,7 @@ import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.healthconnect.keys.HealthConnectBooleanKey
@@ -380,6 +381,22 @@ class HealthConnectPlugin @Inject constructor(
             initialExpandedChildrenCount = 0
             addPreference(
                 HealthConnectSwitchPreference(context, this@HealthConnectPlugin)
+            )
+            addPreference(
+                app.aaps.core.ui.elements.IntSeekBarPreference(context).apply {
+                    key = IntNonKey.HeartRateSmoothing.key
+                    title = rh.gs(R.string.healthconnect_hr_smoothing)
+                    val summary = rh.gs(R.string.healthconnect_hr_smoothing_summary)
+                    setSummary(summary)
+                    setOnPreferenceChangeListener { _, newValue ->
+                        setSummary("$summary\n\nCurrent: ${newValue} min")
+                        true
+                    }
+                    min = 1
+                    max = 15
+                    setDefaultValue(1)
+                    isPersistent = true
+                }
             )
         }
     }
