@@ -10,7 +10,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import dagger.android.HasAndroidInjector
 import javax.inject.Inject
 
-class AdaptiveSwitchPreference(
+open class AdaptiveSwitchPreference(
     ctx: Context,
     attrs: AttributeSet? = null,
     booleanKey: BooleanPreferenceKey?,

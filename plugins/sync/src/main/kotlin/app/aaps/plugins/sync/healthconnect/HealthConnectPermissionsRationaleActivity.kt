@@ -5,15 +5,17 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.health.connect.client.PermissionController
+import androidx.lifecycle.lifecycleScope
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Rationale screen for Health Connect permissions.
+ * Hosts the ActivityResultLauncher for the Health Connect permission request contract.
  *
- * Owns the ActivityResultLauncher for the permission request contract and is the
- * target of the ViewPermissionUsageActivity alias, which Health Connect launches
- * when the user reviews permissions on API < 34.
+ * Opened from [HealthConnectSwitchPreference] when permissions are missing, and also
+ * launched by Health Connect itself as the ViewPermissionUsageActivity rationale target
+ * on API < 34 (via the activity-alias in the manifest).
  */
 class HealthConnectPermissionsRationaleActivity : TranslatedDaggerAppCompatActivity() {
 
@@ -22,7 +24,10 @@ class HealthConnectPermissionsRationaleActivity : TranslatedDaggerAppCompatActiv
     private val requestPermissions = registerForActivityResult(
         PermissionController.createRequestPermissionResultContract()
     ) { granted ->
-        if (granted.containsAll(HealthConnectPlugin.REQUIRED_PERMISSIONS)) finish()
+        if (granted.containsAll(HealthConnectPlugin.REQUIRED_PERMISSIONS)) {
+            healthConnectPlugin.checkPermissions()
+            finish()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,7 +46,11 @@ class HealthConnectPermissionsRationaleActivity : TranslatedDaggerAppCompatActiv
             setOnClickListener { launchPermissionRequest() }
         })
         setContentView(layout)
-        launchPermissionRequest()
+        // Auto-launch only when permissions are missing; when Health Connect opens this as
+        // the rationale screen with everything granted, the request would return instantly.
+        lifecycleScope.launch {
+            if (!healthConnectPlugin.hasAllPermissions()) launchPermissionRequest()
+        }
     }
 
     private fun launchPermissionRequest() {

@@ -22,6 +22,8 @@ dependencies {
     implementation(project(":core:validators"))
     implementation(project(":shared:impl"))
 
+    // suspend -> Single bridge for the Health Connect permission check
+    implementation(libs.kotlinx.coroutines.rx3)
 
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.work.testing)

@@ -1,7 +1,6 @@
 package app.aaps.plugins.sync.healthconnect
 
 import android.content.Context
-import android.content.Intent
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
@@ -22,6 +21,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.utils.DateUtil
@@ -37,7 +37,9 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
+import kotlinx.coroutines.rx3.rxSingle
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -57,7 +59,8 @@ class HealthConnectPlugin @Inject constructor(
     private val context: Context,
     private val dateUtil: DateUtil,
     private val persistenceLayer: PersistenceLayer,
-    private val rxBus: RxBus
+    private val rxBus: RxBus,
+    private val aapsSchedulers: AapsSchedulers
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
         .mainType(PluginType.SYNC)
@@ -84,11 +87,33 @@ class HealthConnectPlugin @Inject constructor(
 
     private val disposable = CompositeDisposable()
 
+    /** UI listeners notified when the granted permission set changes. */
+    private val permissionsListeners = ConcurrentHashMap<Any, (Boolean) -> Unit>()
+
     val isAvailable: Boolean
         get() = HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
 
     val isHealthConnectEnabled: Boolean
         get() = isAvailable && preferences.get(HealthConnectBooleanKey.UseHealthConnect)
+
+    /** Registers a listener, invoked immediately with the current state and on every change. */
+    fun addPermissionsListener(owner: Any, listener: (Boolean) -> Unit) {
+        permissionsListeners[owner] = listener
+        checkPermissions()
+    }
+
+    fun removePermissionsListener(owner: Any) {
+        permissionsListeners.remove(owner)
+    }
+
+    /** Checks granted permissions asynchronously and notifies listeners with the result. */
+    fun checkPermissions() {
+        rxSingle { hasAllPermissions() }
+            .subscribeOn(aapsSchedulers.io)
+            .observeOn(aapsSchedulers.main)
+            .subscribe({ granted -> permissionsListeners.values.forEach { it(granted) } }, { })
+            .let(disposable::add)
+    }
 
     /** Permissions granted so far (empty set if HC unavailable). */
     suspend fun grantedPermissions(): Set<String> =
@@ -354,17 +379,7 @@ class HealthConnectPlugin @Inject constructor(
             title = rh.gs(R.string.healthconnect)
             initialExpandedChildrenCount = 0
             addPreference(
-                app.aaps.core.validators.preferences.AdaptiveSwitchPreference(
-                    ctx = context, booleanKey = HealthConnectBooleanKey.UseHealthConnect,
-                    title = R.string.healthconnect_use, summary = R.string.healthconnect_use_summary
-                )
-            )
-            addPreference(
-                app.aaps.core.validators.preferences.AdaptiveIntentPreference(
-                    ctx = context, intentKey = app.aaps.core.keys.IntentKey.HealthConnectPermissions,
-                    title = R.string.healthconnect_grant_permissions, summary = R.string.healthconnect_permissions_missing,
-                    intent = Intent(context, HealthConnectPermissionsRationaleActivity::class.java)
-                )
+                HealthConnectSwitchPreference(context, this@HealthConnectPlugin)
             )
         }
     }
