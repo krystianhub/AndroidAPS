@@ -16,6 +16,7 @@
     app:justifyContent="space_around">
 
     <LinearLayout
+        android:id="@+id/cannula_layout"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:focusable="true"
@@ -39,6 +40,7 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/insulin_layout"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:focusable="true"

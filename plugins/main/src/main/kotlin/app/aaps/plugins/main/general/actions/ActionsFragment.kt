@@ -296,6 +296,9 @@ class ActionsFragment : DaggerFragment() {
             cannulaLayout.visibility = (!isMDI).toVisibility()
             cannulaBatteryDivider.visibility = (!isMDI).toVisibility()
             batteryLayout.visibility = (isMDI || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
+            // MDI: show last bolus / last basal insulin age rows instead
+            lastBolusLayout.visibility = isMDI.toVisibility()
+            lastBasalLayout.visibility = isMDI.toVisibility()
 
             if (!config.AAPSCLIENT) {
                 statusLightHandler.updateStatusLights(
@@ -309,6 +312,10 @@ class ActionsFragment : DaggerFragment() {
                 sensorLevelLabel.text = ""
                 insulinLevelLabel.text = ""
                 pbLevelLabel.text = ""
+            }
+            if (isMDI) {
+                statusLightHandler.updateLastBolusLight(lastBolusAge)
+                statusLightHandler.updateLastBasalLight(lastBasalAge)
             }
         }
         checkPumpCustomActions()

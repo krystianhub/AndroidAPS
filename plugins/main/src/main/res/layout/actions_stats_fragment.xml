@@ -64,6 +64,82 @@
     </TableRow>
 
     <TableRow
+        android:id="@+id/last_bolus_layout"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:focusable="true">
+
+        <TextView
+            android:id="@+id/last_bolus_label"
+            android:layout_width="wrap_content"
+            android:layout_height="25dp"
+            android:gravity="center_vertical"
+            android:paddingStart="15dp"
+            android:paddingEnd="2dp"
+            android:text="@string/last_bolus_label"
+            android:textSize="14sp"
+            app:drawableStartCompat="@drawable/ic_cp_age_last_bolus" />
+
+        <TextView
+            android:id="@+id/last_bolus_age_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
+            android:text="@string/age_label"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/last_bolus_age"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:paddingStart="2dp"
+            android:paddingEnd="2dp"
+            android:textSize="14sp" />
+
+    </TableRow>
+
+    <TableRow
+        android:id="@+id/last_basal_layout"
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:focusable="true">
+
+        <TextView
+            android:id="@+id/last_basal_label"
+            android:layout_width="wrap_content"
+            android:layout_height="25dp"
+            android:gravity="center_vertical"
+            android:paddingStart="15dp"
+            android:paddingEnd="2dp"
+            android:text="@string/last_basal_label"
+            android:textSize="14sp"
+            app:drawableStartCompat="@drawable/ic_cp_age_last_basal" />
+
+        <TextView
+            android:id="@+id/last_basal_age_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
+            android:text="@string/age_label"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/last_basal_age"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:paddingStart="2dp"
+            android:paddingEnd="2dp"
+            android:textSize="14sp" />
+
+    </TableRow>
+
+    <TableRow
         android:id="@+id/sensor_insulin_divider"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content">

@@ -3,15 +3,17 @@ package app.aaps.core.graph.data
 import android.content.Context
 import android.graphics.Paint
 import app.aaps.core.data.model.HR
+import app.aaps.core.interfaces.graph.Scale
 import app.aaps.core.interfaces.resources.ResourceHelper
 
 class HeartRateDataPoint(
     private val data: HR,
     private val rh: ResourceHelper,
+    private val scale: Scale,
 ) : DataPointWithLabelInterface {
 
     override fun getX(): Double = (data.timestamp - data.duration).toDouble()
-    override fun getY(): Double = data.beatsPerMinute
+    override fun getY(): Double = scale.transform(data.beatsPerMinute)
     override fun setY(y: Double) {}
 
     override val label: String = ""
