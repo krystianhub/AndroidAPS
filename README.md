@@ -14,6 +14,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 
 - The APS engine (recommendations, predictions, DynamicISF) now runs in MDI/virtual-pump mode instead of being blocked outright — closed-loop enactment remains blocked, since a pen cannot accept temp basals.
 - In Open Loop, APS suggestions that would normally be a temp basal or SMB are converted into an **actionable manual bolus suggestion**: rounded *down* to the pen's minimum step (under-dosing is safer than over-dosing), throttled to at most one suggestion per 30 minutes, and delivered as a system notification + Overview notification. Basal reductions are not administrable with a pen and are dismissed instead.
+- Zero-temp (ZT) prediction lines are hidden on the graph in MDI mode — a pen cannot execute a zero temp, so the line is meaningless.
 
 ### 2. Injection position tracking ("pos" feature)
 
@@ -31,6 +32,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 
 - Pump-specific lights (cannula age, insulin age, reservoir, battery) are **hidden in MDI mode**; sensor age stays.
 - New MDI-only lights: **last bolus ago** (`2h 15m`, colored by the configured insulin's action curve — green near peak, red when worn off) and **last basal insulin ago** (time since the last recorded Lantus injection, colored by the Lantus curve — red when overdue).
+- The same last bolus / last basal insulin age also appear as rows in the Actions tab stats.
 
 ### 5. Autotune enabled
 
@@ -41,24 +43,26 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 Gated on the pump being configured as **MDI** (`Pump.isMDI()`, not the coarse `is VirtualPump`):
 
 - **Actions tab**: "Actions" card hidden when no action button applies.
-- **Insulin dialog**: eating-soon TT hidden; "Record basal insulin (MDI)" prefills the last Lantus dose.
-- **Carbs dialog**: all "Start xxx TT" checkboxes hidden.
+- **Insulin dialog**: eating-soon TT hidden; "Record basal insulin (MDI)" prefills the last Lantus dose; the redundant "record only" checkbox is hidden (in MDI every bolus is record-only).
+- **Carbs dialog**: all "Start xxx TT" checkboxes hidden; new 🍬 **hypo treatment** button adds a configurable carbs amount (default 4 g, e.g. one glucose chew) and prefills a "hypo treatment" note — set the amount to 0 to hide the button.
 - **Preferences**: BT watchdog, pump-unreachable alert, prime/fill settings, pump status-light thresholds, partial bolus wizard, superbolus, LGS threshold — hidden. SMB/DynISF settings kept (they still shape suggestions).
 - **Loop mode icon** on the Overview is visible in MDI mode — the only entry point to the Loop dialog (needed to switch to Open Loop).
 
-### 8. Health Connect integration (HR + steps)
+### 7. Health Connect integration (HR + steps)
 
 - New **Health Connect** sync plugin reads heart rate and step data from Android Health Connect (from Google Fit, Samsung Health, Wear OS, etc.) and stores it in the same HR/steps tables the Wear app path uses — the Overview graph and automation triggers work unchanged.
 - Enable it in *Preferences → Sync* (toggle), then tap the permissions entry to grant Heart rate + Steps read access. If Health Connect isn't installed, the toggle shows a hint instead.
-- Data is read every 15 minutes in the background (plus on demand); steps are aggregated into 5-minute buckets with the same rolling 10/15/30/60/180-min windows the Wear sender produces.
+- Data is read every 15 minutes in the background (plus on demand) via changes tokens (incremental, with fallback to a full read); steps are aggregated into 5-minute buckets with the same rolling 10/15/30/60/180-min windows the Wear sender produces.
+- Optional **heart rate smoothing** (1–15 min rolling average, under the Health Connect preferences) tames spiky per-minute samples on the graph.
 
-### 9. Objectives unlocked
+### 8. Objectives unlocked
 
 - All objectives are marked as accomplished on start, so no functionality is gated behind the tutorial. The objectives screen remains as an informational checklist.
 
-### 10. Housekeeping
+### 9. Housekeeping
 
 - Removed upstream Git-blocked build restrictions; added a devenv (Nix) development environment.
+- BG quality check: sources delivering regular sub-5-minute readings (e.g. Juggluco/Libre 2 at 1 min) no longer trigger the "Recalculated data used" warning — data spacing is classified and dense-but-regular data is treated as clean.
 
 ## Safety
 
