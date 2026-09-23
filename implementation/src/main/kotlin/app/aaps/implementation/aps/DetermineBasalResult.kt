@@ -229,7 +229,8 @@ class DetermineBasalResult @Inject constructor(
                     array.add(gv)
                 }
             }
-            predictions?.ZT?.let { iob ->
+            // MDI fork: hide zero-temp prediction for MDI users - the pump cannot execute temp basals, so the ZT line is meaningless
+            if (!activePlugin.activePump.isMDI()) predictions?.ZT?.let { iob ->
                 for (i in 1 until iob.size) {
                     val gv = GV(
                         raw = 0.0,
@@ -253,7 +254,8 @@ class DetermineBasalResult @Inject constructor(
             predictions?.aCOB?.let { if (it.isNotEmpty()) latest = max(latest, startTime + (it.size - 1) * 5 * 60 * 1000L) }
             predictions?.COB?.let { if (it.isNotEmpty()) latest = max(latest, startTime + (it.size - 1) * 5 * 60 * 1000L) }
             predictions?.UAM?.let { if (it.isNotEmpty()) latest = max(latest, startTime + (it.size - 1) * 5 * 60 * 1000L) }
-            predictions?.ZT?.let { if (it.isNotEmpty()) latest = max(latest, startTime + (it.size - 1) * 5 * 60 * 1000L) }
+            // MDI fork: exclude ZT prediction from time range for MDI users (line is not drawn)
+            if (!activePlugin.activePump.isMDI()) predictions?.ZT?.let { if (it.isNotEmpty()) latest = max(latest, startTime + (it.size - 1) * 5 * 60 * 1000L) }
             return latest
         }
     override val isChangeRequested: Boolean
