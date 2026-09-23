@@ -1,0 +1,99 @@
+package app.aaps.core.objects.wizard
+
+import app.aaps.core.data.model.BS
+import com.google.common.truth.Truth.assertThat
+import org.junit.jupiter.api.Test
+
+class InjectionPositionTest {
+
+    private fun bolus(timestamp: Long, notes: String?, type: BS.Type = BS.Type.NORMAL) =
+        BS(timestamp = timestamp, amount = 1.0, type = type, notes = notes)
+
+    @Test
+    fun findsPositionFromNewestBolus() {
+        val boluses = listOf(
+            bolus(1_000, null),
+            bolus(2_000, "pos 7"),
+            bolus(3_000, "pos 8")
+        )
+        assertThat(InjectionPosition.findLastPosition(boluses)).isEqualTo(8)
+    }
+
+    @Test
+    fun ignoresOlderBolusesWithPosition() {
+        val boluses = listOf(
+            bolus(1_000, "pos 6"),
+            bolus(2_000, null),
+            bolus(3_000, "pos 7"),
+            bolus(4_000, null),
+            bolus(5_000, "pos 8")
+        )
+        assertThat(InjectionPosition.findLastPosition(boluses)).isEqualTo(8)
+    }
+
+    // getBolusesFromTimeToTime(ascending = false) returns oldest-first
+    // (DAO already sorts newest-first, repository reverses for !ascending) -
+    // the result must not depend on the arrival order.
+    @Test
+    fun resultIndependentOfListOrder() {
+        val oldestFirst = listOf(
+            bolus(1_000, "pos 7"),
+            bolus(2_000, "pos 8")
+        )
+        val newestFirst = oldestFirst.reversed()
+        assertThat(InjectionPosition.findLastPosition(oldestFirst)).isEqualTo(8)
+        assertThat(InjectionPosition.findLastPosition(newestFirst)).isEqualTo(8)
+    }
+
+    @Test
+    fun skipsPrimingRecords() {
+        val boluses = listOf(
+            bolus(1_000, "pos 7"),
+            bolus(2_000, "pos 9", type = BS.Type.PRIMING)
+        )
+        assertThat(InjectionPosition.findLastPosition(boluses)).isEqualTo(7)
+    }
+
+    @Test
+    fun skipsBolusesWithoutPositionInLookbackWindow() {
+        val boluses = listOf(
+            bolus(1_000, "pos 7"),   // oldest - outside a 3-bolus lookback
+            bolus(2_000, null),
+            bolus(3_000, null),
+            bolus(4_000, null)
+        )
+        assertThat(InjectionPosition.findLastPosition(boluses, maxLookback = 3)).isNull()
+        // ...but found with a larger window
+        assertThat(InjectionPosition.findLastPosition(boluses, maxLookback = 4)).isEqualTo(7)
+    }
+
+    @Test
+    fun emptyListReturnsNull() {
+        assertThat(InjectionPosition.findLastPosition(emptyList())).isNull()
+    }
+
+    @Test
+    fun suggestsNextWrappingAtMax() {
+        assertThat(InjectionPosition.suggestNext(null)).isNull()
+        assertThat(InjectionPosition.suggestNext(7)).isEqualTo(8)
+        assertThat(InjectionPosition.suggestNext(InjectionPosition.MAX_POSITION)).isEqualTo(1)
+    }
+
+    @Test
+    fun extractsPositionFromNotes() {
+        assertThat(InjectionPosition.extractFromNotes("pos 8")).isEqualTo(8)
+        assertThat(InjectionPosition.extractFromNotes("Pos: 3 and something else")).isEqualTo(3)
+        assertThat(InjectionPosition.extractFromNotes("lunch pos 12")).isEqualTo(12)
+        assertThat(InjectionPosition.extractFromNotes(null)).isNull()
+        assertThat(InjectionPosition.extractFromNotes("no position here")).isNull()
+        assertThat(InjectionPosition.extractFromNotes("pos 13")).isNull() // out of range
+    }
+
+    @Test
+    fun appendsToNotesReplacingExistingPosition() {
+        assertThat(InjectionPosition.appendToNotes("", 8)).isEqualTo("pos 8")
+        assertThat(InjectionPosition.appendToNotes("snack", 8)).isEqualTo("snack pos 8")
+        assertThat(InjectionPosition.appendToNotes("pos 7 snack", 8)).isEqualTo("snack pos 8")
+        assertThat(InjectionPosition.appendToNotes("snack pos 3", 8)).isEqualTo("snack pos 8")
+    }
+}

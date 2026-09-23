@@ -24,12 +24,17 @@ object InjectionPosition {
 
     /**
      * Finds the most recent recorded injection position by looking back through
-     * the last [maxLookback] boluses (newest first). Injections without a position
-     * (e.g. into a limb not covered by the numbering) are skipped.
+     * the last [maxLookback] boluses, regardless of the order the list arrives in
+     * (the `ascending` flag of `getBolusesFromTimeToTime` is effectively inverted,
+     * so callers pass lists in either order). The list is explicitly sorted
+     * newest-first by [BS.timestamp] before the lookback, so only the [maxLookback]
+     * most recent boluses are inspected. Injections without a position (e.g. into
+     * a limb not covered by the numbering) are skipped.
      */
     fun findLastPosition(boluses: List<BS>, maxLookback: Int = 3): Int? =
         boluses.asSequence()
             .filter { it.type != BS.Type.PRIMING }
+            .sortedByDescending { it.timestamp }
             .take(maxLookback)
             .map { extractFromNotes(it.notes) }
             .firstOrNull { it != null }
