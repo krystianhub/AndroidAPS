@@ -30,7 +30,7 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.SafeParse
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.objects.constraints.ConstraintObject
-import app.aaps.core.objects.wizard.InjectionPosition
+import app.aaps.core.interfaces.pump.InjectionPosition
 import app.aaps.core.objects.extensions.formatColor
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.extensions.toVisibility
@@ -113,6 +113,11 @@ class TreatmentDialog : DialogFragmentWithDate() {
             binding.recordOnly.isChecked = true
             binding.recordOnly.isEnabled = false
         }
+        if (activePlugin.activePump.isMDI()) {
+            // MDI: there is no pump to deliver through - every treatment is record-only
+            binding.recordOnly.isChecked = true
+            binding.recordOnly.isEnabled = false
+        }
         val maxCarbs = constraintChecker.getMaxCarbsAllowed().value().toDouble()
         val maxInsulin = constraintChecker.getMaxBolusAllowed().value()
         val pumpDescription = activePlugin.activePump.pumpDescription
@@ -136,11 +141,12 @@ class TreatmentDialog : DialogFragmentWithDate() {
         binding.carbsLabel.labelFor = binding.carbs.editTextId
 
         binding.positionLayout.root.visibility =
-            (preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump is VirtualPump).toVisibility()
+            (preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump.isMDI()).toVisibility()
         showPosition = binding.positionLayout.root.visibility == View.VISIBLE
         if (showPosition) {
             lastPosition = InjectionPosition.findLastPosition(
-                persistenceLayer.getBolusesFromTimeToTime(dateUtil.now() - T.days(3).msecs(), dateUtil.now(), false)
+                persistenceLayer.getBolusesFromTimeToTime(dateUtil.now() - T.days(3).msecs(), dateUtil.now(), false),
+                persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(3).msecs(), TE.Type.NOTE, false)
             )
             binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
             InjectionPosition.suggestNext(lastPosition)?.let { binding.positionLayout.position.setText(it.toString()) }

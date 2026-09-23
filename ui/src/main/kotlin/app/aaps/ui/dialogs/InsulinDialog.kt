@@ -44,7 +44,7 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.objects.constraints.ConstraintObject
-import app.aaps.core.objects.wizard.InjectionPosition
+import app.aaps.core.interfaces.pump.InjectionPosition
 import app.aaps.core.objects.extensions.formatColor
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.extensions.toVisibility
@@ -210,7 +210,8 @@ class InsulinDialog : DialogFragmentWithDate() {
         showPosition = binding.positionLayout.root.visibility == View.VISIBLE
         if (showPosition) {
             lastPosition = InjectionPosition.findLastPosition(
-                persistenceLayer.getBolusesFromTimeToTime(dateUtil.now() - T.days(3).msecs(), dateUtil.now(), false)
+                persistenceLayer.getBolusesFromTimeToTime(dateUtil.now() - T.days(3).msecs(), dateUtil.now(), false),
+                persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(3).msecs(), TE.Type.NOTE, false)
             )
             binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
             InjectionPosition.suggestNext(lastPosition)?.let { binding.positionLayout.position.setText(it.toString()) }

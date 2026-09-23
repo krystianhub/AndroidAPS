@@ -58,7 +58,8 @@ class DetailedBolusInfo {
                 timestamp = carbsTimestamp ?: timestamp,
                 amount = carbs,
                 duration = carbsDuration,
-                notes = notes
+                // injection position is a property of the insulin injection, not of the meal
+                notes = notes?.let { InjectionPosition.stripPosition(it) }?.takeIf { it.isNotBlank() }
             )
         else error("carbs == 0.0")
 

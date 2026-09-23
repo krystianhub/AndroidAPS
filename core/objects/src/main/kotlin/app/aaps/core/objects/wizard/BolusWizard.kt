@@ -362,6 +362,8 @@ class BolusWizard @Inject constructor(
             )
         if (config.AAPSCLIENT && insulinAfterConstraints > 0)
             actions.add(rh.gs(app.aaps.core.ui.R.string.bolus_recorded_only).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor))
+        if (activePlugin.activePump.isMDI() && insulinAfterConstraints > 0)
+            actions.add(rh.gs(app.aaps.core.ui.R.string.bolus_recorded_only_mdi).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor))
         if (useAlarm && !advisor && carbs > 0 && carbTime > 0)
             actions.add(rh.gs(app.aaps.core.ui.R.string.alarminxmin, carbTime).formatColor(context, rh, app.aaps.core.ui.R.attr.infoColor))
         if (advisor)
@@ -434,14 +436,24 @@ class BolusWizard @Inject constructor(
                     )
                 )
                 if (insulin > 0) {
-                    commandQueue.bolus(this, object : Callback() {
-                        override fun run() {
-                            if (!result.success) {
-                                uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                            } else
-                                automation.scheduleAutomationEventEatReminder()
-                        }
-                    })
+                    if (activePlugin.activePump.isMDI()) {
+                        // MDI: no pump to deliver with - record the bolus directly
+                        persistenceLayer.insertOrUpdateBolus(
+                            bolus = createBolus(),
+                            action = Action.BOLUS_ADVISOR,
+                            source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
+                        ).subscribe()
+                        automation.scheduleAutomationEventEatReminder()
+                    } else {
+                        commandQueue.bolus(this, object : Callback() {
+                            override fun run() {
+                                if (!result.success) {
+                                    uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                                } else
+                                    automation.scheduleAutomationEventEatReminder()
+                            }
+                        })
+                    }
                 }
             }
         })
@@ -479,7 +491,8 @@ class BolusWizard @Inject constructor(
         val confirmMessage = confirmMessageAfterConstraints(ctx, advisor = false, quickWizardEntry)
         OKDialog.showConfirmation(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), confirmMessage, {
             if (insulinAfterConstraints > 0 || carbs > 0) {
-                if (useSuperBolus) {
+                // superbolus is implemented as a zero TBR - meaningless without a pump (MDI)
+                if (useSuperBolus && !pump.isMDI()) {
                     if (loop.allowedNextModes().contains(RM.Mode.SUPER_BOLUS)) {
                         loop.handleRunningModeChange(
                             durationInMinutes = 2 * 60,
@@ -536,15 +549,35 @@ class BolusWizard @Inject constructor(
                                 ValueWithUnit.Minute(carbTime).takeIf { carbTime != 0 }
                             )
                         )
-                        commandQueue.bolus(this, object : Callback() {
-                            override fun run() {
-                                if (!result.success) {
-                                    uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                                } else if (useAlarm && carbs > 0 && carbTime > 0) {
-                                    automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                        if (pump.isMDI()) {
+                            // MDI: there is no pump to deliver insulin with - record the treatment directly,
+                            // bypassing the command queue (and the fake delivery progress of the virtual pump)
+                            val source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
+                            if (carbs > 0)
+                                persistenceLayer.insertOrUpdateCarbs(
+                                    carbs = createCarbs(),
+                                    action = action,
+                                    source = source
+                                ).subscribe()
+                            if (insulin > 0)
+                                persistenceLayer.insertOrUpdateBolus(
+                                    bolus = createBolus(),
+                                    action = action,
+                                    source = source
+                                ).subscribe()
+                            if (useAlarm && carbs > 0 && carbTime > 0)
+                                automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                        } else {
+                            commandQueue.bolus(this, object : Callback() {
+                                override fun run() {
+                                    if (!result.success) {
+                                        uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                                    } else if (useAlarm && carbs > 0 && carbTime > 0) {
+                                        automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                                    }
                                 }
-                            }
-                        })
+                            })
+                        }
                     }
                     bolusCalculatorResult?.let { persistenceLayer.insertOrUpdateBolusCalculatorResult(it).blockingGet() }
                 }

@@ -1,6 +1,8 @@
-package app.aaps.core.objects.wizard
+package app.aaps.core.interfaces.pump
 
 import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.TE
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
@@ -8,6 +10,9 @@ class InjectionPositionTest {
 
     private fun bolus(timestamp: Long, notes: String?, type: BS.Type = BS.Type.NORMAL) =
         BS(timestamp = timestamp, amount = 1.0, type = type, notes = notes)
+
+    private fun note(timestamp: Long, text: String?, type: TE.Type = TE.Type.NOTE) =
+        TE(timestamp = timestamp, type = type, note = text, glucoseUnit = GlucoseUnit.MGDL)
 
     @Test
     fun findsPositionFromNewestBolus() {
@@ -70,6 +75,55 @@ class InjectionPositionTest {
     @Test
     fun emptyListReturnsNull() {
         assertThat(InjectionPosition.findLastPosition(emptyList())).isNull()
+    }
+
+    // Lantus injections are recorded as NOTE therapy events, not boluses -
+    // they must participate in the position lookback.
+    @Test
+    fun findsPositionFromLantusNote() {
+        assertThat(
+            InjectionPosition.findLastPosition(
+                emptyList(),
+                listOf(note(1_000, "Lantus 10.0U pos 9"))
+            )
+        ).isEqualTo(9)
+    }
+
+    @Test
+    fun findsMostRecentAcrossBolusesAndNotes() {
+        assertThat(
+            InjectionPosition.findLastPosition(
+                listOf(bolus(1_000, "pos 5"), bolus(5_000, "pos 8")),
+                listOf(note(3_000, "Lantus 10.0U pos 9"))
+            )
+        ).isEqualTo(8)
+        // same data, NOTE most recent
+        assertThat(
+            InjectionPosition.findLastPosition(
+                listOf(bolus(1_000, "pos 5"), bolus(3_000, "pos 8")),
+                listOf(note(5_000, "Lantus 10.0U pos 9"))
+            )
+        ).isEqualTo(9)
+    }
+
+    @Test
+    fun emptyNoteDoesNotStopLookback() {
+        assertThat(
+            InjectionPosition.findLastPosition(
+                listOf(bolus(1_000, "pos 5")),
+                listOf(note(2_000, "Lantus 10.0U"))
+            )
+        ).isEqualTo(5)
+    }
+
+    @Test
+    fun ignoresNonNoteTherapyEvents() {
+        assertThat(
+            InjectionPosition.findLastPosition(
+                emptyList(),
+                listOf(note(1_000, "pos 9", type = TE.Type.EXERCISE))
+            )
+        ).isNull()
     }
 
     @Test

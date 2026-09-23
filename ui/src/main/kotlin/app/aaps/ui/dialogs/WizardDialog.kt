@@ -18,6 +18,7 @@ import android.widget.CompoundButton
 import androidx.fragment.app.FragmentManager
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -48,7 +49,7 @@ import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.extensions.valueToUnits
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
-import app.aaps.core.objects.wizard.InjectionPosition
+import app.aaps.core.interfaces.pump.InjectionPosition
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.toast.ToastUtils
@@ -158,7 +159,7 @@ class WizardDialog : DaggerDialogFragment() {
         binding.sbCheckbox.visibility = useSuperBolus.toVisibility()
         binding.superBolusRow.visibility = useSuperBolus.toVisibility()
         binding.notesLayout.root.visibility = preferences.get(BooleanKey.OverviewShowNotesInDialogs).toVisibility()
-        showPosition = preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump is VirtualPump
+        showPosition = preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump.isMDI()
         binding.positionLayout.root.visibility = showPosition.toVisibility()
 
         val maxCarbs = constraintChecker.getMaxCarbsAllowed().value()
@@ -397,7 +398,8 @@ class WizardDialog : DaggerDialogFragment() {
         // Injection position tracking (MDI)
         if (showPosition)
             lastPosition = InjectionPosition.findLastPosition(
-                persistenceLayer.getBolusesFromTimeToTime(dateUtil.now() - T.days(3).msecs(), dateUtil.now(), false)
+                persistenceLayer.getBolusesFromTimeToTime(dateUtil.now() - T.days(3).msecs(), dateUtil.now(), false),
+                persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(3).msecs(), TE.Type.NOTE, false)
             )
 
         // IOB calculation
