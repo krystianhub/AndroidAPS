@@ -579,6 +579,37 @@ class BgQualityCheckPluginTest : TestBase() {
         assertThat(plugin.state).isEqualTo(BgQualityCheck.State.FIVE_MIN_DATA)
         assertThat(plugin.icon()).isEqualTo(0)
 
+        // old gap (outside the recent window) must not flag current data as bad
+        val denseDataWithOldGap: MutableList<GV> = ArrayList()
+        for (i in 0 until 10) {
+            denseDataWithOldGap.add(
+                GV(
+                    raw = 0.0,
+                    noise = 0.0,
+                    value = 100.0,
+                    timestamp = now + T.mins(-i.toLong()).msecs(),
+                    sourceSensor = SourceSensor.LIBRE_2,
+                    trendArrow = TrendArrow.FLAT
+                )
+            )
+        }
+        // oldest reading last (newest at index 0), 45 min old -> outside the recent window
+        denseDataWithOldGap.add(
+            GV(
+                raw = 0.0,
+                noise = 0.0,
+                value = 100.0,
+                timestamp = now + T.mins(-45).msecs(),
+                sourceSensor = SourceSensor.LIBRE_2,
+                trendArrow = TrendArrow.FLAT
+            )
+        )
+        whenever(autosensDataStore.getBgReadingsDataTableCopy()).thenReturn(denseDataWithOldGap)
+        whenever(autosensDataStore.lastUsed5minCalculation).thenReturn(false)
+        plugin.processBgData()
+        assertThat(plugin.state).isEqualTo(BgQualityCheck.State.FIVE_MIN_DATA)
+        assertThat(plugin.icon()).isEqualTo(0)
+
         // irregular spacing (mixed gaps) must still warn
         val irregularData: MutableList<GV> = ArrayList()
         irregularData.add(

@@ -105,21 +105,27 @@ class BgQualityCheckPlugin @Inject constructor(
     }
 
     /**
-     * True when raw BG readings are regularly spaced *denser* than 5 minutes (e.g. every 1 minute
-     * from Libre 2 via Juggluco). Such data is interpolated onto 5-min buckets ("recalculated"),
-     * but its quality is at least as good as native 5-min data.
+     * True when *recent* raw BG readings are regularly spaced *denser* than 5 minutes (e.g. every
+     * 1 minute from Libre 2 via Juggluco). Such data is interpolated onto 5-min buckets
+     * ("recalculated"), but its quality is at least as good as native 5-min data.
+     *
+     * Only the recent window is inspected (like the doubled-value check above): the store holds
+     * ~34h of history (24h + max dia), and a single old gap (sensor warmup, phone reboot, missed
+     * readings overnight) must not flag *current* data as bad.
      */
     private fun isDenseRegularData(): Boolean {
         val readings = iobCobCalculator.ads.getBgReadingsDataTableCopy()
-        if (readings.size < 3) return false
+        val windowStart = dateUtil.now() - T.mins(RECENT_WINDOW_MIN).msecs()
+        val recent = readings.takeWhile { it.timestamp >= windowStart } // newest at index 0
+        if (recent.size < 3) return false
         var totalDiff = 0L
-        for (i in 1 until readings.size) {
-            val diff = readings[i - 1].timestamp - readings[i].timestamp
+        for (i in 1 until recent.size) {
+            val diff = recent[i - 1].timestamp - recent[i].timestamp
             // denser than 5 min but not doubled/erratic: between 15 s and 4.5 min
             if (diff < T.secs(15).msecs() || diff > T.mins(4).plus(T.secs(30)).msecs()) return false
             totalDiff += diff
         }
-        val averageDiff = totalDiff / (readings.size - 1)
+        val averageDiff = totalDiff / (recent.size - 1)
         return averageDiff < T.mins(4).plus(T.secs(30)).msecs()
     }
 
@@ -169,5 +175,8 @@ class BgQualityCheckPlugin @Inject constructor(
 
         const val staleBgCheckPeriodMinutes = 45L
         const val staleBgMaxDeltaMgdl = 2.0
+
+        /** How far back [isDenseRegularData] inspects readings. */
+        private const val RECENT_WINDOW_MIN = 30L
     }
 }
