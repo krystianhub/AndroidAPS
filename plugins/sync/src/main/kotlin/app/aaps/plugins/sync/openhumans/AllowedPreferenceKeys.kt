@@ -157,6 +157,7 @@ private val allowedKeys = """
     carbs_button_increment_1
     carbs_button_increment_2
     carbs_button_increment_3
+    hypo_treatment_carbs
     show_cgm_button
     show_calibration_button
     show_notes_entry_dialogs

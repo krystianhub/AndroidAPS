@@ -246,6 +246,15 @@
                 android:text="+20"
                 tools:ignore="HardcodedText" />
 
+            <com.google.android.material.button.MaterialButton
+                style="@style/GrayButton"
+                android:id="@+id/hypoTreatment"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:text="🍬"
+                tools:ignore="HardcodedText" />
+
         </LinearLayout>
 
         <LinearLayout

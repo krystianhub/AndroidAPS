@@ -186,6 +186,17 @@ class CarbsDialog : DialogFragmentWithDate() {
             binding.carbs.announceValue()
         }
 
+        // Hypo treatment button: adds the configured carbs amount (e.g. one glucose chew) and prefills the note
+        binding.hypoTreatment.contentDescription = rh.gs(app.aaps.core.ui.R.string.hypo_treatment_note)
+        binding.hypoTreatment.setOnClickListener {
+            binding.carbs.value = max(0.0, binding.carbs.value + preferences.get(IntKey.OverviewHypoTreatmentCarbs))
+            if (binding.notesLayout.notes.text.isNullOrBlank()) {
+                binding.notesLayout.notes.setText(rh.gs(app.aaps.core.ui.R.string.hypo_treatment_note))
+            }
+            validateInputs()
+            binding.carbs.announceValue()
+        }
+
         setOnValueChangedListener { eventTime: Long ->
             run {
                 val timeOffset = ((eventTime - eventTimeOriginal) / (1000 * 60)).toDouble()
