@@ -287,24 +287,22 @@ class GraphData @Inject constructor(
     }
 
     fun addHeartRate(useForScale: Boolean, scale: Double) {
-        overviewData.heartRateScale.multiplier = 1.0 // get unscaled Y-values for max calculation
         val maxHR = (overviewData.heartRateGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).highestValueY
         if (useForScale) {
             minY = 30.0
-            maxY = if (maxHR > 0) maxHR else 100.0
+            maxY = maxHR
         }
         addSeries(overviewData.heartRateGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
-        if (maxHR > 0) overviewData.heartRateScale.multiplier = maxY * scale / maxHR
+        overviewData.heartRateScale.multiplier = maxY * scale / maxHR
     }
 
     fun addSteps(useForScale: Boolean, scale: Double) {
-        overviewData.stepsForScale.multiplier = 1.0 // get unscaled Y-values for max calculation
         val maxSteps = (overviewData.stepsCountGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).highestValueY
         if (useForScale) {
             minY = 0.0
-            maxY = if (maxSteps > 0) maxSteps else 100.0
+            maxY = maxSteps
         }
         addSeries(overviewData.stepsCountGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
-        if (maxSteps > 0) overviewData.stepsForScale.multiplier = maxY * scale / maxSteps
+        overviewData.stepsForScale.multiplier = maxY * scale / maxSteps
     }
 }

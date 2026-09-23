@@ -5,7 +5,6 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
-import app.aaps.core.data.model.HR
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.BolusDataPoint
 import app.aaps.core.graph.data.CarbsDataPoint
@@ -31,7 +30,6 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
-import java.util.TreeMap
 import javax.inject.Inject
 
 class PrepareTreatmentsDataWorker(
@@ -122,16 +120,14 @@ class PrepareTreatmentsDataWorker(
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
         data.overviewData.epsSeries = PointsWithLabelGraphSeries(filteredEps.toTypedArray())
 
-        // Aggregate HR samples into 5-min duration-weighted buckets: Health Connect delivers
-        // per-minute samples which render as thin adjacent bars ("spikey" graph). Bucketing
-        // smooths the curve; automation (TriggerHeartRate) keeps reading the raw rows.
         data.overviewData.heartRateGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>(
-            aggregateHeartRate(persistenceLayer.getHeartRatesFromTimeToTime(fromTime, endTime), data.overviewData.heartRateScale)
+            persistenceLayer.getHeartRatesFromTimeToTime(fromTime, endTime)
+                .map { hr -> HeartRateDataPoint(hr, rh) }
                 .toTypedArray()).apply { color = rh.gac(null, app.aaps.core.ui.R.attr.heartRateColor) }
 
         data.overviewData.stepsCountGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>(
             persistenceLayer.getStepsCountFromTimeToTime(fromTime, endTime)
-                .map { steps -> StepsDataPoint(steps, rh, data.overviewData.stepsForScale) }
+                .map { steps -> StepsDataPoint(steps, rh) }
                 .toTypedArray()).apply { color = rh.gac(null, app.aaps.core.ui.R.attr.stepsColor) }
 
 
@@ -141,34 +137,6 @@ class PrepareTreatmentsDataWorker(
 
     private fun addUpperChartMargin(maxBgValue: Double) =
         if (profileUtil.units == GlucoseUnit.MGDL) Round.roundTo(maxBgValue, 40.0) + 80 else Round.roundTo(maxBgValue, 2.0) + 4
-
-    /** Bucket size for the HR graph series. */
-    private val hrBucket = T.mins(5).msecs()
-
-    /**
-     * Merges raw HR rows into 5-min buckets (keyed by bucket end), each holding the
-     * duration-weighted average BPM. Rows are timestamped at the end of their sampling
-     * period, so a row belongs to the bucket ending at or after its timestamp.
-     */
-    private fun aggregateHeartRate(heartRates: List<HR>, scale: app.aaps.core.interfaces.graph.Scale): List<HeartRateDataPoint> {
-        if (heartRates.isEmpty()) return emptyList()
-        data class Acc(var weighted: Double = 0.0, var duration: Long = 0L, var device: String = "")
-        val buckets = TreeMap<Long, Acc>()
-        for (hr in heartRates) {
-            val bucketEnd = (hr.timestamp / hrBucket + 1) * hrBucket
-            val acc = buckets.getOrPut(bucketEnd) { Acc(device = hr.device) }
-            acc.weighted += hr.beatsPerMinute * hr.duration
-            acc.duration += hr.duration
-        }
-        return buckets.map { (bucketEnd, acc) ->
-            val bpm = if (acc.duration > 0) acc.weighted / acc.duration else 0.0
-            HeartRateDataPoint(
-                HR(timestamp = bucketEnd, duration = hrBucket, beatsPerMinute = bpm, device = acc.device),
-                rh,
-                scale
-            )
-        }
-    }
 
     private fun getNearestBg(overviewData: OverviewData, date: Long): Double {
         overviewData.bgReadingsArray.let { bgReadingsArray ->

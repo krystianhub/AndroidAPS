@@ -156,7 +156,8 @@
                 layout="@layout/actions_stats_fragment"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp" />
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="10dp" />
 
         </com.google.android.material.card.MaterialCardView>
 
