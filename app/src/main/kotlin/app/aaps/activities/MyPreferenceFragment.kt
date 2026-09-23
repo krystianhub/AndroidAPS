@@ -513,7 +513,6 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
         val rootScreen = preferenceScreen ?: preferenceManager.createPreferenceScreen(context).also { preferenceScreen = it }
 
         val category = PreferenceCategory(context)
-        rootScreen.addPreference(category)
         category.apply {
             key = "pump_settings"
             title = rh.gs(app.aaps.core.ui.R.string.pump)
@@ -522,6 +521,8 @@ class MyPreferenceFragment : PreferenceFragmentCompat(), OnSharedPreferenceChang
             if (!activePlugin.activePump.isMDI())
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.PumpBtWatchdog, title = app.aaps.core.ui.R.string.btwatchdog_title, summary = app.aaps.core.ui.R.string.btwatchdog_summary))
         }
+        // Hide the whole section when nothing is available to set (e.g. MDI)
+        if (category.preferenceCount > 0) rootScreen.addPreference(category)
     }
 
     private fun addAlertScreen(rootKey: String?) {

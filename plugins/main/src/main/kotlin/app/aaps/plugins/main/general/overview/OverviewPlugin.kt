@@ -258,7 +258,6 @@ class OverviewPlugin @Inject constructor(
                         )
                     )
                 )
-                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewHypoTreatmentCarbs, dialogMessage = R.string.hypo_treatment_carbs_message, title = R.string.hypo_treatment_carbs))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowCgmButton, summary = R.string.show_cgm_button_summary, title = R.string.cgm))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowCalibrationButton, summary = R.string.show_calibration_button_summary, title = app.aaps.core.ui.R.string.calibration))
             })
