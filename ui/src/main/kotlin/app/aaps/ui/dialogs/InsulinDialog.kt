@@ -88,6 +88,7 @@ class InsulinDialog : DialogFragmentWithDate() {
     private var queryingProtection = false
     private var lastPosition: Int? = null
     private var showPosition = false
+    private var isMDI = false
 
     private val BASAL_DOSE_REGEX = Regex("(?i)\\bLantus\\s*[:#]?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*U\\b")
 
@@ -139,12 +140,19 @@ class InsulinDialog : DialogFragmentWithDate() {
         super.onViewCreated(view, savedInstanceState)
 
         val pump = activePlugin.activePump
+        isMDI = pump.isMDI()
         val recordOnlyForced = config.AAPSCLIENT || loop.runningMode.isPumpSuspended() || !pump.isInitialized()
         val maxInsulin = constraintChecker.getMaxBolusAllowed().value()
 
         if (recordOnlyForced) {
             binding.recordOnly.isChecked = true
             binding.recordOnly.isEnabled = false
+        }
+
+        if (isMDI) {
+            // MDI: there is no pump to deliver through - every bolus is record-only, so the checkbox is redundant
+            binding.recordOnly.isChecked = true
+            binding.recordOnly.visibility = View.GONE
         }
 
         if (loop.runningMode.isPumpSuspended() || !pump.isInitialized()) {
@@ -287,7 +295,7 @@ class InsulinDialog : DialogFragmentWithDate() {
                     rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + decimalFormatter.toPumpSupportedBolus(insulinAfterConstraints, activePlugin.activePump.pumpDescription.bolusStep)
                         .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
                 )
-                if (recordOnlyChecked)
+                if (recordOnlyChecked && !isMDI)
                     actions.add(rh.gs(app.aaps.core.ui.R.string.bolus_recorded_only).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor))
                 if (abs(insulinAfterConstraints - insulin) > pumpDescription.pumpType.determineCorrectBolusStepSize(insulinAfterConstraints))
                     actions.add(

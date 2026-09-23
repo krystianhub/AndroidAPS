@@ -45,6 +45,7 @@
         android:gravity="center">
 
         <ImageView
+            android:id="@+id/insulin_icon"
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:contentDescription="@string/a11y_insulin_label"

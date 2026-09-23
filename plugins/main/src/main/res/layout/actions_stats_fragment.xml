@@ -64,6 +64,7 @@
     </TableRow>
 
     <TableRow
+        android:id="@+id/sensor_insulin_divider"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content">
 
@@ -80,6 +81,7 @@
     </TableRow>
 
     <TableRow
+        android:id="@+id/insulin_layout"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
         android:focusable="true">
@@ -138,6 +140,7 @@
     </TableRow>
 
     <TableRow
+        android:id="@+id/insulin_cannula_divider"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content">
 
@@ -154,6 +157,7 @@
     </TableRow>
 
     <TableRow
+        android:id="@+id/cannula_layout"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
         android:focusable="true">
@@ -212,6 +216,7 @@
     </TableRow>
 
     <TableRow
+        android:id="@+id/cannula_battery_divider"
         android:layout_width="fill_parent"
         android:layout_height="wrap_content">
 

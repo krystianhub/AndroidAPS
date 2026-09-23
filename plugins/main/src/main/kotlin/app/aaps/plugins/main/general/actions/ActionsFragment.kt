@@ -282,11 +282,20 @@ class ActionsFragment : DaggerFragment() {
         binding.tempTarget.visibility = (profile != null && loop.runningMode.isLoopRunning()).toVisibility()
         binding.tddStats.visibility = pump.pumpDescription.supportsTDDs.toVisibility()
         val isPatchPump = pump.pumpDescription.isPatchPump
+        val isMDI = pump.isMDI()
         binding.status.apply {
             cannulaOrPatch.text = if (cannulaOrPatch.text.isEmpty()) "" else if (isPatchPump) rh.gs(R.string.patch_pump) else rh.gs(R.string.cannula)
             val imageResource = if (isPatchPump) app.aaps.core.objects.R.drawable.ic_patch_pump_outline else R.drawable.ic_cp_age_cannula
             cannulaOrPatch.setCompoundDrawablesWithIntrinsicBounds(imageResource, 0, 0, 0)
             batteryLayout.visibility = (!isPatchPump || pump.pumpDescription.useHardwareLink).toVisibility()
+
+            // MDI (virtual pump): cannula/insulin/reservoir/battery statuses are meaningless - hide them
+            sensorInsulinDivider.visibility = (!isMDI).toVisibility()
+            insulinLayout.visibility = (!isMDI).toVisibility()
+            insulinCannulaDivider.visibility = (!isMDI).toVisibility()
+            cannulaLayout.visibility = (!isMDI).toVisibility()
+            cannulaBatteryDivider.visibility = (!isMDI).toVisibility()
+            batteryLayout.visibility = (isMDI || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
 
             if (!config.AAPSCLIENT) {
                 statusLightHandler.updateStatusLights(

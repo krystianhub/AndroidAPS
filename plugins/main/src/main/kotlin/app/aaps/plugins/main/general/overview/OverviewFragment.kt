@@ -975,6 +975,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // MDI: battery/reservoir/cannula/insulin-age lights are meaningless - hide them
             cannulaOrPatch.visibility = (!isMDI).toVisibility()
             cannulaAge.visibility = (!isMDI).toVisibility()
+            insulinIcon.visibility = (!isMDI && isPatchPump.not()).toVisibility()
             insulinAge.visibility = (!isMDI && isPatchPump.not()).toVisibility()
             reservoirLevel.visibility = (!isMDI).toVisibility()
             batteryLayout.visibility = (isMDI || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
