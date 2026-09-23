@@ -89,12 +89,6 @@ class BgQualityCheckPlugin @Inject constructor(
         } else if (iobCobCalculator.ads.lastUsed5minCalculation == true) {
             state = BgQualityCheck.State.FIVE_MIN_DATA
             message = "Data is clean"
-        } else if (iobCobCalculator.ads.lastUsed5minCalculation == false && isDenseRegularData()) {
-            // MDI fork: sources like Juggluco/Libre 2 deliver readings every 1 minute. The bucketing
-            // path is "recalculated" (not natively 5-min spaced), but the data is denser and regular -
-            // quality is fine, no warning needed.
-            state = BgQualityCheck.State.FIVE_MIN_DATA
-            message = "Data is clean"
         } else if (iobCobCalculator.ads.lastUsed5minCalculation == false) {
             state = BgQualityCheck.State.RECALCULATED
             message = rh.gs(R.string.recalculated_data_used)
@@ -102,25 +96,6 @@ class BgQualityCheckPlugin @Inject constructor(
             state = BgQualityCheck.State.UNKNOWN
             message = ""
         }
-    }
-
-    /**
-     * True when raw BG readings are regularly spaced *denser* than 5 minutes (e.g. every 1 minute
-     * from Libre 2 via Juggluco). Such data is interpolated onto 5-min buckets ("recalculated"),
-     * but its quality is at least as good as native 5-min data.
-     */
-    private fun isDenseRegularData(): Boolean {
-        val readings = iobCobCalculator.ads.getBgReadingsDataTableCopy()
-        if (readings.size < 3) return false
-        var totalDiff = 0L
-        for (i in 1 until readings.size) {
-            val diff = readings[i - 1].timestamp - readings[i].timestamp
-            // denser than 5 min but not doubled/erratic: between 15 s and 4.5 min
-            if (diff < T.secs(15).msecs() || diff > T.mins(4).plus(T.secs(30)).msecs()) return false
-            totalDiff += diff
-        }
-        val averageDiff = totalDiff / (readings.size - 1)
-        return averageDiff < T.mins(4).plus(T.secs(30)).msecs()
     }
 
     // inspired by @justmara
