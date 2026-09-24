@@ -43,8 +43,6 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
 
     @Test
     fun specialEnableConditionTest() {
-        whenever(config.isEngineeringMode()).thenReturn(true)
-        whenever(config.isDev()).thenReturn(true)
         assertThat(openAPSAutoISFPlugin.specialEnableCondition()).isTrue()
     }
 

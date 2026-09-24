@@ -113,7 +113,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         .shortName(R.string.autoisf_shortname)
         .preferencesId(PluginDescription.PREFERENCE_SCREEN)
         .preferencesVisibleInSimpleMode(false)
-        .showInList { config.APS && config.isEngineeringMode() && config.isDev() }
+        .showInList { config.APS }
         .description(R.string.description_auto_isf),
     aapsLogger, rh
 ), APS, PluginConstraints {
@@ -197,8 +197,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     override fun getSensitivityOverviewString(): String? = null // placeholder for Auto ISF Detailed information for overview
 
     override fun specialEnableCondition(): Boolean {
-        // APS computation only needs BG + bolus/TDD data, not temp basals; allow MDI users.
-        return config.isEngineeringMode() && config.isDev()
+        // APS computation only needs BG + bolus/TDD data, not temp basals; allow MDI (virtual pump) users too.
+        return true
     }
 
     override fun specialShowInListCondition(): Boolean {
