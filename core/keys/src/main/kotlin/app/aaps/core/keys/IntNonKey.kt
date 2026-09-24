@@ -10,8 +10,5 @@ enum class IntNonKey(
 ) : IntNonPreferenceKey {
 
     ObjectivesManualEnacts("ObjectivesmanualEnacts", 0),
-    RangeToDisplay("rangetodisplay", 6),
-
-    /** Heart rate smoothing window in minutes (1 = off, max 15), mirroring the Wear sender's key_heart_rate_smoothing. */
-    HeartRateSmoothing("healthconnect_hr_smoothing", 1)
+    RangeToDisplay("rangetodisplay", 6)
 }

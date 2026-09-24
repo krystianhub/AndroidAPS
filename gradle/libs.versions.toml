@@ -116,7 +116,6 @@ androidx-test-rules = { group = "androidx.test", name = "rules", version = "1.7.
 androidx-test-ext = { group = "androidx.test.ext", name = "junit-ktx", version = "1.3.0" }
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version = "2.3.0" }
 androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
-androidx-health-connect = { group = "androidx.health.connect", name = "connect-client", version = "1.1.0" }
 androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "work" }
 androidx-wear = { group = "androidx.wear", name = "wear", version = "1.3.0" }
 androidx-wear-tiles = { group = "androidx.wear.tiles", name = "tiles", version = "1.5.0" }
@@ -187,5 +186,6 @@ androidx-compose-material = { group = "androidx.compose.material", name = "mater
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycleRuntimeKtx" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
-androidx-compose-navigation = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
+androidx-compose-navigation = { group = "androidx.navigation", name = "navigation-compose", version.ref="navigationCompose" }
 androidx-compose-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata" }
+

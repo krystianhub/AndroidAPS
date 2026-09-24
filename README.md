@@ -48,18 +48,11 @@ Gated on the pump being configured as **MDI** (`Pump.isMDI()`, not the coarse `i
 - **Preferences**: BT watchdog, pump-unreachable alert, prime/fill settings, pump status-light thresholds, partial bolus wizard, superbolus, LGS threshold — hidden. SMB/DynISF settings kept (they still shape suggestions).
 - **Loop mode icon** on the Overview is visible in MDI mode — the only entry point to the Loop dialog (needed to switch to Open Loop).
 
-### 7. Health Connect integration (HR + steps)
-
-- New **Health Connect** sync plugin reads heart rate and step data from Android Health Connect (from Google Fit, Samsung Health, Wear OS, etc.) and stores it in the same HR/steps tables the Wear app path uses — the Overview graph and automation triggers work unchanged.
-- Enable it in *Preferences → Sync* (toggle), then tap the permissions entry to grant Heart rate + Steps read access. If Health Connect isn't installed, the toggle shows a hint instead.
-- Data is read every 15 minutes in the background (plus on demand) via changes tokens (incremental, with fallback to a full read); steps are aggregated into 5-minute buckets with the same rolling 10/15/30/60/180-min windows the Wear sender produces.
-- Optional **heart rate smoothing** (1–15 min rolling average, under the Health Connect preferences) tames spiky per-minute samples on the graph.
-
-### 8. Objectives unlocked
+### 7. Objectives unlocked
 
 - All objectives are marked as accomplished on start, so no functionality is gated behind the tutorial. The objectives screen remains as an informational checklist.
 
-### 9. Housekeeping
+### 8. Housekeeping
 
 - Removed upstream Git-blocked build restrictions; added a devenv (Nix) development environment.
 - BG quality check: sources delivering regular sub-5-minute readings (e.g. Juggluco/Libre 2 at 1 min) no longer trigger the "Recalculated data used" warning — data spacing is classified and dense-but-regular data is treated as clean.

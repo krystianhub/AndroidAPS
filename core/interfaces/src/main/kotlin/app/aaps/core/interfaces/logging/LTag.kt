@@ -13,7 +13,6 @@ enum class LTag(val tag: String, val defaultValue: Boolean = true, val requiresR
     EVENTS("EVENTS", defaultValue = false, requiresRestart = true),
     GARMIN("GARMIN"),
     GLUCOSE("GLUCOSE", defaultValue = false),
-    HEALTHCONNECT("HEALTHCONNECT"),
     HTTP("HTTP"),
     LOCATION("LOCATION"),
     NOTIFICATION("NOTIFICATION"),
