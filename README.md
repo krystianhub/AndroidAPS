@@ -34,11 +34,18 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 - New MDI-only lights: **last bolus ago** (`2h 15m`, colored by the configured insulin's action curve — green near peak, red when worn off) and **last basal insulin ago** (time since the last recorded Lantus injection, colored by the Lantus curve — red when overdue).
 - The same last bolus / last basal insulin age also appear as rows in the Actions tab stats.
 
-### 5. Autotune enabled
+### 5. APS algorithm plugins un-gated
 
-- The Autotune plugin is always available (upstream hides it behind a hidden flag file). Note: with no temp basal records it assumes the profile basal was delivered exactly — reasonable here since the Lantus feature keeps the profile in sync, but sanity-check the tuned basal against your Lantus notes.
+- **OpenAPS SMB, AMA and AutoISF** are all selectable in Config Builder in MDI mode (upstream hides AutoISF behind engineering + dev mode).
+- **Recommended: OpenAPS SMB + dynamic sensitivity.** AutoISF is the experimental ga-zelle algorithm (dynamic ISF + BG-acceleration/brake modifiers) — its micro-bolus shaping has little leverage in open loop; treat it as an experiment.
+- With dynamic sensitivity on, the sensitivity ratio comes from TDD; classic autosens is only a **fallback** for missing TDD data — keep it ON.
 
-### 6. MDI-aware UI cleanup
+### 6. Autotune enabled
+
+- The Autotune plugin is always available (upstream hides it behind a hidden flag file), and the **Run Autotune automation action** is available without engineering mode.
+- Note: with no temp basal records it assumes the profile basal was delivered exactly — reasonable here since the Lantus feature keeps the profile in sync, but sanity-check the tuned basal against your Lantus notes.
+
+### 7. MDI-aware UI cleanup
 
 Gated on the pump being configured as **MDI** (`Pump.isMDI()`, not the coarse `is VirtualPump`):
 
@@ -48,11 +55,11 @@ Gated on the pump being configured as **MDI** (`Pump.isMDI()`, not the coarse `i
 - **Preferences**: BT watchdog, pump-unreachable alert, prime/fill settings, pump status-light thresholds, partial bolus wizard, superbolus, LGS threshold — hidden. SMB/DynISF settings kept (they still shape suggestions).
 - **Loop mode icon** on the Overview is visible in MDI mode — the only entry point to the Loop dialog (needed to switch to Open Loop).
 
-### 7. Objectives unlocked
+### 8. Objectives unlocked
 
 - All objectives are marked as accomplished on start, so no functionality is gated behind the tutorial. The objectives screen remains as an informational checklist.
 
-### 8. Housekeeping
+### 9. Housekeeping
 
 - Removed upstream Git-blocked build restrictions; added a devenv (Nix) development environment.
 - BG quality check: sources delivering regular sub-5-minute readings (e.g. Juggluco/Libre 2 at 1 min) no longer trigger the "Recalculated data used" warning — data spacing is classified and dense-but-regular data is treated as clean.
@@ -81,7 +88,7 @@ The APS math is identical for pumps and pens; only enactment differs (SMB → bo
 | **Max u/h temp basal** | 1.0 → **~5 U/h** | Allows ~2 U corrections via the temp→bolus path: (5 − 0.8) × 0.5h ≈ 2.1 U |
 | Current basal safety multiplier | 4 → **~6** | Default 4 × 0.8 = 3.3 U/h caps corrections at ~1.2 U; 6 × 0.8 = 5 U/h aligns with Max basal |
 | Max IOB | 0 → **2–3 U** | Caps cumulative suggestion size; tune to comfort |
-| Autosens | ON → **OFF** (if DynISF on) | DynISF takes precedence; running both is redundant |
+| Autosens | keep **ON** | With DynISF on, autosens is only a fallback for missing TDD data — not redundant |
 
 Everything else (Enable SMB, SMB-with-X triggers, UAM, DynISF, SMB frequency, target adjustments, carbs threshold) works fine at defaults.
 
