@@ -390,7 +390,7 @@ class AutomationPlugin @Inject constructor(
     }
 
     fun getActionDummyObjects(): List<Action> {
-        val actions = mutableListOf(
+        return listOf(
             ActionStopProcessing(injector),
             ActionStartTempTarget(injector),
             ActionStopTempTarget(injector),
@@ -401,12 +401,9 @@ class AutomationPlugin @Inject constructor(
             ActionProfileSwitchPercent(injector),
             ActionProfileSwitch(injector),
             ActionSendSMS(injector),
-            ActionSMBChange(injector)
+            ActionSMBChange(injector),
+            ActionRunAutotune(injector),
         )
-        if (config.isEngineeringMode() && config.isDev())
-            actions.add(ActionRunAutotune(injector))
-
-        return actions.toList()
     }
 
     fun getTriggerDummyObjects(): List<Trigger> {
