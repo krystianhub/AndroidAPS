@@ -161,6 +161,12 @@ class WizardDialog : DaggerDialogFragment() {
         binding.notesLayout.root.visibility = preferences.get(BooleanKey.OverviewShowNotesInDialogs).toVisibility()
         showPosition = preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump.isMDI()
         binding.positionLayout.root.visibility = showPosition.toVisibility()
+        if (showPosition) {
+            binding.positionLayout.position.setParams(
+                0.0, 0.0, InjectionPosition.MAX_POSITION.toDouble(),
+                1.0, DecimalFormat("0"), true, binding.okcancel.ok, textWatcher
+            )
+        }
 
         val maxCarbs = constraintChecker.getMaxCarbsAllowed().value()
         val maxCorrection = constraintChecker.getMaxBolusAllowed().value()
@@ -417,7 +423,7 @@ class WizardDialog : DaggerDialogFragment() {
 
             if (showPosition) {
                 binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
-                InjectionPosition.suggestNext(lastPosition)?.let { binding.positionLayout.position.setText(it.toString()) }
+                binding.positionLayout.position.value = InjectionPosition.suggestNext(lastPosition)?.toDouble() ?: 0.0
             }
 
             val profileList: ArrayList<CharSequence> = profileStore.getProfileList()
@@ -494,8 +500,8 @@ class WizardDialog : DaggerDialogFragment() {
 
         var notes = binding.notesLayout.notes.text.toString()
         if (showPosition) {
-            SafeParse.stringToInt(binding.positionLayout.position.text.toString())?.let { position ->
-                if (position in 1..InjectionPosition.MAX_POSITION) notes = InjectionPosition.appendToNotes(notes, position)
+            binding.positionLayout.position.value.toInt().takeIf { it in 1..InjectionPosition.MAX_POSITION }?.let { position ->
+                notes = InjectionPosition.appendToNotes(notes, position)
             }
         }
 

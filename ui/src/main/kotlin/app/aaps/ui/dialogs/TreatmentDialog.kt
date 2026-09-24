@@ -149,7 +149,10 @@ class TreatmentDialog : DialogFragmentWithDate() {
                 persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(3).msecs(), TE.Type.NOTE, false)
             )
             binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
-            InjectionPosition.suggestNext(lastPosition)?.let { binding.positionLayout.position.setText(it.toString()) }
+            binding.positionLayout.position.setParams(
+                InjectionPosition.suggestNext(lastPosition)?.toDouble() ?: 0.0, 0.0, InjectionPosition.MAX_POSITION.toDouble(),
+                1.0, DecimalFormat("0"), true, binding.okcancel.ok, textWatcher
+            )
         }
     }
 
@@ -207,9 +210,8 @@ class TreatmentDialog : DialogFragmentWithDate() {
                     detailedBolusInfo.carbs = carbsAfterConstraints.toDouble()
                     detailedBolusInfo.context = context
                     if (showPosition) {
-                        SafeParse.stringToInt(binding.positionLayout.position.text.toString())?.let { position ->
-                            if (position in 1..InjectionPosition.MAX_POSITION) detailedBolusInfo.notes = "pos $position"
-                        }
+                        binding.positionLayout.position.value.toInt().takeIf { it in 1..InjectionPosition.MAX_POSITION }
+                            ?.let { position -> detailedBolusInfo.notes = "pos $position" }
                     }
                     if (recordOnlyChecked) {
                         if (detailedBolusInfo.insulin > 0)

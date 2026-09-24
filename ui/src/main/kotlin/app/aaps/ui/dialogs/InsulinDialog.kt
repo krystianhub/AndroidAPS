@@ -214,7 +214,10 @@ class InsulinDialog : DialogFragmentWithDate() {
                 persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(3).msecs(), TE.Type.NOTE, false)
             )
             binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
-            InjectionPosition.suggestNext(lastPosition)?.let { binding.positionLayout.position.setText(it.toString()) }
+            binding.positionLayout.position.setParams(
+                InjectionPosition.suggestNext(lastPosition)?.toDouble() ?: 0.0, 0.0, InjectionPosition.MAX_POSITION.toDouble(),
+                1.0, DecimalFormat("0"), true, binding.okcancel.ok, textWatcher
+            )
         }
 
         // Basal (long-acting) insulin recording - MDI only
@@ -322,11 +325,9 @@ class InsulinDialog : DialogFragmentWithDate() {
 
         var notes = binding.notesLayout.notes.text.toString()
         if (showPosition) {
-            SafeParse.stringToInt(binding.positionLayout.position.text.toString())?.let { position ->
-                if (position in 1..InjectionPosition.MAX_POSITION) {
-                    notes = InjectionPosition.appendToNotes(notes, position)
-                    actions.add(rh.gs(app.aaps.core.ui.R.string.position_label) + ": " + position)
-                }
+            binding.positionLayout.position.value.toInt().takeIf { it in 1..InjectionPosition.MAX_POSITION }?.let { position ->
+                notes = InjectionPosition.appendToNotes(notes, position)
+                actions.add(rh.gs(app.aaps.core.ui.R.string.position_label) + ": " + position)
             }
         }
         if (notes.isNotEmpty())
