@@ -77,77 +77,85 @@
 
         </LinearLayout>
 
-        <LinearLayout
-            android:id="@+id/time_layout"
+        <TableLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:layout_height="match_parent"
+            android:paddingStart="0dp"
+            android:paddingEnd="5dp">
 
-            <TextView
-                android:id="@+id/time_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:width="120dp"
-                android:padding="10dp"
-                android:text="@string/time_offset"
-                android:textAppearance="@style/TextAppearance.AppCompat.Small"
-                android:textStyle="bold" />
+            <TableRow
+                android:id="@+id/time_layout"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="center_vertical">
 
-            <app.aaps.core.ui.elements.MinutesNumberPicker
-                android:id="@+id/time"
-                android:layout_width="130dp"
-                android:layout_height="40dp"
-                android:layout_marginBottom="2dp"
-                app:customContentDescription="@string/time_offset" />
+                <TextView
+                    android:id="@+id/time_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:padding="10dp"
+                    android:text="@string/time_offset"
+                    android:textAppearance="@style/TextAppearance.AppCompat.Small"
+                    android:textStyle="bold" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:gravity="start"
-                android:minWidth="45dp"
-                android:paddingStart="5dp"
-                android:paddingEnd="5dp"
-                android:text="@string/unit_minute_short"
-                android:textAppearance="?android:attr/textAppearanceSmall" />
+                <app.aaps.core.ui.elements.MinutesNumberPicker
+                    android:id="@+id/time"
+                    android:layout_width="130dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginBottom="2dp"
+                    app:customContentDescription="@string/time_offset" />
 
-        </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="start"
+                    android:minWidth="45dp"
+                    android:paddingStart="5dp"
+                    android:paddingEnd="5dp"
+                    android:text="@string/unit_minute_short"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            </TableRow>
 
-            <TextView
-                android:id="@+id/insulin_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:width="120dp"
-                android:padding="10dp"
-                android:text="@string/overview_insulin_label"
-                android:textAppearance="@style/TextAppearance.AppCompat.Small"
-                android:textStyle="bold" />
+            <TableRow
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="center_vertical">
 
-            <app.aaps.core.ui.elements.NumberPicker
-                android:id="@+id/amount"
-                android:layout_width="130dp"
-                android:layout_height="40dp"
-                app:customContentDescription="@string/overview_insulin_label" />
+                <TextView
+                    android:id="@+id/insulin_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:padding="10dp"
+                    android:text="@string/overview_insulin_label"
+                    android:textAppearance="@style/TextAppearance.AppCompat.Small"
+                    android:textStyle="bold" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:gravity="start"
-                android:minWidth="45dp"
-                android:paddingStart="5dp"
-                android:paddingEnd="5dp"
-                android:text="@string/insulin_unit_shortname"
-                android:textAppearance="?android:attr/textAppearanceSmall" />
+                <app.aaps.core.ui.elements.NumberPicker
+                    android:id="@+id/amount"
+                    android:layout_width="130dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="center_horizontal"
+                    app:customContentDescription="@string/overview_insulin_label" />
 
-        </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="start"
+                    android:minWidth="45dp"
+                    android:paddingStart="5dp"
+                    android:paddingEnd="5dp"
+                    android:text="@string/insulin_unit_shortname"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            </TableRow>
+
+        </TableLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
