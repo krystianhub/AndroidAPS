@@ -8,4 +8,5 @@
 
 {
   languages.java.enable = true;
+  languages.python.enable = true;
 }

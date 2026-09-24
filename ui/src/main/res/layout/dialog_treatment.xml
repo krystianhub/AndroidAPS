@@ -113,6 +113,7 @@
                 android:id="@+id/carbs"
                 android:layout_width="130dp"
                 android:layout_height="40dp"
+                android:layout_marginBottom="2dp"
                 app:customContentDescription="@string/carbs" />
 
             <TextView

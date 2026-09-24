@@ -422,7 +422,7 @@ class WizardDialog : DaggerDialogFragment() {
             }
 
             if (showPosition) {
-                binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
+                binding.positionLayout.lastPosition.text = lastPosition?.let { "prev $it" } ?: ""
                 binding.positionLayout.position.value = InjectionPosition.suggestNext(lastPosition)?.toDouble() ?: 0.0
             }
 

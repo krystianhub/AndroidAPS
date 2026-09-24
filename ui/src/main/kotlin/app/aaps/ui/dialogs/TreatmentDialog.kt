@@ -148,7 +148,7 @@ class TreatmentDialog : DialogFragmentWithDate() {
                 persistenceLayer.getBolusesFromTimeToTime(dateUtil.now() - T.days(3).msecs(), dateUtil.now(), false),
                 persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(3).msecs(), TE.Type.NOTE, false)
             )
-            binding.positionLayout.lastPosition.text = lastPosition?.let { "pos $it" } ?: ""
+            binding.positionLayout.lastPosition.text = lastPosition?.let { "prev $it" } ?: ""
             binding.positionLayout.position.setParams(
                 InjectionPosition.suggestNext(lastPosition)?.toDouble() ?: 0.0, 0.0, InjectionPosition.MAX_POSITION.toDouble(),
                 1.0, DecimalFormat("0"), true, binding.okcancel.ok, textWatcher

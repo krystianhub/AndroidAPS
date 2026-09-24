@@ -188,7 +188,7 @@
     <string name="statuslights_patch_pump_age">patch pump age</string>
     <string name="statuslights_last_bolus_age">last bolus ago</string>
     <string name="statuslights_last_basal_age">last basal insulin ago</string>
-    <string name="last_basal_label">Last basal insulin</string>
+    <string name="last_basal_label">Last basal</string>
     <string name="patch_pump">Patch pump</string>
 
     <!-- Overview -->

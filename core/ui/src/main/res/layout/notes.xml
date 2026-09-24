@@ -4,6 +4,7 @@
     android:id="@+id/notes_layout"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:layout_marginTop="5dp"
     android:orientation="horizontal">
 
     <com.google.android.material.textfield.TextInputLayout
