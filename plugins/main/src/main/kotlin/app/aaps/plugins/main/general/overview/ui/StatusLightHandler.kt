@@ -128,7 +128,8 @@ class StatusLightHandler @Inject constructor(
         val lastBolus = persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)
         if (lastBolus != null && lastBolus.amount > 0) {
             val diff = dateUtil.computeDiff(lastBolus.timestamp, System.currentTimeMillis())
-            val hours = diff[TimeUnit.HOURS] ?: 0L
+            // include DAYS - computeDiff decomposes, so 24h+1m would otherwise show as "0h 01m"
+            val hours = (diff[TimeUnit.DAYS] ?: 0L) * 24 + (diff[TimeUnit.HOURS] ?: 0L)
             val minutes = diff[TimeUnit.MINUTES] ?: 0L
             view.text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
             view.setTextColor(rh.gac(view.context, bolusColorAttr(lastBolus, System.currentTimeMillis())))
@@ -183,7 +184,8 @@ class StatusLightHandler @Inject constructor(
         }
         if (lastBasal != null) {
             val diff = dateUtil.computeDiff(lastBasal.timestamp, System.currentTimeMillis())
-            val hours = diff[TimeUnit.HOURS] ?: 0L
+            // include DAYS - computeDiff decomposes, so 24h+1m would otherwise show as "0h 01m"
+            val hours = (diff[TimeUnit.DAYS] ?: 0L) * 24 + (diff[TimeUnit.HOURS] ?: 0L)
             val minutes = diff[TimeUnit.MINUTES] ?: 0L
             view.text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
             val hoursSince = hours + minutes / 60.0
