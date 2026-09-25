@@ -72,6 +72,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -96,6 +97,7 @@ import javax.inject.Provider
 import javax.inject.Singleton
 import kotlin.math.abs
 import kotlin.math.floor
+import kotlin.math.min
 
 @Singleton
 class LoopPlugin @Inject constructor(
@@ -701,6 +703,11 @@ class LoopPlugin @Inject constructor(
      * step (0.5 U for the MDI pump type). Basal reductions are not administrable and dismiss
      * the suggestion instead.
      *
+     * The SMB size cap (maxSMBBasalMinutes × basal) is designed for a closed loop delivering
+     * micro-boluses every few minutes — with hourly pen suggestions it would cap suggestions at
+     * ~1 U. Instead the suggestion is limited by the dedicated MdiMaxBolusSuggestion preference
+     * (and still bounded by Max IOB through the APS result itself).
+     *
      * Uses the built-in Notification mechanism (EventNewNotification -> NotificationStore) so the
      * suggestion is raised as a system notification AND displayed in the Overview main screen's
      * notifications list.
@@ -714,6 +721,10 @@ class LoopPlugin @Inject constructor(
             val extraUnits = (result.rate - profile.getBasal()) * T.mins(30).msecs() / T.hours(1).msecs()
             if (extraUnits > 0) suggestedUnits += extraUnits
         }
+        // cap at the MDI-specific max suggestion size (the SMB basal-minutes cap assumes a closed
+        // loop firing every few minutes and would make hourly pen suggestions uselessly small)
+        val maxSuggestion = preferences.get(DoubleKey.MdiMaxBolusSuggestion)
+        suggestedUnits = min(suggestedUnits, maxSuggestion)
         // round down to the pen's minimum step — under-dosing is safer than over-dosing
         val roundedUnits = floor(suggestedUnits / bolusStep) * bolusStep
         if (roundedUnits < bolusStep) {
@@ -721,8 +732,8 @@ class LoopPlugin @Inject constructor(
             rxBus.send(EventDismissNotification(Notification.PEN_BOLUS_SUGGESTION))
             return
         }
-        // throttle: do not re-suggest within 30 minutes
-        if (lastPenSuggestion + T.mins(30).msecs() > dateUtil.now()) return
+        // throttle: do not re-suggest within 60 minutes
+        if (lastPenSuggestion + T.mins(60).msecs() > dateUtil.now()) return
         lastPenSuggestion = dateUtil.now()
         val text = rh.gs(R.string.bolus_suggestion_text, String.format("%.1f", roundedUnits)) + "\n" + result.reason
         val notification = Notification(Notification.PEN_BOLUS_SUGGESTION, text, Notification.LOW, validMinutes = 30)

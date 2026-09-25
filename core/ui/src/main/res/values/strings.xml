@@ -118,6 +118,10 @@
     <string name="bolus_reminder">Bolus reminder</string>
     <string name="duration_label">Duration</string>
     <string name="shortgramm">g</string>
+    <string name="fat_label">Fat</string>
+    <string name="protein_label">Protein</string>
+    <string name="wizard_meal_macro_plan">Tail %1$dg @ +%2$dmin/%3$dh · Fat %4$dg @ +%5$dmin/%6$dh · upfront %7$d%%</string>
+    <string name="wizard_meal_macro_plan_no_fat">Tail %1$dg @ +%2$dmin/%3$dh · upfront %4$d%%</string>
     <string name="pumpsuspended">Pump suspended</string>
     <string name="pump_running">Pump running</string>
     <string name="notconfigured">Not configured</string>

@@ -21,6 +21,7 @@ import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.GlucoseStatusSMB
 import app.aaps.core.interfaces.aps.OapsProfile
+import app.aaps.core.objects.aps.MdiApsProfile
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.Constraint
@@ -201,6 +202,11 @@ open class OpenAPSSMBPlugin @Inject constructor(
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsResistanceLowersTarget.key)?.isVisible = autoSensOrDynIsfSensEnabled
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsSensitivityRaisesTarget.key)?.isVisible = autoSensOrDynIsfSensEnabled
         preferenceFragment.findPreference<AdaptiveIntPreference>(IntKey.ApsUamMaxMinutesOfBasalToLimitSmb.key)?.isVisible = smbEnabled && uamEnabled
+
+        // MDI: SMB basal-minutes caps are meaningless for pen suggestions - show the dedicated cap instead
+        if (activePlugin.activePump.isMDI()) {
+            preferenceFragment.findPreference<AdaptiveDoublePreference>(DoubleKey.MdiMaxBolusSuggestion.key)?.isVisible = smbEnabled
+        }
     }
 
     private val dynIsfCache = LongSparseArray<Double>()
@@ -417,15 +423,20 @@ open class OpenAPSSMBPlugin @Inject constructor(
             min_5m_carbimpact = 0.0, // not used
             max_iob = constraintsChecker.getMaxIOBAllowed().also { inputConstraints.copyReasons(it) }.value(),
             max_daily_basal = profile.getMaxDailyBasal(),
-            max_basal = constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value(),
+            max_basal = if (pump.isMDI()) {
+                // pump-only cap: with hidden MDI defaults it would choke the temp-basal path
+                hardLimits.maxBasal()
+            } else {
+                constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value()
+            },
             min_bg = minBg,
             max_bg = maxBg,
             target_bg = targetBg,
             carb_ratio = profile.getIc(),
             sens = profile.getIsfMgdl("OpenAPSSMBPlugin"),
             autosens_adjust_targets = false, // not used
-            max_daily_safety_multiplier = preferences.get(DoubleKey.ApsMaxDailyMultiplier),
-            current_basal_safety_multiplier = preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier),
+            max_daily_safety_multiplier = if (pump.isMDI()) MdiApsProfile.UNBOUND_MULTIPLIER else preferences.get(DoubleKey.ApsMaxDailyMultiplier),
+            current_basal_safety_multiplier = if (pump.isMDI()) MdiApsProfile.UNBOUND_MULTIPLIER else preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier),
             lgsThreshold = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsLgsThreshold)).toInt(),
             high_temptarget_raises_sensitivity = false,
             low_temptarget_lowers_sensitivity = false,
@@ -445,8 +456,8 @@ open class OpenAPSSMBPlugin @Inject constructor(
             allowSMB_with_high_temptarget = smbEnabled && preferences.get(BooleanKey.ApsUseSmbWithHighTt),
             enableSMB_always = smbEnabled && preferences.get(BooleanKey.ApsUseSmbAlways) && advancedFiltering,
             enableSMB_after_carbs = smbEnabled && preferences.get(BooleanKey.ApsUseSmbAfterCarbs) && advancedFiltering,
-            maxSMBBasalMinutes = preferences.get(IntKey.ApsMaxMinutesOfBasalToLimitSmb),
-            maxUAMSMBBasalMinutes = preferences.get(IntKey.ApsUamMaxMinutesOfBasalToLimitSmb),
+            maxSMBBasalMinutes = if (pump.isMDI()) MdiApsProfile.MAX_SMB_MINUTES else preferences.get(IntKey.ApsMaxMinutesOfBasalToLimitSmb),
+            maxUAMSMBBasalMinutes = if (pump.isMDI()) MdiApsProfile.MAX_SMB_MINUTES else preferences.get(IntKey.ApsUamMaxMinutesOfBasalToLimitSmb),
             bolus_increment = pump.pumpDescription.bolusStep,
             carbsReqThreshold = preferences.get(IntKey.ApsCarbsRequestThreshold),
             current_basal = activePlugin.activePump.baseBasalRate,
@@ -579,13 +590,17 @@ open class OpenAPSSMBPlugin @Inject constructor(
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
         if (requiredKey != null && requiredKey != "absorption_smb_advanced") return
+        val isMdi = activePlugin.activePump.isMDI()
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {
             key = "openapssmb_settings"
             title = rh.gs(R.string.openapssmb)
             initialExpandedChildrenCount = 0
-            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
+            // MDI: Max basal caps temp basal requests only - pen suggestions are capped by
+            // MdiMaxBolusSuggestion instead, so the setting is meaningless here
+            if (!isMdi)
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsSmbMaxIob, dialogMessage = R.string.openapssmb_max_iob_summary, title = R.string.openapssmb_max_iob_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseDynamicSensitivity, summary = R.string.use_dynamic_sensitivity_summary, title = R.string.use_dynamic_sensitivity_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseAutosens, title = R.string.openapsama_use_autosens))
@@ -603,8 +618,16 @@ open class OpenAPSSMBPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbWithLowTt, summary = R.string.enable_smb_with_temp_target_summary, title = R.string.enable_smb_with_temp_target))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbAfterCarbs, summary = R.string.enable_smb_after_carbs_summary, title = R.string.enable_smb_after_carbs))
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxSmbFrequency, title = R.string.smb_interval_summary))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxMinutesOfBasalToLimitSmb, title = R.string.smb_max_minutes_summary))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
+            // MDI: the basal-minutes caps below shape the internal SMB size, but pen bolus
+            // suggestions are capped by MdiMaxBolusSuggestion instead (see
+            // LoopPlugin.presentPenBolusSuggestion) - the settings would mislead users into
+            // thinking they limit suggestions, so hide them
+            if (!isMdi) {
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxMinutesOfBasalToLimitSmb, title = R.string.smb_max_minutes_summary))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
+            } else {
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.MdiMaxBolusSuggestion, dialogMessage = R.string.mdi_max_bolus_suggestion_summary, title = R.string.mdi_max_bolus_suggestion_title))
+            }
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseUam, summary = R.string.enable_uam_summary, title = R.string.enable_uam))
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
@@ -619,10 +642,14 @@ open class OpenAPSSMBPlugin @Inject constructor(
                     )
                 )
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAlwaysUseShortDeltas, summary = R.string.always_use_short_avg_summary, title = R.string.always_use_short_avg))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxDailyMultiplier, dialogMessage = R.string.openapsama_max_daily_safety_multiplier_summary, title = R.string.openapsama_max_daily_safety_multiplier))
-                addPreference(
-                    AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxCurrentBasalMultiplier, dialogMessage = R.string.openapsama_current_basal_safety_multiplier_summary, title = R.string.openapsama_current_basal_safety_multiplier)
-                )
+                // MDI: multipliers are overridden internally (MdiApsProfile) and do not limit
+                // pen bolus suggestions - hide them alongside the other pump-only caps
+                if (!isMdi) {
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxDailyMultiplier, dialogMessage = R.string.openapsama_max_daily_safety_multiplier_summary, title = R.string.openapsama_max_daily_safety_multiplier))
+                    addPreference(
+                        AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxCurrentBasalMultiplier, dialogMessage = R.string.openapsama_current_basal_safety_multiplier_summary, title = R.string.openapsama_current_basal_safety_multiplier)
+                    )
+                }
             })
         }
     }

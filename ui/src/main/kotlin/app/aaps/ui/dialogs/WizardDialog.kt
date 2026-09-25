@@ -37,6 +37,7 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.SafeParse
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
@@ -49,6 +50,7 @@ import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.extensions.valueToUnits
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.MealMacroPlan
 import app.aaps.core.interfaces.pump.InjectionPosition
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
@@ -89,6 +91,7 @@ class WizardDialog : DaggerDialogFragment() {
     private var lastPosition: Int? = null
     private var showPosition = false
     private var wizard: BolusWizard? = null
+    private var mealMacroPlan: MealMacroPlan? = null
     private var calculatedPercentage = 100
     private var calculatedCorrection = 0.0
     private var usePercentage = false
@@ -135,6 +138,8 @@ class WizardDialog : DaggerDialogFragment() {
         savedInstanceState.putDouble("carbs_input", binding.carbsInput.value)
         savedInstanceState.putDouble("correction_input", binding.correctionInput.value)
         savedInstanceState.putDouble("carb_time_input", binding.carbTimeInput.value)
+        savedInstanceState.putDouble("fat_input", binding.fatInput.value)
+        savedInstanceState.putDouble("protein_input", binding.proteinInput.value)
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -172,6 +177,11 @@ class WizardDialog : DaggerDialogFragment() {
         val maxCorrection = constraintChecker.getMaxBolusAllowed().value()
         bolusStep = activePlugin.activePump.pumpDescription.bolusStep
 
+        // Meal macro assistant (fat/protein -> eCarbs plan) is an MDI-only feature
+        val isMdi = activePlugin.activePump.isMDI()
+        binding.fatInputRow.visibility = isMdi.toVisibility()
+        binding.proteinInputRow.visibility = isMdi.toVisibility()
+
         if (profileFunction.getUnits() == GlucoseUnit.MGDL) {
             binding.bgInput.setParams(
                 savedInstanceState?.getDouble("bg_input")
@@ -185,6 +195,14 @@ class WizardDialog : DaggerDialogFragment() {
         }
         binding.carbsInput.setParams(
             savedInstanceState?.getDouble("carbs_input")
+                ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+        )
+        binding.fatInput.setParams(
+            savedInstanceState?.getDouble("fat_input")
+                ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+        )
+        binding.proteinInput.setParams(
+            savedInstanceState?.getDouble("protein_input")
                 ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
 
@@ -307,6 +325,8 @@ class WizardDialog : DaggerDialogFragment() {
     private fun setA11yLabels() {
         binding.bgInputLabel.labelFor = binding.bgInput.editTextId
         binding.carbsInputLabel.labelFor = binding.carbsInput.editTextId
+        binding.fatInputLabel.labelFor = binding.fatInput.editTextId
+        binding.proteinInputLabel.labelFor = binding.proteinInput.editTextId
         binding.correctionInputLabel.labelFor = binding.correctionInput.editTextId
         binding.carbTimeInputLabel.labelFor = binding.carbTimeInput.editTextId
     }
@@ -465,6 +485,43 @@ class WizardDialog : DaggerDialogFragment() {
         val usePercentage = binding.correctionPercent.isChecked
         var bg = SafeParse.stringToDouble(binding.bgInput.text)
         val carbs = SafeParse.stringToInt(binding.carbsInput.text)
+        val fat = SafeParse.stringToInt(binding.fatInput.text)
+        val protein = SafeParse.stringToInt(binding.proteinInput.text)
+
+        // Meal macro plan: fat/protein split the meal into upfront carbs + eCarbs tails
+        // and suggest an adaptive upfront percentage (user can always override it below).
+        // MDI-only feature - for pump users everything stays upstream.
+        if (!activePlugin.activePump.isMDI()) {
+            mealMacroPlan = null
+            binding.mealMacroPlan.visibility = View.GONE
+        } else {
+            mealMacroPlan = MealMacroPlan.compute(
+                carbs = carbs,
+                fat = fat,
+                protein = protein,
+                params = mealMacroParams()
+            )
+            val plan = mealMacroPlan
+            if (plan != null) {
+                binding.mealMacroPlan.text = if (plan.fatTailCarbs > 0)
+                    rh.gs(
+                        app.aaps.core.ui.R.string.wizard_meal_macro_plan,
+                        plan.primaryTailCarbs, plan.primaryTailShiftMin, plan.primaryTailDurationH,
+                        plan.fatTailCarbs, plan.fatTailShiftMin, plan.fatTailDurationH,
+                        plan.suggestedUpfrontPercentage
+                    )
+                else
+                    rh.gs(
+                        app.aaps.core.ui.R.string.wizard_meal_macro_plan_no_fat,
+                        plan.primaryTailCarbs, plan.primaryTailShiftMin, plan.primaryTailDurationH,
+                        plan.suggestedUpfrontPercentage
+                    )
+                binding.mealMacroPlan.visibility = View.VISIBLE
+            } else {
+                binding.mealMacroPlan.visibility = View.GONE
+            }
+        }
+        val upfrontCarbs = mealMacroPlan?.upfrontCarbs ?: carbs
         val correction = if (!usePercentage) {
             if (Round.roundTo(calculatedCorrection, bolusStep) == SafeParse.stringToDouble(binding.correctionInput.text))
                 calculatedCorrection
@@ -478,8 +535,16 @@ class WizardDialog : DaggerDialogFragment() {
             else
                 SafeParse.stringToInt(binding.correctionInput.text)
         } else
-            preferences.get(IntKey.OverviewBolusPercentage).toDouble()
+        // without explicit percentage selection use the one suggested by the meal macro plan (if any)
+            mealMacroPlan?.suggestedUpfrontPercentage ?: preferences.get(IntKey.OverviewBolusPercentage)
         val carbsAfterConstraint = constraintChecker.applyCarbsConstraints(ConstraintObject(carbs, aapsLogger)).value()
+        if (abs(carbs - carbsAfterConstraint) > 0.01) {
+            binding.carbsInput.value = 0.0
+            ToastUtils.warnToast(ctx, R.string.carbs_constraint_applied)
+            return
+        }
+        // tails are scheduled as eCarbs on OK - constrain the upfront part only
+        val upfrontCarbsAfterConstraint = constraintChecker.applyCarbsConstraints(ConstraintObject(upfrontCarbs, aapsLogger)).value().toInt()
         if (abs(carbs - carbsAfterConstraint) > 0.01) {
             binding.carbsInput.value = 0.0
             ToastUtils.warnToast(ctx, R.string.carbs_constraint_applied)
@@ -506,7 +571,7 @@ class WizardDialog : DaggerDialogFragment() {
         }
 
         wizard = bolusWizardProvider.get().doCalc(
-            specificProfile, profileName, tempTarget, carbsAfterConstraint, cob, bg, correction, preferences.get(IntKey.OverviewBolusPercentage),
+            specificProfile, profileName, tempTarget, upfrontCarbsAfterConstraint, cob, bg, correction, preferences.get(IntKey.OverviewBolusPercentage),
             binding.bgCheckbox.isChecked,
             binding.cobCheckbox.isChecked,
             binding.iobCheckbox.isChecked,
@@ -518,14 +583,15 @@ class WizardDialog : DaggerDialogFragment() {
             notes,
             carbTime,
             usePercentage = usePercentage,
-            totalPercentage = percentageCorrection.toDouble()
+            totalPercentage = percentageCorrection.toDouble(),
+            mealMacroPlan = mealMacroPlan
         )
 
         wizard?.let { wizard ->
             binding.bg.text = rh.gs(R.string.format_bg_isf, valueToUnitsToString(profileUtil.convertToMgdl(bg, profileFunction.getUnits()), profileFunction.getUnits().asText), wizard.sens)
             binding.bgInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.insulinFromBG)
 
-            binding.carbs.text = rh.gs(R.string.format_carbs_ic, carbs.toDouble(), wizard.ic)
+            binding.carbs.text = rh.gs(R.string.format_carbs_ic, upfrontCarbsAfterConstraint.toDouble(), wizard.ic)
             binding.carbsInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.insulinFromCarbs)
 
             binding.iobInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, -wizard.insulinFromBolusIOB - wizard.insulinFromBasalIOB)
@@ -555,11 +621,17 @@ class WizardDialog : DaggerDialogFragment() {
                 binding.cobInsulin.text = ""
             }
 
-            if (wizard.calculatedTotalInsulin > 0.0 || carbsAfterConstraint > 0.0) {
+            val hasTails = mealMacroPlan?.hasTails == true
+            if (wizard.calculatedTotalInsulin > 0.0 || upfrontCarbsAfterConstraint > 0.0 || hasTails) {
                 val insulinText =
-                    if (wizard.calculatedTotalInsulin > 0.0) rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.calculatedTotalInsulin)
-                        .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor) else ""
-                val carbsText = if (carbsAfterConstraint > 0.0) rh.gs(app.aaps.core.objects.R.string.format_carbs, carbsAfterConstraint).formatColor(
+                    when {
+                        wizard.calculatedTotalInsulin > 0.0 -> rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.calculatedTotalInsulin)
+                            .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
+                        // zero-carb/fat-protein meal: nothing to bolus now, but tails will be scheduled
+                        hasTails -> rh.gs(app.aaps.core.ui.R.string.format_insulin_units, 0.0)
+                        else -> ""
+                    }
+                val carbsText = if (upfrontCarbsAfterConstraint > 0.0) rh.gs(app.aaps.core.objects.R.string.format_carbs, upfrontCarbsAfterConstraint).formatColor(
                     context, rh, app.aaps.core.ui.R.attr
                         .carbsColor
                 ) else ""
@@ -575,6 +647,22 @@ class WizardDialog : DaggerDialogFragment() {
         }
 
     }
+
+    private fun mealMacroParams(): MealMacroPlan.Params =
+        MealMacroPlan.Params(
+            proteinPct = preferences.get(IntKey.MealProteinPercentage),
+            proteinShiftMin = preferences.get(IntKey.MealProteinShiftMin),
+            proteinDurationH = preferences.get(IntKey.MealProteinDurationH).coerceAtMost(HardLimits.MAX_CARBS_DURATION_HOURS.toInt()),
+            fatPctPerHour = preferences.get(IntKey.MealFatPercentagePerHourTenths) / 10.0,
+            fatShiftMin = preferences.get(IntKey.MealFatShiftMin),
+            fatDurationH = preferences.get(IntKey.MealFatDurationH).coerceAtMost(HardLimits.MAX_CARBS_DURATION_HOURS.toInt()),
+            upfrontPctLean = preferences.get(IntKey.MealUpfrontPercentageLean),
+            upfrontPctHeavy = preferences.get(IntKey.MealUpfrontPercentageHeavy),
+            fatIntensityRef = preferences.get(IntKey.MealFatIntensityRefG),
+            proteinIntensityRef = preferences.get(IntKey.MealProteinIntensityRefG),
+            minFatG = preferences.get(IntKey.MealMinFatG),
+            minProteinG = preferences.get(IntKey.MealMinProteinG)
+        )
 
     override fun show(manager: FragmentManager, tag: String?) {
         try {

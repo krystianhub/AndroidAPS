@@ -255,6 +255,28 @@
     <string name="thirdcarbsincrement">Third carbs increment</string>
     <string name="hypo_treatment_carbs">Hypo treatment carbs (g)</string>
     <string name="hypo_treatment_carbs_message">Carbs added by the hypo treatment button in the carbs dialog (one tap = one hypo treatment unit). Set to 0 (or leave empty) to hide the button.</string>
+    <string name="meal_macro_settings">Meal macro assistant</string>
+    <string name="meal_macro_settings_summary">How fat and protein entered in the bolus wizard are converted into extended carbs and an adjusted upfront bolus</string>
+    <string name="meal_protein_percentage">Protein to carbs equivalent [%]</string>
+    <string name="meal_protein_percentage_message">Part of entered protein grams added to the extended-carbs tail (0 = don\'t cover protein). Default 10%%.</string>
+    <string name="meal_protein_duration">Protein tail duration [h]</string>
+    <string name="meal_protein_shift">Protein tail start delay [min]</string>
+    <string name="meal_fat_percentage_per_hour">Fat to carbs equivalent [%/h ×0.1]</string>
+    <string name="meal_fat_percentage_per_hour_message">Fat grams converted to tail carbs per hour, in tenths of a percent (10 = 1.0 %/h, so 30 g fat over 8 h ≈ 2.4 g tail carbs). 0 = don\'t cover fat.</string>
+    <string name="meal_fat_duration">Fat tail duration [h]</string>
+    <string name="meal_fat_shift">Fat tail start delay [min]</string>
+    <string name="meal_upfront_percentage_lean">Upfront bolus, lean meal [%]</string>
+    <string name="meal_upfront_percentage_heavy">Upfront bolus, heavy fatty meal [%]</string>
+    <string name="meal_fat_intensity_ref">Meal heaviness: fat reference [g]</string>
+    <string name="meal_protein_intensity_ref">Meal heaviness: protein reference [g]</string>
+    <string name="meal_macro_apply_conservative">Apply Conservative method defaults</string>
+    <string name="meal_macro_apply_warsaw">Apply Warsaw-method defaults</string>
+    <string name="meal_macro_apply_warsaw_modified">Apply Modified Warsaw (0.7×) defaults</string>
+    <string name="meal_macro_apply_summary">Overwrites all meal macro values with the preset defaults</string>
+    <string name="meal_macro_applied_toast">Meal macro defaults applied</string>
+    <string name="meal_min_fat">Minimum fat to activate [g]</string>
+    <string name="meal_min_protein">Minimum protein to activate [g]</string>
+    <string name="meal_min_message">Meals with less fat AND less protein than these minimums use plain wizard logic instead of the extended-carbs plan (prevents micro-plans for trace amounts).</string>
     <string name="cgm">CGM</string>
     <string name="default_temptargets">Default Temp-Targets</string>
     <string name="eatingsoon_duration">Eating Soon duration (minutes)</string>

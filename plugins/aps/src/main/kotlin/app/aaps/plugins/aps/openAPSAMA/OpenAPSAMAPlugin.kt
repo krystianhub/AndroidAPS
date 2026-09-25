@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.OapsProfile
+import app.aaps.core.objects.aps.MdiApsProfile
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
@@ -181,15 +182,20 @@ class OpenAPSAMAPlugin @Inject constructor(
             min_5m_carbimpact = if (mealData.usedMinCarbsImpact > 0) mealData.usedMinCarbsImpact else preferences.get(DoubleKey.ApsAmaMin5MinCarbsImpact),
             max_iob = constraintsChecker.getMaxIOBAllowed().also { inputConstraints.copyReasons(it) }.value(),
             max_daily_basal = profile.getMaxDailyBasal(),
-            max_basal = constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value(),
+            max_basal = if (activePlugin.activePump.isMDI()) {
+                // pump-only cap: with hidden MDI defaults it would choke the temp-basal path
+                hardLimits.maxBasal()
+            } else {
+                constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value()
+            },
             min_bg = minBg,
             max_bg = maxBg,
             target_bg = targetBg,
             carb_ratio = profile.getIc(),
             sens = profile.getIsfMgdl("OpenAPSAMAPlugin"),
             autosens_adjust_targets = preferences.get(BooleanKey.ApsAmaAutosensAdjustTargets),
-            max_daily_safety_multiplier = preferences.get(DoubleKey.ApsMaxDailyMultiplier),
-            current_basal_safety_multiplier = preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier),
+            max_daily_safety_multiplier = if (activePlugin.activePump.isMDI()) MdiApsProfile.UNBOUND_MULTIPLIER else preferences.get(DoubleKey.ApsMaxDailyMultiplier),
+            current_basal_safety_multiplier = if (activePlugin.activePump.isMDI()) MdiApsProfile.UNBOUND_MULTIPLIER else preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier),
             lgsThreshold = 0, // not used
             high_temptarget_raises_sensitivity = false, // not used
             low_temptarget_lowers_sensitivity = false, // not used

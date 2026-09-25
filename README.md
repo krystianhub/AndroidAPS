@@ -45,7 +45,34 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 - The Autotune plugin is always available (upstream hides it behind a hidden flag file), and the **Run Autotune automation action** is available without engineering mode.
 - Note: with no temp basal records it assumes the profile basal was delivered exactly — reasonable here since the Lantus feature keeps the profile in sync, but sanity-check the tuned basal against your Lantus notes.
 
-### 7. MDI-aware UI cleanup
+### 7. Meal macro assistant — fat/protein → eCarbs dosing plan
+
+Fatty, slowly-absorbed meals (pizza, burgers, curries) are the classic MDI pain: a single upfront bolus guesses at a carb curve that lasts hours. The bolus **Wizard** now has **Fat** and **Protein** fields (grams). Filling either one activates a dosing plan, shown as a one-line preview above the calculation:
+
+```
+Tail 66g @ +60min/4h · Fat 3g @ +90min/8h · upfront 63%
+```
+
+- **Upfront part**: a meal-heaviness score (0–1, from normalized fat/protein content) splits the real carbs into a fast part (bolused now) and a slow part, and interpolates the upfront bolus percentage between the *lean* and *heavy* preferences (defaults 100 % ↔ 60 %).
+- **Primary tail**: slow carbs + protein equivalents (default 10 % of protein grams) are scheduled as **eCarbs** starting +60 min, spread over 4 h.
+- **Fat tail**: fat equivalents (default 1 % of fat grams per hour over 8 h ≈ 8 % total) are scheduled as a second eCarbs record starting +90 min, spread over 8 h.
+- On OK both tails are recorded (record-only, like everything in MDI) and feed COB/predictions — the loop then converts the rising glucose predictions into pen-bolus suggestions while the meal is still being absorbed. Protein/fat equivalents also keep autosens from misreading the late rise as insulin resistance.
+- **Everything is adjustable before confirming** — the preview is informational, the percentage can be overridden with the existing % checkbox (manual values always win), and zero macros give exactly the upstream wizard.
+- **Activation safeguard**: meals with less than 5 g fat *and* less than 10 g protein (both configurable) skip the assistant entirely — plain wizard logic applies, so a splash of oil or a spoon of yogurt can't produce a silly 99 %-upfront micro-plan.
+
+All conversion factors live in *Settings → Overview → Meal macro assistant* and are applied to every new wizard run. Three **preset buttons** overwrite them with community methods, so you can switch approaches without recompiling:
+
+| Preset | Protein | Fat | Heavy-meal upfront |
+| --- | --- | --- | --- |
+| **Conservative** (default) | 10 % / 4 h | 1.0 %/h / 8 h | 60 % |
+| **Warsaw method** | 30 % / 4 h | 3.5 %/h / 8 h | 50 % |
+| **Modified Warsaw (0.7×)** | 21 % / 5 h | 2.5 %/h / 8 h | 55 % |
+
+> ⚠️ The conversion factors are community heuristics, **not** validated dosing rules. Start with Conservative, compare the actual glucose curve against the plan for a few meals (each entry is logged with its inputs), and only move toward Warsaw if the tail consistently outlasts the coverage. Sanity-check with your diabetes team.
+
+Calculator math is unit-tested with real meals (frozen pizza 131 C/47 F/53 P, 2× Big Mac 82 C/54 P/50 F) as golden cases — see `MealMacroPlanTest`.
+
+### 8. MDI-aware UI cleanup
 
 Gated on the pump being configured as **MDI** (`Pump.isMDI()`, not the coarse `is VirtualPump`):
 
@@ -55,11 +82,11 @@ Gated on the pump being configured as **MDI** (`Pump.isMDI()`, not the coarse `i
 - **Preferences**: BT watchdog, pump-unreachable alert, prime/fill settings, pump status-light thresholds, partial bolus wizard, superbolus, LGS threshold — hidden. SMB/DynISF settings kept (they still shape suggestions).
 - **Loop mode icon** on the Overview is visible in MDI mode — the only entry point to the Loop dialog (needed to switch to Open Loop).
 
-### 8. Objectives unlocked
+### 9. Objectives unlocked
 
 - All objectives are marked as accomplished on start, so no functionality is gated behind the tutorial. The objectives screen remains as an informational checklist.
 
-### 9. Housekeeping
+### 10. Housekeeping
 
 - Removed upstream Git-blocked build restrictions; added a devenv (Nix) development environment.
 - BG quality check: sources delivering regular sub-5-minute readings (e.g. Juggluco/Libre 2 at 1 min) no longer trigger the "Recalculated data used" warning — data spacing is classified and dense-but-regular data is treated as clean.
@@ -72,29 +99,29 @@ This fork relaxes some upstream safety gates (objectives, loop-in-MDI) and is in
 
 These are **starting points to validate against your own data, not medical advice** — adjust with your diabetes team's input.
 
-### Two gotchas that matter most for MDI
+### How pen suggestions are capped in MDI (differs from pump logic!)
 
-The APS math is identical for pumps and pens; only enactment differs (SMB → bolus suggestion, temp basal → extra bolus units). But two settings interact badly with the Lantus-derived flat basal (≈ `Lantus dose / 24` U/h, e.g. ~0.8 U/h for 20 U):
+The APS math is identical for pumps and pens; only enactment differs (SMB → bolus suggestion, temp basal → extra bolus units). The upstream SMB caps are designed for a **closed loop dosing every few minutes** — with hourly pen suggestions they would cap each suggestion at ~1.6 U and make the whole feature useless. So this fork changes the cap model:
 
-1. **SMB size is capped by `profile basal × Max-minutes-of-basal-to-limit-SMB`.** At the default 30 min and 0.8 U/h basal, SMB suggestions cap at 0.4 U → round down to zero with a 0.5 U pen step → **no suggestions at all**. This must be raised.
-2. **The temp-basal→bolus conversion path is capped by `Max u/h temp basal` and the two advanced multipliers** (default: current basal × 4, daily basal × 3). With 0.8 U/h basal those caps are ~2.5–3.3 U/h → max ~1.2 U extra per suggestion. Fine for small corrections, limiting for big ones.
+- **Max pen bolus suggestion (MDI)** — new setting in the OpenAPS SMB screen (MDI only, default **4 U**, range 0.5–15): the real, single lever for how big one suggestion can get.
+- **SMB max minutes / UAM max minutes / Max u/h basal / multipliers**: overridden internally in MDI (they'd otherwise cap APS requests at ~0.4–0.8 U) and **hidden** in MDI mode — no longer limit pen suggestions, no need to touch them.
+- **Suggestions are throttled to one per 60 minutes** and always rounded **down** to the pen's 0.5 U step (under-dosing is the safe direction).
+- **Max IOB stays the true safety bound**: it caps cumulative suggested dosing, exactly as for pumps (each suggestion is also limited to `Max IOB − current IOB`).
+- **SMB frequency still applies in MDI**: after any recorded bolus (upfront dose, correction), suggestions are suppressed for N minutes (the "How frequently SMB will be given" setting). Since the pen throttle (60 min) is much longer anyway, keep this at its small default (1–3 min) — never raise it, it only stacks on top.
 
-### Settings to change from defaults
-
-| Setting | Default → Value | Why |
+| Setting | Value | Why |
 | --- | --- | --- |
-| **Max minutes of basal to limit SMB** | 30 → **120 (max)** | The single most important change (gotcha #1). 120 min × 0.8 U/h ≈ 1.6 U cap per suggestion |
-| UAM max minutes | 30 → **120 (max)** | Same math for unannounced meals |
-| **Max u/h temp basal** | 1.0 → **~5 U/h** | Allows ~2 U corrections via the temp→bolus path: (5 − 0.8) × 0.5h ≈ 2.1 U |
-| Current basal safety multiplier | 4 → **~6** | Default 4 × 0.8 = 3.3 U/h caps corrections at ~1.2 U; 6 × 0.8 = 5 U/h aligns with Max basal |
-| Max IOB | 0 → **2–3 U** | Caps cumulative suggestion size; tune to comfort |
+| **Max pen bolus suggestion (MDI)** | default **4 U** | The cap that actually matters now; raise toward 6–8 U only with experience |
+| **Max IOB** | start at **~8 U**, walk down to 5–6 if nights stay flat | Must exceed your upfront meal dose (else suggestions are dead for hours after injecting); caps cumulative dosing |
+| **SMB frequency** | keep small (**1–3 min**) | Suppresses suggestions after a recorded bolus; raising it only stacks on top of the 60-min pen throttle |
+| SMB max minutes / UAM max minutes / Max u/h basal / multipliers | leave at **defaults** (hidden in MDI) | Overridden internally; shape nothing user-visible |
 | Autosens | keep **ON** | With DynISF on, autosens is only a fallback for missing TDD data — not redundant |
 
-Everything else (Enable SMB, SMB-with-X triggers, UAM, DynISF, SMB frequency, target adjustments, carbs threshold) works fine at defaults.
+Everything else (Enable SMB, SMB-with-X triggers, UAM, DynISF, target adjustments, carbs threshold) works fine at defaults.
 
 ### Honest limitations
 
-Even fully tuned, MDI suggestions are **smaller and slower** than a pump loop's corrections: SMB caps at ~1.6 U, suggestions are throttled to one per 30 minutes, and basal *reductions* are never suggested (can't be done with a pen). Expect a conservative advisor, not a loop. If suggestions feel consistently too timid, the levers are `Max-minutes-of-basal` (already at max) and `Max IOB` — not the multipliers.
+Even fully tuned, MDI suggestions are **slower** than a pump loop's corrections: at most one suggestion per 60 minutes, each ≤ the Max pen bolus suggestion (default 4 U), and basal *reductions* are never suggested (can't be done with a pen). Expect a patient advisor, not a loop. If coverage during a big meal tail feels too slow, the levers are **Max pen bolus suggestion** (bigger single doses) and **Max IOB** (more total headroom).
 
 ## Building
 

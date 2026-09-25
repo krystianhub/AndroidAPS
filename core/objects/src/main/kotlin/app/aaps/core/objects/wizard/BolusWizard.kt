@@ -151,6 +151,10 @@ class BolusWizard @Inject constructor(
     var usePercentage: Boolean = false
     var positiveIOBOnly: Boolean = false
 
+    /** Meal macro plan to be scheduled as extended carbs on confirmation (null = none) */
+    var mealMacroPlan: MealMacroPlan? = null
+        private set
+
     fun doCalc(
         profile: Profile,
         profileName: String,
@@ -173,7 +177,8 @@ class BolusWizard @Inject constructor(
         usePercentage: Boolean = false,
         totalPercentage: Double = 100.0,
         quickWizard: Boolean = false,
-        positiveIOBOnly: Boolean = false
+        positiveIOBOnly: Boolean = false,
+        mealMacroPlan: MealMacroPlan? = null
     ): BolusWizard {
 
         this.profile = profile
@@ -198,6 +203,7 @@ class BolusWizard @Inject constructor(
         this.usePercentage = usePercentage
         this.totalPercentage = totalPercentage
         this.positiveIOBOnly = positiveIOBOnly
+        this.mealMacroPlan = mealMacroPlan
 
         // Insulin from BG
         sens = profileUtil.fromMgdlToUnits(profile.getIsfMgdlForCarbs(dateUtil.now(), "BolusWizard", config, processedDeviceStatusData))
@@ -385,12 +391,25 @@ class BolusWizard @Inject constructor(
                 }
             }
         }
-
+        mealMacroPlan?.let { plan ->
+            if (plan.primaryTailCarbs > 0)
+                actions.add(
+                    rh.gs(app.aaps.core.ui.R.string.uel_extended_carbs) + ": " + rh.gs(
+                        app.aaps.core.ui.R.string.format_carbs, plan.primaryTailCarbs
+                    ) + "/" + plan.primaryTailDurationH + "h ( +" + plan.primaryTailShiftMin + "min)"
+                )
+            if (plan.fatTailCarbs > 0)
+                actions.add(
+                    rh.gs(app.aaps.core.ui.R.string.uel_extended_carbs) + ": " + rh.gs(
+                        app.aaps.core.ui.R.string.format_carbs, plan.fatTailCarbs
+                    ) + "/" + plan.fatTailDurationH + "h ( +" + plan.fatTailShiftMin + "min)"
+                )
+        }
         return HtmlHelper.fromHtml(actions.joinToString("<br/>"))
     }
 
     fun confirmAndExecute(ctx: Context, quickWizardEntry: QuickWizardEntry? = null) {
-        if (calculatedTotalInsulin > 0.0 || carbs > 0.0) {
+        if (calculatedTotalInsulin > 0.0 || carbs > 0.0 || mealMacroPlan?.hasTails == true) {
             if (accepted) {
                 aapsLogger.debug(LTag.UI, "guarding: already accepted")
                 return
@@ -582,6 +601,7 @@ class BolusWizard @Inject constructor(
                     bolusCalculatorResult?.let { persistenceLayer.insertOrUpdateBolusCalculatorResult(it).blockingGet() }
                 }
             }
+            mealMacroPlan?.let { scheduleECarbs(ctx, it, if (quickWizard) Sources.QuickWizard else Sources.WizardDialog) }
             if (quickWizardEntry != null) {
                 scheduleECarbsFromQuickWizard(ctx, quickWizardEntry)
             }
@@ -595,42 +615,74 @@ class BolusWizard @Inject constructor(
             val duration = JsonHelper.safeGetInt(quickWizardEntry.storage, "duration", 0)
             val carbs2 = JsonHelper.safeGetInt(quickWizardEntry.storage, "carbs2", 0)
 
-            val currentTime = Calendar.getInstance().timeInMillis
-            val eventTime: Long = currentTime + (timeOffset * 60000)
-
             if (carbs2 > 0) {
-                val detailedBolusInfo = DetailedBolusInfo()
-                detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
-                detailedBolusInfo.carbs = carbs2.toDouble()
-                detailedBolusInfo.context = ctx
-                detailedBolusInfo.notes = quickWizardEntry.storage.get("buttonText").toString()
-                detailedBolusInfo.carbsDuration = T.hours(duration.toLong()).msecs()
-                detailedBolusInfo.carbsTimestamp = eventTime
-                uel.log(
-                    action = Action.EXTENDED_CARBS,
-                    source = Sources.QuickWizard,
-                    note = quickWizardEntry.storage.get("buttonText").toString(),
-                    listValues = listOfNotNull(
-                        ValueWithUnit.Timestamp(eventTime),
-                        ValueWithUnit.Gram(carbs2),
-                        ValueWithUnit.Minute(timeOffset).takeIf { timeOffset != 0 },
-                        ValueWithUnit.Hour(duration).takeIf { duration != 0 }
-                    )
+                scheduleECarbs(
+                    ctx = ctx,
+                    carbs = carbs2,
+                    timeOffsetMin = timeOffset,
+                    durationH = duration,
+                    notes = quickWizardEntry.storage.get("buttonText")?.toString() ?: "",
+                    source = Sources.QuickWizard
                 )
-                commandQueue.bolus(detailedBolusInfo, object : Callback() {
-                    override fun run() {
-                        if (!result.success) {
-                            uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                            /* } else {
-                                 val messageECarbs =
-                                     rh.gs(app.aaps.core.ui.R.string.uel_extended_carbs) + "\n" + "@" + dateUtil.timeString(eventTime) + " " + carbs2 + "g/" + duration + "h"
-                                 ToastUtils.Long.infoToast(result.context, messageECarbs)*/
-                        }
-                    }
-                })
             }
 
         }
+    }
+
+    /**
+     * Schedules one extended carbs record (carbs spread over duration, starting after timeOffset).
+     * In MDI mode the record is persisted directly (no pump to deliver with), same as wizard treatments.
+     */
+    private fun scheduleECarbs(ctx: Context, carbs: Int, timeOffsetMin: Int, durationH: Int, notes: String, source: Sources) {
+        val currentTime = Calendar.getInstance().timeInMillis
+        val eventTime: Long = currentTime + (timeOffsetMin * 60000L)
+        val duration = durationH.coerceAtLeast(0)
+
+        val detailedBolusInfo = DetailedBolusInfo()
+        detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
+        detailedBolusInfo.carbs = carbs.toDouble()
+        detailedBolusInfo.context = ctx
+        detailedBolusInfo.notes = notes
+        detailedBolusInfo.carbsDuration = T.hours(duration.toLong()).msecs()
+        detailedBolusInfo.carbsTimestamp = eventTime
+        uel.log(
+            action = Action.EXTENDED_CARBS,
+            source = source,
+            note = notes,
+            listValues = listOfNotNull(
+                ValueWithUnit.Timestamp(eventTime),
+                ValueWithUnit.Gram(carbs),
+                ValueWithUnit.Minute(timeOffsetMin).takeIf { timeOffsetMin != 0 },
+                ValueWithUnit.Hour(duration).takeIf { duration != 0 }
+            )
+        )
+        if (activePlugin.activePump.isMDI()) {
+            // MDI: no pump to deliver with - record the carbs directly
+            persistenceLayer.insertOrUpdateCarbs(
+                carbs = detailedBolusInfo.createCarbs(),
+                action = Action.EXTENDED_CARBS,
+                source = source
+            ).subscribe()
+        } else {
+            commandQueue.bolus(detailedBolusInfo, object : Callback() {
+                override fun run() {
+                    if (!result.success) {
+                        uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                    }
+                }
+            })
+        }
+    }
+
+    /** Schedules both tails of a meal macro plan as extended carbs */
+    private fun scheduleECarbs(ctx: Context, plan: MealMacroPlan, source: Sources) {
+        // tail shifts are relative to the meal start (carb time), not to "now" - e.g. with
+        // "eat in 10 min" the +60 min protein tail must start at now + 70 min
+        val mealOffsetMin = if (carbs > 0) carbTime else 0
+        if (plan.primaryTailCarbs > 0)
+            scheduleECarbs(ctx, plan.primaryTailCarbs, plan.primaryTailShiftMin + mealOffsetMin, plan.primaryTailDurationH, notes, source)
+        if (plan.fatTailCarbs > 0)
+            scheduleECarbs(ctx, plan.fatTailCarbs, plan.fatTailShiftMin + mealOffsetMin, plan.fatTailDurationH, notes, source)
     }
 
     private fun calcPercentageWithConstraints() {

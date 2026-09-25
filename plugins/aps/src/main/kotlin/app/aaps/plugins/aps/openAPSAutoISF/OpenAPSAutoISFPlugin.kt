@@ -22,6 +22,7 @@ import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
+import app.aaps.core.objects.aps.MdiApsProfile
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.Constraint
@@ -323,15 +324,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             min_5m_carbimpact = 0.0, // not used
             max_iob = constraintsChecker.getMaxIOBAllowed().also { inputConstraints.copyReasons(it) }.value(),
             max_daily_basal = profile.getMaxDailyBasal(),
-            max_basal = constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value(),
+            max_basal = if (pump.isMDI()) {
+                // pump-only cap: with hidden MDI defaults it would choke the temp-basal path
+                hardLimits.maxBasal()
+            } else {
+                constraintsChecker.getMaxBasalAllowed(profile).also { inputConstraints.copyReasons(it) }.value()
+            },
             min_bg = minBg,
             max_bg = maxBg,
             target_bg = targetBg,
             carb_ratio = profile.getIc(),
             sens = sens,
             autosens_adjust_targets = false, // not used
-            max_daily_safety_multiplier = preferences.get(DoubleKey.ApsMaxDailyMultiplier),
-            current_basal_safety_multiplier = preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier),
+            max_daily_safety_multiplier = if (pump.isMDI()) MdiApsProfile.UNBOUND_MULTIPLIER else preferences.get(DoubleKey.ApsMaxDailyMultiplier),
+            current_basal_safety_multiplier = if (pump.isMDI()) MdiApsProfile.UNBOUND_MULTIPLIER else preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier),
             lgsThreshold = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsLgsThreshold)).toInt(),
             high_temptarget_raises_sensitivity = exerciseMode || highTemptargetRaisesSensitivity, //was false,
             low_temptarget_lowers_sensitivity = preferences.get(BooleanKey.ApsAutoIsfLowTtLowersSens), // was false,
@@ -351,8 +357,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             allowSMB_with_high_temptarget = smbEnabled && preferences.get(BooleanKey.ApsUseSmbWithHighTt),
             enableSMB_always = smbEnabled && preferences.get(BooleanKey.ApsUseSmbAlways) && advancedFiltering,
             enableSMB_after_carbs = smbEnabled && preferences.get(BooleanKey.ApsUseSmbAfterCarbs) && advancedFiltering,
-            maxSMBBasalMinutes = preferences.get(IntKey.ApsMaxMinutesOfBasalToLimitSmb),
-            maxUAMSMBBasalMinutes = preferences.get(IntKey.ApsUamMaxMinutesOfBasalToLimitSmb),
+            maxSMBBasalMinutes = if (pump.isMDI()) MdiApsProfile.MAX_SMB_MINUTES else preferences.get(IntKey.ApsMaxMinutesOfBasalToLimitSmb),
+            maxUAMSMBBasalMinutes = if (pump.isMDI()) MdiApsProfile.MAX_SMB_MINUTES else preferences.get(IntKey.ApsUamMaxMinutesOfBasalToLimitSmb),
             bolus_increment = pump.pumpDescription.bolusStep,
             carbsReqThreshold = preferences.get(IntKey.ApsCarbsRequestThreshold),
             current_basal = activePlugin.activePump.baseBasalRate,

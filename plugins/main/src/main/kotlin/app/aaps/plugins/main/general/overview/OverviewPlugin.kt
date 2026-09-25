@@ -44,6 +44,7 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.put
 import app.aaps.core.objects.extensions.store
+import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.core.validators.DefaultEditTextValidator
 import app.aaps.core.validators.EditTextValidator
 import app.aaps.core.validators.preferences.AdaptiveClickPreference
@@ -63,6 +64,29 @@ import io.reactivex.rxjava3.kotlin.plusAssign
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** Community methods for covering fat/protein with extended carbs */
+enum class MealMacroPreset(
+    val proteinPct: Int,
+    val proteinShiftMin: Int,
+    val proteinDurationH: Int,
+    val fatPctPerHourTenths: Int,
+    val fatDurationH: Int,
+    val fatShiftMin: Int,
+    val upfrontPctLean: Int,
+    val upfrontPctHeavy: Int,
+    val fatIntensityRefG: Int,
+    val proteinIntensityRefG: Int
+) {
+    /** PECBC-style conservative: protein ~10% over 4-5h, fat ~1%/h */
+    CONSERVATIVE(proteinPct = 10, proteinShiftMin = 60, proteinDurationH = 4, fatPctPerHourTenths = 10, fatDurationH = 8, fatShiftMin = 90, upfrontPctLean = 100, upfrontPctHeavy = 60, fatIntensityRefG = 40, proteinIntensityRefG = 80),
+
+    /** Warsaw method: protein ~30%, fat ~10% of meal calories (Petrov/ANSWER-style). Aggressive - only with CGM experience */
+    WARSAW(proteinPct = 30, proteinShiftMin = 60, proteinDurationH = 4, fatPctPerHourTenths = 35, fatDurationH = 8, fatShiftMin = 90, upfrontPctLean = 100, upfrontPctHeavy = 50, fatIntensityRefG = 40, proteinIntensityRefG = 80),
+
+    /** Warsaw derate: ~70% of Warsaw values, safer entry point */
+    WARSAW_MODIFIED(proteinPct = 21, proteinShiftMin = 60, proteinDurationH = 5, fatPctPerHourTenths = 25, fatDurationH = 8, fatShiftMin = 90, upfrontPctLean = 100, upfrontPctHeavy = 55, fatIntensityRefG = 40, proteinIntensityRefG = 80)
+}
 
 @Singleton
 class OverviewPlugin @Inject constructor(
@@ -226,7 +250,7 @@ class OverviewPlugin @Inject constructor(
     }
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        if (requiredKey != null && requiredKey != "overview_buttons_settings" && requiredKey != "default_temp_targets_settings" && requiredKey != "prime_fill_settings" && requiredKey != "range_settings" && requiredKey != "statuslights_overview_advanced" && requiredKey != "overview_advanced_settings") return
+        if (requiredKey != null && requiredKey != "overview_buttons_settings" && requiredKey != "default_temp_targets_settings" && requiredKey != "prime_fill_settings" && requiredKey != "range_settings" && requiredKey != "statuslights_overview_advanced" && requiredKey != "overview_advanced_settings" && requiredKey != "meal_macro_settings") return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {
@@ -339,6 +363,62 @@ class OverviewPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewBolusPercentage, dialogMessage = R.string.deliverpartofboluswizard, title = app.aaps.core.ui.R.string.partialboluswizard))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewResetBolusPercentageTime, dialogMessage = R.string.deliver_part_of_boluswizard_reset_time, title = app.aaps.core.ui.R.string.partialboluswizard_reset_time))
             }
+            // Meal macro assistant is an MDI-only feature
+            if (activePlugin.activePump.isMDI()) {
+                addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                    key = "meal_macro_settings"
+                    title = rh.gs(R.string.meal_macro_settings)
+                    summary = rh.gs(R.string.meal_macro_settings_summary)
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealMinFatG, dialogMessage = R.string.meal_min_message, title = R.string.meal_min_fat))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealMinProteinG, dialogMessage = R.string.meal_min_message, title = R.string.meal_min_protein))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealProteinPercentage, dialogMessage = R.string.meal_protein_percentage_message, title = R.string.meal_protein_percentage))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealProteinDurationH, title = R.string.meal_protein_duration))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealProteinShiftMin, title = R.string.meal_protein_shift))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealFatPercentagePerHourTenths, dialogMessage = R.string.meal_fat_percentage_per_hour_message, title = R.string.meal_fat_percentage_per_hour))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealFatDurationH, title = R.string.meal_fat_duration))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealFatShiftMin, title = R.string.meal_fat_shift))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealUpfrontPercentageLean, title = R.string.meal_upfront_percentage_lean))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealUpfrontPercentageHeavy, title = R.string.meal_upfront_percentage_heavy))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealFatIntensityRefG, title = R.string.meal_fat_intensity_ref))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealProteinIntensityRefG, title = R.string.meal_protein_intensity_ref))
+                    addPreference(
+                        AdaptiveClickPreference(
+                            ctx = context,
+                            stringKey = StringKey.MealMacroApplyPreset,
+                            title = R.string.meal_macro_apply_conservative,
+                            summary = R.string.meal_macro_apply_summary,
+                            onPreferenceClickListener = {
+                                applyMealMacroPreset(MealMacroPreset.CONSERVATIVE)
+                                ToastUtils.infoToast(context, R.string.meal_macro_applied_toast)
+                                true
+                            })
+                    )
+                    addPreference(
+                        AdaptiveClickPreference(
+                            ctx = context,
+                            stringKey = StringKey.MealMacroApplyPreset,
+                            title = R.string.meal_macro_apply_warsaw,
+                            summary = R.string.meal_macro_apply_summary,
+                            onPreferenceClickListener = {
+                                applyMealMacroPreset(MealMacroPreset.WARSAW)
+                                ToastUtils.infoToast(context, R.string.meal_macro_applied_toast)
+                                true
+                            })
+                    )
+                    addPreference(
+                        AdaptiveClickPreference(
+                            ctx = context,
+                            stringKey = StringKey.MealMacroApplyPreset,
+                            title = R.string.meal_macro_apply_warsaw_modified,
+                            summary = R.string.meal_macro_apply_summary,
+                            onPreferenceClickListener = {
+                                applyMealMacroPreset(MealMacroPreset.WARSAW_MODIFIED)
+                                ToastUtils.infoToast(context, R.string.meal_macro_applied_toast)
+                                true
+                            })
+                    )
+                })
+            }
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusAdvisor, summary = R.string.enable_bolus_advisor_summary, title = R.string.enable_bolus_advisor))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))
             if (!activePlugin.activePump.isMDI()) {
@@ -349,6 +429,19 @@ class OverviewPlugin @Inject constructor(
                 })
             }
         }
+    }
+
+    private fun applyMealMacroPreset(preset: MealMacroPreset) {
+        preferences.put(IntKey.MealProteinPercentage, preset.proteinPct)
+        preferences.put(IntKey.MealProteinShiftMin, preset.proteinShiftMin)
+        preferences.put(IntKey.MealProteinDurationH, preset.proteinDurationH)
+        preferences.put(IntKey.MealFatPercentagePerHourTenths, preset.fatPctPerHourTenths)
+        preferences.put(IntKey.MealFatShiftMin, preset.fatShiftMin)
+        preferences.put(IntKey.MealFatDurationH, preset.fatDurationH)
+        preferences.put(IntKey.MealUpfrontPercentageLean, preset.upfrontPctLean)
+        preferences.put(IntKey.MealUpfrontPercentageHeavy, preset.upfrontPctHeavy)
+        preferences.put(IntKey.MealFatIntensityRefG, preset.fatIntensityRefG)
+        preferences.put(IntKey.MealProteinIntensityRefG, preset.proteinIntensityRefG)
     }
 
     private val dismissReceiver = DismissNotificationReceiver()

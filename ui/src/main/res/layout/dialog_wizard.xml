@@ -82,6 +82,19 @@
             android:orientation="horizontal"
             android:padding="5dp" />
 
+        <TextView
+            android:id="@+id/meal_macro_plan"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            android:gravity="center"
+            android:textAppearance="?android:attr/textAppearanceSmall"
+            android:textColor="?attr/infoColor"
+            android:visibility="gone"
+            tools:ignore="HardcodedText"
+            tools:text="Tail 66g @ +60min/4h · Fat 3g @ +90min/8h · upfront 63%" />
+
         <TableLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -143,6 +156,80 @@
                     android:layout_gravity="center_horizontal"
                     android:layout_marginBottom="2dp"
                     app:customContentDescription="@string/carbs" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="start"
+                    android:padding="5dp"
+                    android:text="@string/shortgramm"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            </TableRow>
+
+            <TableRow
+                android:id="@+id/fat_input_row"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <TextView
+                    android:id="@+id/fat_input_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:labelFor="@id/fat_input"
+                    android:padding="10dp"
+                    android:text="@string/fat_label"
+                    android:textAppearance="@style/TextAppearance.AppCompat.Small"
+                    android:textStyle="bold" />
+
+                <app.aaps.core.ui.elements.NumberPicker
+                    android:id="@+id/fat_input"
+                    android:layout_width="130dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginBottom="2dp"
+                    app:customContentDescription="@string/fat_label" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="start"
+                    android:padding="5dp"
+                    android:text="@string/shortgramm"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            </TableRow>
+
+            <TableRow
+                android:id="@+id/protein_input_row"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <TextView
+                    android:id="@+id/protein_input_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:labelFor="@id/protein_input"
+                    android:padding="10dp"
+                    android:text="@string/protein_label"
+                    android:textAppearance="@style/TextAppearance.AppCompat.Small"
+                    android:textStyle="bold" />
+
+                <app.aaps.core.ui.elements.NumberPicker
+                    android:id="@+id/protein_input"
+                    android:layout_width="130dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginBottom="2dp"
+                    app:customContentDescription="@string/protein_label" />
 
                 <TextView
                     android:layout_width="wrap_content"

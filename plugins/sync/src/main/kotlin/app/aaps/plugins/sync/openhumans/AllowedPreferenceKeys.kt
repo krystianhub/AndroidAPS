@@ -158,6 +158,19 @@ private val allowedKeys = """
     carbs_button_increment_2
     carbs_button_increment_3
     hypo_treatment_carbs
+    meal_protein_percentage
+    meal_protein_duration_h
+    meal_protein_shift_min
+    meal_fat_percentage_per_hour_tenths
+    meal_fat_duration_h
+    meal_fat_shift_min
+    meal_upfront_percentage_lean
+    meal_upfront_percentage_heavy
+    meal_fat_intensity_ref_g
+    meal_protein_intensity_ref_g
+    meal_min_fat_g
+    meal_min_protein_g
+    mdi_max_bolus_suggestion
     show_cgm_button
     show_calibration_button
     show_notes_entry_dialogs
