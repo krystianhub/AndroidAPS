@@ -67,6 +67,7 @@ open class APSResultObject(protected val injector: HasAndroidInjector) : APSResu
     //override var json: JSONObject? = JSONObject()
     override var hasPredictions = false
     override var smb = 0.0 // super micro bolus in units
+    override var insulinReq: Double? = null
     override var deliverAt: Long = 0
     override var targetBG = 0.0
     override var carbsReq = 0
@@ -165,6 +166,7 @@ open class APSResultObject(protected val injector: HasAndroidInjector) : APSResu
         //newResult.json = JSONObject(json.toString())
         newResult.hasPredictions = hasPredictions
         newResult.smb = smb
+        newResult.insulinReq = insulinReq
         newResult.deliverAt = deliverAt
         newResult.rateConstraint = rateConstraint
         newResult.smbConstraint = smbConstraint

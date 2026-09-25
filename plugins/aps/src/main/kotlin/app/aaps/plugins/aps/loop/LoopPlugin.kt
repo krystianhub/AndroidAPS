@@ -97,6 +97,7 @@ import javax.inject.Provider
 import javax.inject.Singleton
 import kotlin.math.abs
 import kotlin.math.floor
+import kotlin.math.max
 import kotlin.math.min
 
 @Singleton
@@ -715,19 +716,26 @@ class LoopPlugin @Inject constructor(
     private fun presentPenBolusSuggestion(result: APSResult, profile: Profile) {
         val pump = activePlugin.activePump
         val bolusStep = pump.pumpDescription.bolusStep
-        var suggestedUnits = result.smb
-        if (result.isTempBasalRequested) {
-            // the APS expresses basal corrections as a 30m temp: extra units = (rate - basal) * 0.5h
-            val extraUnits = (result.rate - profile.getBasal()) * T.mins(30).msecs() / T.hours(1).msecs()
-            if (extraUnits > 0) suggestedUnits += extraUnits
-        }
-        // cap at the MDI-specific max suggestion size (the SMB basal-minutes cap assumes a closed
-        // loop firing every few minutes and would make hourly pen suggestions uselessly small)
-        val maxSuggestion = preferences.get(DoubleKey.MdiMaxBolusSuggestion)
-        suggestedUnits = min(suggestedUnits, maxSuggestion)
-        // round down to the pen's minimum step — under-dosing is safer than over-dosing
-        val roundedUnits = floor(suggestedUnits / bolusStep) * bolusStep
-        if (roundedUnits < bolusStep) {
+        val tempExtraUnits =
+            if (result.isTempBasalRequested)
+                // the APS expresses basal corrections as a 30m temp: extra units = (rate - basal) * 0.5h
+                (result.rate - profile.getBasal()) * T.mins(30).msecs() / T.hours(1).msecs()
+            else 0.0
+        // full insulinReq replaces the halved micro-bolus; smb > 0 keeps zeroed SMBs suppressed
+        val fullInsulinReq =
+            if (preferences.get(BooleanKey.MdiFullInsulinReqSuggestion) && result.smb > 0)
+                result.insulinReq
+                    ?.takeIf { it > 0 }
+                    ?.let { constraintChecker.applyBolusConstraints(ConstraintObject(it, aapsLogger)).value() }
+            else null
+        val suggestedUnits = penBolusSuggestion(
+            smb = result.smb,
+            tempExtraUnits = tempExtraUnits,
+            fullInsulinReq = fullInsulinReq,
+            maxSuggestion = preferences.get(DoubleKey.MdiMaxBolusSuggestion),
+            bolusStep = bolusStep
+        )
+        if (suggestedUnits < bolusStep) {
             // nothing actionable with a pen
             rxBus.send(EventDismissNotification(Notification.PEN_BOLUS_SUGGESTION))
             return
@@ -735,7 +743,7 @@ class LoopPlugin @Inject constructor(
         // throttle: do not re-suggest within 60 minutes
         if (lastPenSuggestion + T.mins(60).msecs() > dateUtil.now()) return
         lastPenSuggestion = dateUtil.now()
-        val text = rh.gs(R.string.bolus_suggestion_text, String.format("%.1f", roundedUnits)) + "\n" + result.reason
+        val text = rh.gs(R.string.bolus_suggestion_text, String.format("%.1f", suggestedUnits)) + "\n" + result.reason
         val notification = Notification(Notification.PEN_BOLUS_SUGGESTION, text, Notification.LOW, validMinutes = 30)
         rxBus.send(EventNewNotification(notification))
     }
@@ -1107,5 +1115,21 @@ class LoopPlugin @Inject constructor(
     companion object {
 
         private const val CHANNEL_ID = "AAPS-OpenLoop"
+
+        /**
+         * Pen suggestion size: fullInsulinReq ?: (smb + positive temp extra), capped by
+         * maxSuggestion and floored to bolusStep. 0.0 = nothing actionable.
+         */
+        internal fun penBolusSuggestion(
+            smb: Double,
+            tempExtraUnits: Double,
+            fullInsulinReq: Double?,
+            maxSuggestion: Double,
+            bolusStep: Double
+        ): Double {
+            val requested = fullInsulinReq ?: (smb + max(0.0, tempExtraUnits))
+            // round down to the pen's minimum step — under-dosing is safer than over-dosing
+            return floor(min(requested, maxSuggestion) / bolusStep) * bolusStep
+        }
     }
 }

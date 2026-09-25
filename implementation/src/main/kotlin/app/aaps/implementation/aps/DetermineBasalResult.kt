@@ -60,6 +60,7 @@ class DetermineBasalResult @Inject constructor(
 
     override var hasPredictions = false
     override var smb = 0.0 // super micro bolus in units
+    override var insulinReq: Double? = null
     override var deliverAt: Long = 0
     override var targetBG = 0.0
     override var carbsReq = 0
@@ -104,6 +105,7 @@ class DetermineBasalResult @Inject constructor(
             duration = result.duration ?: error("!")
         }
         smb = result.units ?: 0.0
+        insulinReq = result.insulinReq
         targetBG = result.targetBG ?: 0.0
         deliverAt = result.deliverAt ?: 0L
         variableSens = result.variable_sens

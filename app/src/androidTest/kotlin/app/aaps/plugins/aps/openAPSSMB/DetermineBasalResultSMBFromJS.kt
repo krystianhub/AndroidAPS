@@ -30,7 +30,7 @@ class DetermineBasalResultSMBFromJS private constructor(injector: HasAndroidInje
             reason = result.getString("reason")
             if (result.has("eventualBG")) eventualBG = result.getDouble("eventualBG")
             if (result.has("snoozeBG")) snoozeBG = result.getDouble("snoozeBG")
-            //if (result.has("insulinReq")) insulinReq = result.getDouble("insulinReq");
+            if (result.has("insulinReq")) insulinReq = result.getDouble("insulinReq")
             if (result.has("carbsReq")) carbsReq = result.getInt("carbsReq")
             if (result.has("carbsReqWithin")) carbsReqWithin = result.getInt("carbsReqWithin")
             if (result.has("rate") && result.has("duration")) {

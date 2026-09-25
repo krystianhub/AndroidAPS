@@ -15,6 +15,9 @@ interface APSResult {
     var percent: Int
     var duration: Int
     var smb: Double
+
+    /** Full correction before SMB halving. Null if not provided. */
+    var insulinReq: Double?
     var usePercent: Boolean
     var carbsReq: Int
     var carbsReqWithin: Int

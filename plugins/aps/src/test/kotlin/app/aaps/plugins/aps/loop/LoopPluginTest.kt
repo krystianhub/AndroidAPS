@@ -123,6 +123,60 @@ class LoopPluginTest : TestBaseWithProfile() {
     }
 
     @Test
+    fun `pen suggestion uses halved micro bolus in legacy mode`() {
+        // real case: insulinReq 1.47
+        assertThat(LoopPlugin.penBolusSuggestion(smb = 0.73, tempExtraUnits = 0.0, fullInsulinReq = null, maxSuggestion = 4.0, bolusStep = 0.5))
+            .isWithin(0.001).of(0.5)
+    }
+
+    @Test
+    fun `pen suggestion uses full insulinReq when enabled`() {
+        assertThat(LoopPlugin.penBolusSuggestion(smb = 0.73, tempExtraUnits = 0.0, fullInsulinReq = 1.47, maxSuggestion = 4.0, bolusStep = 0.5))
+            .isWithin(0.001).of(1.0)
+    }
+
+    @Test
+    fun `pen suggestion full insulinReq ignores halved smb and temp double count`() {
+        // smb + extra would sum to 2.2 U
+        assertThat(LoopPlugin.penBolusSuggestion(smb = 0.73, tempExtraUnits = 1.47, fullInsulinReq = 1.47, maxSuggestion = 4.0, bolusStep = 0.5))
+            .isWithin(0.001).of(1.0)
+    }
+
+    @Test
+    fun `pen suggestion legacy mode adds positive temp extra`() {
+        assertThat(LoopPlugin.penBolusSuggestion(smb = 0.73, tempExtraUnits = 1.47, fullInsulinReq = null, maxSuggestion = 4.0, bolusStep = 0.5))
+            .isWithin(0.001).of(2.0)
+    }
+
+    @Test
+    fun `pen suggestion temp basal only uses extra units`() {
+        assertThat(LoopPlugin.penBolusSuggestion(smb = 0.0, tempExtraUnits = 1.2, fullInsulinReq = null, maxSuggestion = 4.0, bolusStep = 0.5))
+            .isWithin(0.001).of(1.0)
+    }
+
+    @Test
+    fun `pen suggestion is capped by max suggestion`() {
+        assertThat(LoopPlugin.penBolusSuggestion(smb = 0.73, tempExtraUnits = 0.0, fullInsulinReq = 3.0, maxSuggestion = 2.0, bolusStep = 0.5))
+            .isWithin(0.001).of(2.0)
+        assertThat(LoopPlugin.penBolusSuggestion(smb = 3.5, tempExtraUnits = 0.0, fullInsulinReq = null, maxSuggestion = 2.0, bolusStep = 0.5))
+            .isWithin(0.001).of(2.0)
+    }
+
+    @Test
+    fun `pen suggestion rounds down to pen step`() {
+        assertThat(LoopPlugin.penBolusSuggestion(smb = 0.3, tempExtraUnits = 0.0, fullInsulinReq = 0.4, maxSuggestion = 4.0, bolusStep = 0.5))
+            .isWithin(0.001).of(0.0)
+        assertThat(LoopPlugin.penBolusSuggestion(smb = 0.2, tempExtraUnits = 0.0, fullInsulinReq = null, maxSuggestion = 4.0, bolusStep = 0.5))
+            .isWithin(0.001).of(0.0)
+    }
+
+    @Test
+    fun `pen suggestion ignores negative temp extra in legacy mode`() {
+        // low temp request (basal reduction) must not eat into the SMB
+            .isWithin(0.001).of(0.5)
+    }
+
+    @Test
     fun `minutesToEndOfSuspend returns 0 when loop is not suspended`() {
         // Arrange
         val now = 1672531200000L // Jan 1, 2023
