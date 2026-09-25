@@ -20,10 +20,13 @@ import android.widget.TextView
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
+import app.aaps.core.data.model.TE
+import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
@@ -60,6 +63,7 @@ import java.text.DecimalFormat
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Provider
+import kotlin.math.roundToInt
 
 class AutotuneFragment : DaggerFragment() {
 
@@ -77,6 +81,7 @@ class AutotuneFragment : DaggerFragment() {
     @Inject lateinit var aapsSchedulers: AapsSchedulers
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var loop: Loop
+    @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var profileStoreProvider: Provider<ProfileStore>
     @Inject lateinit var atProfileProvider: Provider<ATProfile>
 
@@ -524,6 +529,21 @@ class AutotuneFragment : DaggerFragment() {
                                         layout.addView(toTableRowValue(context, time, autotunePlugin.pumpProfile.basal[h], tuned.basal[h], "%.3f", tuned.basalUnTuned[h].toString()))
                                     }
                                     layout.addView(toTableRowValue(context, "∑", totalPump, totalTuned, "%.3f", " "))
+                                    // MDI fork: basal is a once-daily long-acting injection (Lantus) here, not a
+                                    // pump rate, and pens deliver whole units only. Current dose = last recorded
+                                    // Lantus injection (falls back to the 24h profile basal sum), tuned dose =
+                                    // tuned 24h basal sum - both rounded to whole units (the % column follows
+                                    // the rounded values). Informational only - nothing is applied to the profile.
+                                    if (activePlugin.activePump.isMDI())
+                                        layout.addView(
+                                            toTableRowValue(
+                                                context,
+                                                rh.gs(R.string.autotune_mdi_basal_dose),
+                                                (lastBasalInjectionDose() ?: totalPump).roundToInt().toDouble(),
+                                                totalTuned.roundToInt().toDouble(),
+                                                "%.0f"
+                                            )
+                                        )
                                 }
                             }
                         )
@@ -596,6 +616,26 @@ class AutotuneFragment : DaggerFragment() {
                 text = missing
             })
         }
+
+    /**
+     * MDI fork: last recorded long-acting (Lantus) injection dose, parsed from NOTE therapy
+     * events ("Lantus xU ...") with the same 7-day lookback used in the Insulin dialog and
+     * status lights. Null when no dose was recorded in that window.
+     */
+    private fun lastBasalInjectionDose(): Double? =
+        try {
+            persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), false)
+                .blockingGet()
+                .sortedByDescending(TE::timestamp)
+                .firstNotNullOfOrNull { extractBasalDose(it.note) }
+        } catch (e: Exception) {
+            null
+        }
+
+    private val basalDoseRegex = Regex("(?i)\\bLantus\\s*[:#]?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*U\\b")
+
+    private fun extractBasalDose(note: String?): Double? =
+        note?.let { basalDoseRegex.find(it)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull() }
 
     private fun log(message: String) {
         autotuneFS.atLog("[Fragment] $message")

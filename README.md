@@ -44,6 +44,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 
 - The Autotune plugin is always available (upstream hides it behind a hidden flag file), and the **Run Autotune automation action** is available without engineering mode.
 - Note: with no temp basal records it assumes the profile basal was delivered exactly — reasonable here since the Lantus feature keeps the profile in sync, but sanity-check the tuned basal against your Lantus notes.
+- **MDI**: the results table gains a "Lantus (U)" row (current dose from the last recorded Lantus injection, tuned 24h basal total, both rounded to whole units). Informational only — nothing is applied to the profile.
 
 ### 7. Meal macro assistant — fat/protein → eCarbs dosing plan
 

@@ -306,6 +306,14 @@ class AutotunePlugin @Inject constructor(
         }
         strResult += line
         strResult += rh.gs(R.string.autotune_log_sum_basal, totalBasal, totalTuned)
+        // MDI fork: basal is a once-daily long-acting injection (Lantus), so also log the 24h
+        // basal sums as equivalent whole-unit injection doses (informational, never applied).
+        if (activePlugin.activePump.isMDI())
+            strResult += rh.gs(
+                R.string.autotune_log_mdi_basal_dose,
+                Math.round(totalBasal).toDouble(),
+                Math.round(totalTuned).toDouble()
+            )
         strResult += line
         log(strResult)
         return strResult
