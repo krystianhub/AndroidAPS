@@ -179,6 +179,7 @@
     <string name="nav_history_browser">History browser</string>
     <string name="sensor_label">Sensor</string>
     <string name="age_label">age:</string>
+    <string name="dose_label">dose:</string>
     <string name="level_label">level:</string>
     <string name="insulin_label">Insulin</string>
     <string name="pb_label">Pump battery</string>

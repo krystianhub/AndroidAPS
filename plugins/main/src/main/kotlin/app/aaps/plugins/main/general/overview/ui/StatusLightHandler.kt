@@ -123,7 +123,7 @@ class StatusLightHandler @Inject constructor(
      * - just injected, onset (< 10%)        -> neutral
      * - worn off, tail (< 10% after peak)   -> red
      */
-    fun updateLastBolusLight(view: TextView?) {
+    fun updateLastBolusLight(view: TextView?, valueView: TextView? = null) {
         view ?: return
         val lastBolus = persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)
         if (lastBolus != null && lastBolus.amount > 0) {
@@ -132,11 +132,22 @@ class StatusLightHandler @Inject constructor(
             val hours = (diff[TimeUnit.DAYS] ?: 0L) * 24 + (diff[TimeUnit.HOURS] ?: 0L)
             val minutes = diff[TimeUnit.MINUTES] ?: 0L
             view.text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
+            valueView?.text = formatDose(lastBolus.amount)
             view.setTextColor(rh.gac(view.context, bolusColorAttr(lastBolus, System.currentTimeMillis())))
         } else {
             view.text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
             view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
+            valueView?.text = rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
         }
+    }
+
+    /** Formats a dose without trailing zeros: whole units as "8U", fractions with one decimal "8.5U". */
+    private fun formatDose(amount: Double): String {
+        val unit = rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname)
+        return if (amount == Math.floor(amount) && !amount.isInfinite())
+            "${amount.toLong()}$unit"
+        else
+            decimalFormatter.to1Decimal(amount, unit)
     }
 
     /** Normalized insulin activity fraction (0..~1) of [bolus] at [atTime], per the active insulin curve. */
@@ -172,22 +183,24 @@ class StatusLightHandler @Inject constructor(
      * - 18-22h fading                       -> orange
      * - 22h+  worn off / overdue            -> red
      */
-    fun updateLastBasalLight(view: TextView?) {
+    fun updateLastBasalLight(view: TextView?, valueView: TextView? = null) {
         view ?: return
-        val lastBasal = try {
+        val lastBasalDose = try {
             persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), false)
                 .blockingGet()
                 .sortedByDescending { it.timestamp }
-                .firstNotNullOfOrNull { te -> extractBasalDose(te.note)?.let { te } }
+                .firstNotNullOfOrNull { te -> extractBasalDose(te.note)?.let { dose -> te to dose } }
         } catch (e: Exception) {
             null
         }
-        if (lastBasal != null) {
+        if (lastBasalDose != null) {
+            val (lastBasal, dose) = lastBasalDose
             val diff = dateUtil.computeDiff(lastBasal.timestamp, System.currentTimeMillis())
             // include DAYS - computeDiff decomposes, so 24h+1m would otherwise show as "0h 01m"
             val hours = (diff[TimeUnit.DAYS] ?: 0L) * 24 + (diff[TimeUnit.HOURS] ?: 0L)
             val minutes = diff[TimeUnit.MINUTES] ?: 0L
             view.text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
+            valueView?.text = formatDose(dose)
             val hoursSince = hours + minutes / 60.0
             view.setTextColor(
                 rh.gac(
@@ -203,6 +216,7 @@ class StatusLightHandler @Inject constructor(
         } else {
             view.text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
             view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
+            valueView?.text = rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
         }
     }
 

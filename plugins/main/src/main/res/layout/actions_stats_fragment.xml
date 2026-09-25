@@ -99,6 +99,27 @@
             android:paddingEnd="2dp"
             android:textSize="14sp" />
 
+        <TextView
+            android:id="@+id/last_bolus_dose_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
+            android:text="@string/dose_label"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/last_bolus_dose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="20dp"
+            android:gravity="center_vertical"
+            android:paddingStart="4dp"
+            android:paddingEnd="0dp"
+            android:textSize="14sp"
+            tools:text="5.5U" />
+
     </TableRow>
 
     <TableRow
@@ -136,6 +157,27 @@
             android:paddingStart="2dp"
             android:paddingEnd="2dp"
             android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/last_basal_dose_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
+            android:text="@string/dose_label"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/last_basal_dose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="20dp"
+            android:gravity="center_vertical"
+            android:paddingStart="4dp"
+            android:paddingEnd="0dp"
+            android:textSize="14sp"
+            tools:text="20U" />
 
     </TableRow>
 

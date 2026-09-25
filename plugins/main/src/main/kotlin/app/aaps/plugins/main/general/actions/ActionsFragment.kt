@@ -314,8 +314,8 @@ class ActionsFragment : DaggerFragment() {
                 pbLevelLabel.text = ""
             }
             if (isMDI) {
-                statusLightHandler.updateLastBolusLight(lastBolusAge)
-                statusLightHandler.updateLastBasalLight(lastBasalAge)
+                statusLightHandler.updateLastBolusLight(lastBolusAge, lastBolusDose)
+                statusLightHandler.updateLastBasalLight(lastBasalAge, lastBasalDose)
             }
         }
         checkPumpCustomActions()
