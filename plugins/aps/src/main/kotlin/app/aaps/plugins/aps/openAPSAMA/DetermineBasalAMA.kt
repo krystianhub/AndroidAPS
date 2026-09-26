@@ -211,6 +211,7 @@ class DetermineBasalAMA @Inject constructor(
             tick = tick,
             eventualBG = eventualBG,
             snoozeBG = snoozeBG,
+            targetBG = target_bg,
             consoleLog = consoleLog,
             consoleError = consoleError
         )

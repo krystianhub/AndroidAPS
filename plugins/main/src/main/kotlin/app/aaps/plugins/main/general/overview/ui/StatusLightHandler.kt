@@ -6,11 +6,15 @@ import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.WarnColors
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.stats.TddCalculator
@@ -227,39 +231,82 @@ class StatusLightHandler @Inject constructor(
         if (rawView == null || medianView == null) return
         scope.launch {
             val now = dateUtil.now()
-            val liveResult = loop.lastRun?.let { run ->
-                val request = run.request
-                val insulinReq = request?.insulinReq?.takeIf { it.isFinite() }
-                if (now - run.lastAPSRun in 0..APS_INSULIN_REQ_WINDOW_MS) run.lastAPSRun to insulinReq else null
-            }
-            val recentValues = mutableMapOf<Long, Double>()
-            var latestPersistedResult: Pair<Long, Double?>? = null
-            try {
-                val results = persistenceLayer.getApsResults(now - APS_INSULIN_REQ_WINDOW_MS, now)
-                    .asSequence()
-                    .filter { it.date in (now - APS_INSULIN_REQ_WINDOW_MS)..now }
+            val results = recentApsResults(now)
+            val latestResult = results.maxByOrNull { it.first }
+            val median = median(
+                results.asSequence()
+                    .filter { (timestamp, _) -> latestResult != null && timestamp in (latestResult.first - APS_INSULIN_REQ_WINDOW_MS)..latestResult.first }
+                    .mapNotNull { (_, result) -> result.insulinReq?.takeIf { it.isFinite() } }
                     .toList()
-                latestPersistedResult = results.maxByOrNull { it.date }?.let { result -> result.date to result.insulinReq?.takeIf { it.isFinite() } }
-                results.forEach { result -> result.insulinReq?.takeIf { it.isFinite() }?.let { recentValues[result.date] = it } }
-            } catch (_: Exception) {
-                // Keep the current in-memory result available even if history cannot be read.
-            }
-            liveResult?.let { (timestamp, insulinReq) ->
-                latestPersistedResult?.first?.takeIf { timestamp - it in 0..60_000L }?.let(recentValues::remove)
-                insulinReq?.let { recentValues[timestamp] = it }
-            }
-            val latestResult = listOfNotNull(latestPersistedResult, liveResult).maxByOrNull { it.first }?.second
-            val median = median(recentValues.values.toList())
+            )
             val insulinUnit = rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname)
-            val currentText = latestResult?.let { decimalFormatter.to2Decimal(it, insulinUnit) }
-                ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
-            val medianText = median?.let { decimalFormatter.to1Decimal(it, insulinUnit) }
+            val currentText = latestResult?.second?.insulinReq?.takeIf { it.isFinite() }?.let { decimalFormatter.to2Decimal(it, insulinUnit) }
+                ?: "-"
+            val medianText = median?.let { decimalFormatter.to2Decimal(it, insulinUnit) }
                 ?.let { "~$it" }
-                ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+                ?: "-"
             withContext(Dispatchers.Main) {
                 rawView.text = currentText
                 medianView.text = medianText
+                setApsValueStaleness(listOf(rawView, medianView), latestResult?.first, now, latestResult != null)
             }
+        }
+    }
+
+    /** Displays the latest APS eventual BG and target in the user's glucose units. */
+    fun updateEventualBg(view: TextView?, targetView: TextView?, unitsView: TextView?, units: GlucoseUnit, profileUtil: ProfileUtil) {
+        if (view == null || targetView == null || unitsView == null) return
+        scope.launch {
+            val now = dateUtil.now()
+            val latest = recentApsResults(now).maxByOrNull { it.first }
+            val eventualBgValue = latest?.second?.rawData()?.let { it as? RT }?.eventualBG?.takeIf { it.isFinite() && it != 0.0 }
+            val targetBgValue = latest?.second?.rawData()?.let { it as? RT }?.targetBG?.takeIf { it.isFinite() && it != 0.0 }
+            val eventualBg = eventualBgValue?.let { profileUtil.fromMgdlToStringInUnits(it, units) }
+                ?.takeIf { it.isNotBlank() }
+                ?: "-"
+            val targetBg = targetBgValue?.let { profileUtil.fromMgdlToStringInUnits(it, units) }
+                ?.takeIf { it.isNotBlank() }
+                ?: "-"
+            withContext(Dispatchers.Main) {
+                view.text = eventualBg
+                targetView.text = targetBg
+                unitsView.text = if (units == GlucoseUnit.MGDL) "mg/dL" else "mmol/L"
+                setApsValueStaleness(listOf(view, targetView), latest?.first, now, latest != null)
+            }
+        }
+    }
+
+    private fun recentApsResults(now: Long): List<Pair<Long, APSResult>> {
+        val windowStart = now - APS_INSULIN_REQ_WINDOW_MS
+        val persisted = try {
+            persistenceLayer.getApsResults(windowStart, now)
+                .filter { it.date in windowStart..now }
+                .map { it.date to it }
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val live = loop.lastRun
+            ?.takeIf { it.lastAPSRun in windowStart..now }
+            ?.let { run -> run.lastAPSRun to run.request }
+            ?.takeIf { it.second != null }
+            ?.let { it.first to it.second!! }
+        val combined = (persisted + listOfNotNull(live)).associateBy { it.first }.toMutableMap()
+        live?.let { (timestamp, result) ->
+            persisted.firstOrNull { timestamp - it.first in 0..APS_RESULT_PERSIST_DELAY_MS }
+                ?.let { combined.remove(it.first) }
+            combined[timestamp] = timestamp to result
+        }
+        return combined.values.toList()
+    }
+
+    private fun setApsValueStaleness(views: List<TextView>, timestamp: Long?, now: Long, hasApsResult: Boolean) {
+        val age = timestamp?.let { now - it }
+        val stale = hasApsResult && age != null && age >= APS_STALE_THRESHOLD_MS
+        views.forEach { view ->
+            val staleValue = stale && view.text != "-"
+            view.alpha = if (staleValue) STALE_APS_VALUE_ALPHA else 1f
+            view.paintFlags = if (staleValue) view.paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
+            else view.paintFlags and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv()
         }
     }
 
@@ -272,6 +319,9 @@ class StatusLightHandler @Inject constructor(
 
     private companion object {
         val APS_INSULIN_REQ_WINDOW_MS = T.mins(15).msecs()
+        val APS_STALE_THRESHOLD_MS = T.mins(5).msecs()
+        val APS_RESULT_PERSIST_DELAY_MS = T.mins(1).msecs()
+        const val STALE_APS_VALUE_ALPHA = 0.45f
     }
 
     @SuppressLint("SetTextI18n")

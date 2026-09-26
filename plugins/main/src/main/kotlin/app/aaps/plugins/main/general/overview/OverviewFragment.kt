@@ -983,7 +983,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             batteryLayout.visibility = (isMDI || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
             lastBolusLayout.visibility = isMDI.toVisibility()
             lastBasalLayout.visibility = isMDI.toVisibility()
-            insulinReqLayout.visibility = isMDI.toVisibility()
+            apsStatusLayout.visibility = (isMDI && loop.runningMode == RM.Mode.OPEN_LOOP).toVisibility()
         }
         statusLightHandler.updateStatusLights(
             binding.statusLightsLayout.cannulaAge,
@@ -996,10 +996,19 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.statusLightsLayout.pbLevel
         )
         if (isMDI) {
-            statusLightHandler.updateInsulinReqLight(
-                binding.statusLightsLayout.insulinReqRaw,
-                binding.statusLightsLayout.insulinReqMedian
-            )
+            if (loop.runningMode == RM.Mode.OPEN_LOOP) {
+                statusLightHandler.updateInsulinReqLight(
+                    binding.statusLightsLayout.insulinReqRaw,
+                    binding.statusLightsLayout.insulinReqMedian
+                )
+                statusLightHandler.updateEventualBg(
+                    binding.statusLightsLayout.eventualBg,
+                    binding.statusLightsLayout.eventualBgTarget,
+                    binding.statusLightsLayout.eventualBgUnits,
+                    profileFunction.getUnits(),
+                    profileUtil
+                )
+            }
             statusLightHandler.updateLastBolusLight(binding.statusLightsLayout.lastBolusAge, binding.statusLightsLayout.lastBolusDose)
             statusLightHandler.updateLastBasalLight(binding.statusLightsLayout.lastBasalAge, binding.statusLightsLayout.lastBasalDose)
         }

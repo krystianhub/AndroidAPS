@@ -7,10 +7,12 @@ import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
 import app.aaps.core.data.model.BCR
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.ui.R
 import app.aaps.ui.databinding.DialogWizardinfoBinding
 import com.google.gson.Gson
@@ -20,6 +22,7 @@ import javax.inject.Inject
 class WizardInfoDialog : DaggerDialogFragment() {
 
     @Inject lateinit var rh: ResourceHelper
+    @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var profileFunction: ProfileFunction
     @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var dateUtil: DateUtil
@@ -55,6 +58,7 @@ class WizardInfoDialog : DaggerDialogFragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.close.setOnClickListener { dismiss() }
+        binding.superBolusRow.visibility = (!activePlugin.activePump.isMDI()).toVisibility()
         val bgString = profileUtil.fromMgdlToStringInUnits(data.glucoseValue)
         val isf = profileUtil.fromMgdlToUnits(data.isf)
         val trend = profileUtil.fromMgdlToStringInUnits(data.glucoseTrend * 3)
