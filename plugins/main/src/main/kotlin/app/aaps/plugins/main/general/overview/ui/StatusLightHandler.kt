@@ -6,6 +6,7 @@ import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -37,6 +38,7 @@ class StatusLightHandler @Inject constructor(
     private val warnColors: WarnColors,
     private val config: Config,
     private val persistenceLayer: PersistenceLayer,
+    private val loop: Loop,
     private val tddCalculator: TddCalculator,
     private val decimalFormatter: DecimalFormatter
 ) {
@@ -218,6 +220,58 @@ class StatusLightHandler @Inject constructor(
             view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
             valueView?.text = rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
         }
+    }
+
+    /** Displays the latest APS insulinReq and a robust median of the previous 15 minutes, for information only. */
+    fun updateInsulinReqLight(rawView: TextView?, medianView: TextView?) {
+        if (rawView == null || medianView == null) return
+        scope.launch {
+            val now = dateUtil.now()
+            val liveResult = loop.lastRun?.let { run ->
+                val request = run.request
+                val insulinReq = request?.insulinReq?.takeIf { it.isFinite() }
+                if (now - run.lastAPSRun in 0..APS_INSULIN_REQ_WINDOW_MS) run.lastAPSRun to insulinReq else null
+            }
+            val recentValues = mutableMapOf<Long, Double>()
+            var latestPersistedResult: Pair<Long, Double?>? = null
+            try {
+                val results = persistenceLayer.getApsResults(now - APS_INSULIN_REQ_WINDOW_MS, now)
+                    .asSequence()
+                    .filter { it.date in (now - APS_INSULIN_REQ_WINDOW_MS)..now }
+                    .toList()
+                latestPersistedResult = results.maxByOrNull { it.date }?.let { result -> result.date to result.insulinReq?.takeIf { it.isFinite() } }
+                results.forEach { result -> result.insulinReq?.takeIf { it.isFinite() }?.let { recentValues[result.date] = it } }
+            } catch (_: Exception) {
+                // Keep the current in-memory result available even if history cannot be read.
+            }
+            liveResult?.let { (timestamp, insulinReq) ->
+                latestPersistedResult?.first?.takeIf { timestamp - it in 0..60_000L }?.let(recentValues::remove)
+                insulinReq?.let { recentValues[timestamp] = it }
+            }
+            val latestResult = listOfNotNull(latestPersistedResult, liveResult).maxByOrNull { it.first }?.second
+            val median = median(recentValues.values.toList())
+            val insulinUnit = rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname)
+            val currentText = latestResult?.let { decimalFormatter.to2Decimal(it, insulinUnit) }
+                ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+            val medianText = median?.let { decimalFormatter.to1Decimal(it, insulinUnit) }
+                ?.let { "~$it" }
+                ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+            withContext(Dispatchers.Main) {
+                rawView.text = currentText
+                medianView.text = medianText
+            }
+        }
+    }
+
+    private fun median(values: List<Double>): Double? {
+        if (values.isEmpty()) return null
+        val sorted = values.sorted()
+        val middle = sorted.size / 2
+        return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2.0
+    }
+
+    private companion object {
+        val APS_INSULIN_REQ_WINDOW_MS = T.mins(15).msecs()
     }
 
     @SuppressLint("SetTextI18n")

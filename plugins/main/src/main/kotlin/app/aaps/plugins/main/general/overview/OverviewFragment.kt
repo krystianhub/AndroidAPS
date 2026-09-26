@@ -60,6 +60,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAcceptOpenLoopChange
+import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventBucketedDataCreated
 import app.aaps.core.interfaces.rx.events.EventEffectiveProfileSwitchChanged
 import app.aaps.core.interfaces.rx.events.EventExtendedBolusChange
@@ -316,6 +317,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                        }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventAcceptOpenLoopChange::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ scheduleUpdateGUI() }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventAPSCalculationFinished::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ scheduleUpdateGUI() }, fabricPrivacy::logException)
         disposable += rxBus
@@ -978,6 +983,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             batteryLayout.visibility = (isMDI || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
             lastBolusLayout.visibility = isMDI.toVisibility()
             lastBasalLayout.visibility = isMDI.toVisibility()
+            insulinReqLayout.visibility = isMDI.toVisibility()
         }
         statusLightHandler.updateStatusLights(
             binding.statusLightsLayout.cannulaAge,
@@ -990,8 +996,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.statusLightsLayout.pbLevel
         )
         if (isMDI) {
-            statusLightHandler.updateLastBolusLight(binding.statusLightsLayout.lastBolusAge)
-            statusLightHandler.updateLastBasalLight(binding.statusLightsLayout.lastBasalAge)
+            statusLightHandler.updateInsulinReqLight(
+                binding.statusLightsLayout.insulinReqRaw,
+                binding.statusLightsLayout.insulinReqMedian
+            )
+            statusLightHandler.updateLastBolusLight(binding.statusLightsLayout.lastBolusAge, binding.statusLightsLayout.lastBolusDose)
+            statusLightHandler.updateLastBasalLight(binding.statusLightsLayout.lastBasalAge, binding.statusLightsLayout.lastBasalDose)
         }
     }
 

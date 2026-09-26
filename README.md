@@ -31,7 +31,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 ### 4. Overview status lights for MDI
 
 - Pump-specific lights (cannula age, insulin age, reservoir, battery) are **hidden in MDI mode**; sensor age stays.
-- New MDI-only lights: **last bolus ago** (`2h 15m`, colored by the configured insulin's action curve — green near peak, red when worn off) and **last basal insulin ago** (time since the last recorded Lantus injection, colored by the Lantus curve — red when overdue).
+- New MDI-only lights: **APS insulinReq** (current value / median of recent 15-minute APS runs; informational only), **last bolus ago** (`2h 15m`, with the recorded dose and colored by the configured insulin's action curve — green near peak, red when worn off), and **last basal insulin ago** (time since the last recorded Lantus injection, with dose, colored by the Lantus curve — red when overdue).
 - The same last bolus / last basal insulin age also appear as rows in the Actions tab stats.
 
 ### 5. APS algorithm plugins un-gated

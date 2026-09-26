@@ -126,6 +126,47 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/insulin_req_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:focusable="true"
+        android:gravity="center"
+        tools:ignore="UseCompoundDrawables">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:contentDescription="@string/statuslights_insulin_req"
+            app:srcCompat="@drawable/ic_loop_closed" />
+
+        <TextView
+            android:id="@+id/insulin_req_raw"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:lines="1"
+            android:textStyle="bold"
+            tools:text="1.17U" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="2dp"
+            android:paddingEnd="2dp"
+            android:text="/"
+            android:textColor="?android:attr/textColorSecondary"
+            tools:ignore="HardcodedText" />
+
+        <TextView
+            android:id="@+id/insulin_req_median"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:lines="1"
+            android:textColor="?android:attr/textColorSecondary"
+            tools:text="~1.2U" />
+
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/last_bolus_layout"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -145,6 +186,14 @@
             android:layout_height="wrap_content"
             android:lines="1"
             tools:text="2h15m" />
+
+        <TextView
+            android:id="@+id/last_bolus_dose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:lines="1"
+            android:paddingStart="2dp"
+            tools:text="4.5U" />
 
     </LinearLayout>
 
@@ -168,6 +217,14 @@
             android:layout_height="wrap_content"
             android:lines="1"
             tools:text="21h30m" />
+
+        <TextView
+            android:id="@+id/last_basal_dose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:lines="1"
+            android:paddingStart="2dp"
+            tools:text="20U" />
 
     </LinearLayout>
 
