@@ -2,6 +2,7 @@ package app.aaps.plugins.main.general.overview.ui
 
 import android.annotation.SuppressLint
 import android.widget.TextView
+import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
@@ -240,13 +241,24 @@ class StatusLightHandler @Inject constructor(
                     .toList()
             )
             val insulinUnit = rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname)
-            val currentText = latestResult?.second?.insulinReq?.takeIf { it.isFinite() }?.let { decimalFormatter.to2Decimal(it, insulinUnit) }
+            val insulinReq = latestResult?.second?.insulinReq?.takeIf { it.isFinite() }
+            val currentText = insulinReq?.let { decimalFormatter.to2Decimal(it, insulinUnit) }
                 ?: "-"
             val medianText = median?.let { decimalFormatter.to2Decimal(it, insulinUnit) }
                 ?.let { "~$it" }
                 ?: "-"
             withContext(Dispatchers.Main) {
                 rawView.text = currentText
+                rawView.setTextColor(
+                    rh.gac(
+                        rawView.context,
+                        when {
+                            insulinReq == null || insulinReq == 0.0 -> app.aaps.core.ui.R.attr.defaultTextColor
+                            insulinReq < 0.0 -> app.aaps.core.ui.R.attr.urgentColor
+                            else -> app.aaps.core.ui.R.attr.metadataTextWarningColor
+                        }
+                    )
+                )
                 medianView.text = medianText
                 setApsValueStaleness(listOf(rawView, medianView), latestResult?.first, now, latestResult != null)
             }
@@ -254,8 +266,8 @@ class StatusLightHandler @Inject constructor(
     }
 
     /** Displays the latest APS eventual BG and target in the user's glucose units. */
-    fun updateEventualBg(view: TextView?, targetView: TextView?, unitsView: TextView?, units: GlucoseUnit, profileUtil: ProfileUtil) {
-        if (view == null || targetView == null || unitsView == null) return
+    fun updateEventualBg(view: TextView?, targetView: TextView?, units: GlucoseUnit, profileUtil: ProfileUtil) {
+        if (view == null || targetView == null) return
         scope.launch {
             val now = dateUtil.now()
             val latest = recentApsResults(now).maxByOrNull { it.first }
@@ -267,10 +279,22 @@ class StatusLightHandler @Inject constructor(
             val targetBg = targetBgValue?.let { profileUtil.fromMgdlToStringInUnits(it, units) }
                 ?.takeIf { it.isNotBlank() }
                 ?: "-"
+            val targetRange = latest?.first?.let { timestamp ->
+                profileFunction.getProfile(timestamp)?.let { profile ->
+                    profile.getTargetLowMgdl(timestamp)..profile.getTargetHighMgdl(timestamp)
+                }
+            }
+            val eventualBgColor = when {
+                eventualBgValue == null -> app.aaps.core.ui.R.attr.defaultTextColor
+                eventualBgValue < Constants.STATS_RANGE_LOW_MMOL * GlucoseUnit.MMOLL_TO_MGDL ||
+                    eventualBgValue > Constants.STATS_RANGE_HIGH_MMOL * GlucoseUnit.MMOLL_TO_MGDL -> app.aaps.core.ui.R.attr.urgentColor
+                targetRange?.contains(eventualBgValue) == true -> app.aaps.core.ui.R.attr.metadataTextOkColor
+                else -> app.aaps.core.ui.R.attr.metadataTextWarningColor
+            }
             withContext(Dispatchers.Main) {
                 view.text = eventualBg
+                view.setTextColor(rh.gac(view.context, eventualBgColor))
                 targetView.text = targetBg
-                unitsView.text = if (units == GlucoseUnit.MGDL) "mg/dL" else "mmol/L"
                 setApsValueStaleness(listOf(view, targetView), latest?.first, now, latest != null)
             }
         }

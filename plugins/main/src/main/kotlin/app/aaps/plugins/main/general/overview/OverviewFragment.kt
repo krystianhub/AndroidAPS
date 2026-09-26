@@ -1004,7 +1004,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 statusLightHandler.updateEventualBg(
                     binding.statusLightsLayout.eventualBg,
                     binding.statusLightsLayout.eventualBgTarget,
-                    binding.statusLightsLayout.eventualBgUnits,
                     profileFunction.getUnits(),
                     profileUtil
                 )
