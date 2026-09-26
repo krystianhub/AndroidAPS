@@ -330,8 +330,9 @@ class InsulinDialog : DialogFragmentWithDate() {
                 actions.add(rh.gs(app.aaps.core.ui.R.string.position_label) + ": " + position)
             }
         }
-        if (notes.isNotEmpty())
-            actions.add(rh.gs(app.aaps.core.ui.R.string.notes_label) + ": " + notes)
+        val displayNotes = if (showPosition) InjectionPosition.stripPosition(notes) else notes
+        if (displayNotes.isNotEmpty())
+            actions.add(rh.gs(app.aaps.core.ui.R.string.notes_label) + ": " + displayNotes)
 
         if (insulinAfterConstraints > 0 || eatingSoonChecked) {
             activity?.let { activity ->

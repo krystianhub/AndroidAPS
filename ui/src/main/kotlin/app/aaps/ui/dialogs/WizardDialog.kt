@@ -160,9 +160,10 @@ class WizardDialog : DaggerDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         loadCheckedStates()
         processCobCheckBox()
-        val useSuperBolus = preferences.get(BooleanKey.OverviewUseSuperBolus)
+        val useSuperBolus = preferences.get(BooleanKey.OverviewUseSuperBolus) && !activePlugin.activePump.isMDI()
         binding.sbCheckbox.visibility = useSuperBolus.toVisibility()
         binding.superBolusRow.visibility = useSuperBolus.toVisibility()
+        if (!useSuperBolus) binding.sbCheckbox.isChecked = false
         binding.notesLayout.root.visibility = preferences.get(BooleanKey.OverviewShowNotesInDialogs).toVisibility()
         showPosition = preferences.get(BooleanKey.OverviewShowPositionInDialogs) && activePlugin.activePump.isMDI()
         binding.positionLayout.root.visibility = showPosition.toVisibility()

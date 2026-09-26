@@ -13,6 +13,7 @@ import android.view.WindowManager
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.SafeParse
@@ -40,6 +41,7 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
     @Inject lateinit var constraintChecker: ConstraintsChecker
     @Inject lateinit var ctx: Context
     @Inject lateinit var preferences: Preferences
+    @Inject lateinit var activePlugin: ActivePlugin
 
     var position = -1
     private var fromSeconds: Int = 0
@@ -86,7 +88,7 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
             binding.deviceWatchImage.visibility = View.GONE
         }
 
-        if (preferences.get(BooleanKey.OverviewUseSuperBolus)) {
+        if (preferences.get(BooleanKey.OverviewUseSuperBolus) && !activePlugin.activePump.isMDI()) {
             binding.useSuperBolus.visibility = View.VISIBLE
         } else {
             binding.useSuperBolus.visibility = View.GONE

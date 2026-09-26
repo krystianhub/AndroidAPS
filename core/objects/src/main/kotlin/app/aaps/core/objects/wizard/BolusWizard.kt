@@ -29,6 +29,7 @@ import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.InjectionPosition
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.Callback
@@ -193,7 +194,7 @@ class BolusWizard @Inject constructor(
         this.useCob = useCob
         this.includeBolusIOB = includeBolusIOB
         this.includeBasalIOB = includeBasalIOB
-        this.useSuperBolus = useSuperBolus
+        this.useSuperBolus = useSuperBolus && !activePlugin.activePump.isMDI()
         this.useTT = useTT
         this.useTrend = useTrend
         this.useAlarm = useAlarm
@@ -251,7 +252,7 @@ class BolusWizard @Inject constructor(
         insulinFromCorrection = if (usePercentage) 0.0 else correction
 
         // Insulin from superbolus for 2h. Get basal rate now and after 1h
-        if (useSuperBolus) {
+        if (this.useSuperBolus) {
             insulinFromSuperBolus = profile.getBasal()
             var timeAfter1h = System.currentTimeMillis()
             timeAfter1h += T.hours(1).msecs()
@@ -347,6 +348,10 @@ class BolusWizard @Inject constructor(
                     .formatColor(context, rh, app.aaps.core.ui.R.attr.carbsColor) + timeShift
             )
         }
+        val position = if (!advisor && activePlugin.activePump.isMDI() && preferences.get(BooleanKey.OverviewShowPositionInDialogs))
+            InjectionPosition.extractFromNotes(notes)
+        else null
+        position?.let { actions.add(rh.gs(app.aaps.core.ui.R.string.position_label) + ": " + it) }
         if (insulinFromCOB > 0) {
             actions.add(
                 rh.gs(app.aaps.core.ui.R.string.cobvsiob) + ": " + rh.gs(
@@ -368,8 +373,6 @@ class BolusWizard @Inject constructor(
             )
         if (config.AAPSCLIENT && insulinAfterConstraints > 0)
             actions.add(rh.gs(app.aaps.core.ui.R.string.bolus_recorded_only).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor))
-        if (activePlugin.activePump.isMDI() && insulinAfterConstraints > 0)
-            actions.add(rh.gs(app.aaps.core.ui.R.string.bolus_recorded_only_mdi).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor))
         if (useAlarm && !advisor && carbs > 0 && carbTime > 0)
             actions.add(rh.gs(app.aaps.core.ui.R.string.alarminxmin, carbTime).formatColor(context, rh, app.aaps.core.ui.R.attr.infoColor))
         if (advisor)
@@ -405,6 +408,9 @@ class BolusWizard @Inject constructor(
                     ) + "/" + plan.fatTailDurationH + "h ( +" + plan.fatTailShiftMin + "min)"
                 )
         }
+        val displayNotes = if (position != null) InjectionPosition.stripPosition(notes) else notes
+        if (displayNotes.isNotEmpty())
+            actions.add(rh.gs(app.aaps.core.ui.R.string.notes_label) + ": " + displayNotes)
         return HtmlHelper.fromHtml(actions.joinToString("<br/>"))
     }
 
