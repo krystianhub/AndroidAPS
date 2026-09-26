@@ -173,6 +173,7 @@ class LoopPluginTest : TestBaseWithProfile() {
     @Test
     fun `pen suggestion ignores negative temp extra in legacy mode`() {
         // low temp request (basal reduction) must not eat into the SMB
+        assertThat(LoopPlugin.penBolusSuggestion(smb = 0.73, tempExtraUnits = -0.5, fullInsulinReq = null, maxSuggestion = 4.0, bolusStep = 0.5))
             .isWithin(0.001).of(0.5)
     }
 

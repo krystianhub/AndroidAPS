@@ -169,14 +169,16 @@ class AutotuneFragment : DaggerFragment() {
                     rh.gs(R.string.autotune_copy_local_profile_message) + "\n" + localName,
                     {
                         val profilePlugin = activePlugin.activeProfileSource
-                        profilePlugin.addProfile(profilePlugin.copyFrom(tunedProfile.getProfile(circadian), localName))
-                        rxBus.send(EventLocalProfileChanged())
-                        uel.log(
-                            action = Action.NEW_PROFILE,
-                            source = Sources.Autotune,
-                            value = ValueWithUnit.SimpleString(localName)
-                        )
-                        updateGui()
+                        autotunePlugin.profileForApplication(tunedProfile, circadian)?.let { profileToApply ->
+                            profilePlugin.addProfile(profilePlugin.copyFrom(profileToApply, localName))
+                            rxBus.send(EventLocalProfileChanged())
+                            uel.log(
+                                action = Action.NEW_PROFILE,
+                                source = Sources.Autotune,
+                                value = ValueWithUnit.SimpleString(localName)
+                            )
+                            updateGui()
+                        }
                     })
             }
         }
@@ -267,7 +269,7 @@ class AutotuneFragment : DaggerFragment() {
                 activity?.let { it1 -> OKDialog.show(it1, rh.gs(R.string.not_available_full), rh.gs(R.string.pump_disconnected)) }
             } else {
                 tunedProfile?.let { tunedP ->
-                    tunedP.profileStore(circadian)?.let {
+                    autotunePlugin.profileStoreForApplication(tunedP, circadian)?.let {
                         OKDialog.showConfirmation(
                             requireContext(),
                             rh.gs(app.aaps.core.ui.R.string.activate_profile) + ": " + tunedP.profileName + "?",

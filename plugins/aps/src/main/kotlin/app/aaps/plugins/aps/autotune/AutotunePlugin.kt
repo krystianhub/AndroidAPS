@@ -23,6 +23,7 @@ import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.profile.PureProfile
 import app.aaps.core.interfaces.profile.ProfileStore
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -248,7 +249,7 @@ class AutotunePlugin @Inject constructor(
                     value = ValueWithUnit.SimpleString(tunedP.profileName)
                 )
                 updateButtonVisibility = View.GONE
-                tunedP.profileStore(circadian)?.let { profileStore ->
+                profileStoreForApplication(tunedP, circadian)?.let { profileStore ->
                     if (profileFunction.createProfileSwitch(
                             profileStore = profileStore,
                             profileName = tunedP.profileName,
@@ -376,6 +377,8 @@ class AutotunePlugin @Inject constructor(
         if (newProfile == null) return
         val profilePlugin = activePlugin.activeProfileSource
         val circadian = preferences.get(BooleanKey.AutotuneCircadianIcIsf)
+        val profileToApply = profileForApplication(newProfile, circadian) ?: return
+        val profileData = profilePlugin.copyFrom(profileToApply, newProfile.profileName)
         val profileStore = activePlugin.activeProfileSource.profile ?: profileStoreProvider.get().with(JSONObject())
         val profileList: ArrayList<CharSequence> = profileStore.getProfileList()
         var indexLocalProfile = -1
@@ -383,15 +386,26 @@ class AutotunePlugin @Inject constructor(
             if (profileList[p] == newProfile.profileName)
                 indexLocalProfile = p
         if (indexLocalProfile == -1) {
-            profilePlugin.addProfile(profilePlugin.copyFrom(newProfile.getProfile(circadian), newProfile.profileName))
+            profilePlugin.addProfile(profileData)
             return
         }
         profilePlugin.currentProfileIndex = indexLocalProfile
-        profilePlugin.currentProfile()?.dia = newProfile.dia
-        profilePlugin.currentProfile()?.basal = newProfile.basal()
-        profilePlugin.currentProfile()?.ic = newProfile.ic(circadian)
-        profilePlugin.currentProfile()?.isf = newProfile.isf(circadian)
+        profilePlugin.currentProfile()?.dia = profileData.dia
+        profilePlugin.currentProfile()?.basal = profileData.basal
+        profilePlugin.currentProfile()?.ic = profileData.ic
+        profilePlugin.currentProfile()?.isf = profileData.isf
         profilePlugin.storeSettings(timestamp = dateUtil.now())
+    }
+
+    fun profileForApplication(profile: ATProfile, circadian: Boolean): PureProfile? =
+        profile.getProfileForApplication(circadian, inputBasalProfileForApplication())
+
+    fun profileStoreForApplication(profile: ATProfile, circadian: Boolean): ProfileStore? =
+        profile.profileStore(circadian, inputBasalProfileForApplication())
+
+    private fun inputBasalProfileForApplication(): PureProfile? {
+        if (!activePlugin.activePump.isMDI()) return null
+        return pumpProfile.getProfile()
     }
 
     fun saveLastRun() {

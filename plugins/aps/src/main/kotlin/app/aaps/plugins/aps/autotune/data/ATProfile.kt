@@ -196,15 +196,15 @@ class ATProfile @Inject constructor(
         return pureProfileFromJson(json, dateUtil, profile.units.asText)
     }
 
-    fun profileStore(circadian: Boolean = false): ProfileStore? {
+    fun profileStore(circadian: Boolean = false, basalSourceProfile: PureProfile? = null): ProfileStore? {
         var profileStore: ProfileStore? = null
         val json = JSONObject()
         val store = JSONObject()
-        val tunedProfile = if (circadian) circadianProfile else profile
+        val profileToStore = getProfileForApplication(circadian, basalSourceProfile) ?: return null
         if (profileName.isEmpty())
             profileName = rh.gs(R.string.autotune_tunedprofile_name)
         try {
-            store.put(profileName, tunedProfile.toPureNsJson(dateUtil))
+            store.put(profileName, ProfileSealed.Pure(profileToStore, null).toPureNsJson(dateUtil))
             json.put("defaultProfile", profileName)
             json.put("store", store)
             json.put("startDate", dateUtil.toISOAsUTC(dateUtil.now()))
@@ -213,6 +213,15 @@ class ATProfile @Inject constructor(
             aapsLogger.error(LTag.CORE, e.stackTraceToString())
         }
         return profileStore
+    }
+
+    fun getProfileForApplication(circadian: Boolean = false, basalSourceProfile: PureProfile? = null): PureProfile? {
+        val profileToApply = getProfile(circadian)
+        if (basalSourceProfile == null) return profileToApply
+
+        val json = ProfileSealed.Pure(profileToApply, null).toPureNsJson(dateUtil)
+        json.put("basal", ProfileSealed.Pure(basalSourceProfile, null).toPureNsJson(dateUtil).getJSONArray("basal"))
+        return pureProfileFromJson(json, dateUtil, profileToApply.glucoseUnit.asText)
     }
 
     private fun jsonArray(values: DoubleArray): JSONArray {
