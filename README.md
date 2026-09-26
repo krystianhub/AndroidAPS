@@ -13,7 +13,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 ### 1. Open Loop works in MDI mode
 
 - The APS engine (recommendations, predictions, DynamicISF) now runs in MDI/virtual-pump mode instead of being blocked outright — closed-loop enactment remains blocked, since a pen cannot accept temp basals.
-- In Open Loop, APS suggestions that would normally be a temp basal or SMB are converted into an **actionable manual bolus suggestion**: rounded *down* to the pen's minimum step (under-dosing is safer than over-dosing), throttled to at most one suggestion per 30 minutes, and delivered as a system notification + Overview notification. Basal reductions are not administrable with a pen and are dismissed instead.
+- In Open Loop, APS suggestions that would normally be a temp basal or SMB are converted into an **actionable manual bolus suggestion**. For SMBs, the full positive correction request is used instead of the micro-bolus half; suggestions remain subject to insulin constraints, Max IOB, and the configured per-suggestion cap. They are rounded *down* to the pen's minimum step, throttled to at most one suggestion per 60 minutes, and delivered as a system notification + Overview notification. Basal reductions are not administrable with a pen and are dismissed instead.
 - Zero-temp (ZT) prediction lines are hidden on the graph in MDI mode — a pen cannot execute a zero temp, so the line is meaningless.
 
 ### 2. Injection position tracking ("pos" feature)

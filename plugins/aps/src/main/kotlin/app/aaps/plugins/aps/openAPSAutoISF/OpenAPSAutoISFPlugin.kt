@@ -214,7 +214,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithLowTt.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbAfterCarbs.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
         val smbEnabled = preferences.get(BooleanKey.ApsUseSmb)
-        preferenceFragment.findPreference<SwitchPreference>(BooleanKey.MdiFullInsulinReqSuggestion.key)?.isVisible = smbEnabled
         preferenceFragment.findPreference<AdaptiveDoublePreference>(DoubleKey.MdiMaxBolusSuggestion.key)?.isVisible = smbEnabled
     }
 
@@ -969,7 +968,6 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // MDI: pen suggestion settings
             if (activePlugin.activePump.isMDI()) {
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.MdiMaxBolusSuggestion, dialogMessage = R.string.mdi_max_bolus_suggestion_summary, title = R.string.mdi_max_bolus_suggestion_title))
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiFullInsulinReqSuggestion, summary = R.string.mdi_full_insulin_req_summary, title = R.string.mdi_full_insulin_req_title))
             }
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {

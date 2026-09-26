@@ -206,7 +206,6 @@ open class OpenAPSSMBPlugin @Inject constructor(
         // MDI: SMB basal-minutes caps are meaningless for pen suggestions - show the dedicated cap instead
         if (activePlugin.activePump.isMDI()) {
             preferenceFragment.findPreference<AdaptiveDoublePreference>(DoubleKey.MdiMaxBolusSuggestion.key)?.isVisible = smbEnabled
-            preferenceFragment.findPreference<SwitchPreference>(BooleanKey.MdiFullInsulinReqSuggestion.key)?.isVisible = smbEnabled
         }
     }
 
@@ -628,7 +627,6 @@ open class OpenAPSSMBPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
             } else {
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.MdiMaxBolusSuggestion, dialogMessage = R.string.mdi_max_bolus_suggestion_summary, title = R.string.mdi_max_bolus_suggestion_title))
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiFullInsulinReqSuggestion, summary = R.string.mdi_full_insulin_req_summary, title = R.string.mdi_full_insulin_req_title))
             }
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseUam, summary = R.string.enable_uam_summary, title = R.string.enable_uam))
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))

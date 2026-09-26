@@ -130,6 +130,4 @@ enum class BooleanKey(
     ExportCsvLocalEnabled("export_csv_local_enabled", defaultValue = true),
     ExportCsvCloudEnabled("export_csv_cloud_enabled", defaultValue = false),
 
-    MdiFullInsulinReqSuggestion("mdi_full_insulin_req_suggestion", true),
-
 }

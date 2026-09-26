@@ -171,7 +171,6 @@ private val allowedKeys = """
     meal_min_fat_g
     meal_min_protein_g
     mdi_max_bolus_suggestion
-    mdi_full_insulin_req_suggestion
     show_cgm_button
     show_calibration_button
     show_notes_entry_dialogs

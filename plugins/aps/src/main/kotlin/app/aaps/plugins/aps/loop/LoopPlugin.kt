@@ -723,7 +723,7 @@ class LoopPlugin @Inject constructor(
             else 0.0
         // full insulinReq replaces the halved micro-bolus; smb > 0 keeps zeroed SMBs suppressed
         val fullInsulinReq =
-            if (preferences.get(BooleanKey.MdiFullInsulinReqSuggestion) && result.smb > 0)
+            if (result.smb > 0)
                 result.insulinReq
                     ?.takeIf { it > 0 }
                     ?.let { constraintChecker.applyBolusConstraints(ConstraintObject(it, aapsLogger)).value() }
