@@ -90,8 +90,6 @@ class InsulinDialog : DialogFragmentWithDate() {
     private var showPosition = false
     private var isMDI = false
 
-    private val BASAL_DOSE_REGEX = Regex("(?i)\\bLantus\\s*[:#]?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*U\\b")
-
     private val disposable = CompositeDisposable()
     private var _binding: DialogInsulinBinding? = null
 
@@ -274,9 +272,10 @@ class InsulinDialog : DialogFragmentWithDate() {
         val unitLabel = if (units == GlucoseUnit.MMOL) rh.gs(app.aaps.core.ui.R.string.mmol) else rh.gs(app.aaps.core.ui.R.string.mgdl)
         val recordOnlyChecked = binding.recordOnly.isChecked
         val eatingSoonChecked = binding.startEatingSoonTt.isChecked
-        val previousBasalDose =
-            if (recordBasalChecked) findLastBasalDose() ?: profileFunction.getProfile()?.baseBasalSum()
-            else null
+        val lastRecordedDose = if (recordBasalChecked) findLastBasalDose() else null
+        // no notes -> fall back to the profile's 24 h basal total (already rate-quantized by past rewrites)
+        val previousBasalDose = lastRecordedDose ?: profileFunction.getProfile()?.baseBasalSum()
+        val previousDoseFromProfile = lastRecordedDose == null && previousBasalDose != null
 
         if (insulinAfterConstraints > 0) {
             if (recordBasalChecked) {
@@ -285,12 +284,14 @@ class InsulinDialog : DialogFragmentWithDate() {
                         .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
                 )
                 previousBasalDose?.let { previousDose ->
-                    if (!basalMatchesProfile(insulinAfterConstraints, previousDose))
+                    // mirror the rewrite decision: profile-derived references compare against the rate-quantized dose
+                    val effectiveDose = if (previousDoseFromProfile) flatRateTotal(insulinAfterConstraints) else insulinAfterConstraints
+                    if (!basalMatchesProfile(effectiveDose, previousDose))
                         actions.add(
                             rh.gs(
                                 R.string.basal_insulin_profile_updated, insulinAfterConstraints, previousDose,
-                                insulinAfterConstraints,
-                                max(Round.roundTo(insulinAfterConstraints / 24.0, 0.01), 0.01)
+                                flatRateTotal(insulinAfterConstraints),
+                                flatRate(insulinAfterConstraints)
                             ).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor)
                         )
                 }
@@ -357,7 +358,7 @@ class InsulinDialog : DialogFragmentWithDate() {
                     }
                     if (insulinAfterConstraints > 0) {
                         if (recordBasalChecked) {
-                            recordBasalInsulin(insulinAfterConstraints, notes, time, previousBasalDose)
+                            recordBasalInsulin(insulinAfterConstraints, notes, time, previousBasalDose, previousDoseFromProfile)
                         } else {
                             val detailedBolusInfo = DetailedBolusInfo()
                             detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
@@ -401,9 +402,6 @@ class InsulinDialog : DialogFragmentWithDate() {
         return true
     }
 
-    private fun basalMatchesProfile(amount: Double, previousDose: Double): Boolean =
-        abs(amount - previousDose) <= max(1.0, previousDose * 0.1)
-
     private fun findLastBasalDose(): Double? =
         try {
             persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), false)
@@ -414,10 +412,7 @@ class InsulinDialog : DialogFragmentWithDate() {
             null
         }
 
-    private fun extractBasalDose(note: String?): Double? =
-        note?.let { BASAL_DOSE_REGEX.find(it)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull() }
-
-    private fun recordBasalInsulin(amount: Double, notes: String, time: Long, previousDose: Double?) {
+    private fun recordBasalInsulin(amount: Double, notes: String, time: Long, previousDose: Double?, previousDoseFromProfile: Boolean) {
         val doseText = decimalFormatter.toPumpSupportedBolus(amount, activePlugin.activePump.pumpDescription.bolusStep)
         val basalNotes = "Lantus " + doseText + "U" + if (notes.isNotEmpty()) " $notes" else ""
         disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
@@ -436,12 +431,14 @@ class InsulinDialog : DialogFragmentWithDate() {
                 ValueWithUnit.Insulin(amount)
             )
         ).subscribe()
-        updateBasalProfileIfNeeded(amount, previousDose)
+        updateBasalProfileIfNeeded(amount, previousDose, previousDoseFromProfile)
     }
 
-    private fun updateBasalProfileIfNeeded(amount: Double, previousDose: Double?) {
+    private fun updateBasalProfileIfNeeded(amount: Double, previousDose: Double?, previousDoseFromProfile: Boolean) {
         previousDose ?: return
-        if (basalMatchesProfile(amount, previousDose)) return
+        // profile-derived references are compared against the rate-quantized dose
+        val effectiveDose = if (previousDoseFromProfile) flatRateTotal(amount) else amount
+        if (basalMatchesProfile(effectiveDose, previousDose)) return
 
         val profileSource = activePlugin.activeProfileSource
         val profileStore = profileSource.profile ?: return
@@ -460,8 +457,8 @@ class InsulinDialog : DialogFragmentWithDate() {
             )
             return
         }
-        val flatRate = max(Round.roundTo(amount / 24.0, 0.01), 0.01)
-        singleProfile.basal = JSONArray().put(JSONObject().put("time", "00:00").put("timeAsSeconds", 0).put("value", flatRate))
+        val newFlatRate = flatRate(amount)
+        singleProfile.basal = JSONArray().put(JSONObject().put("time", "00:00").put("timeAsSeconds", 0).put("value", newFlatRate))
         profileSource.storeSettings(timestamp = dateUtil.now())
         val newStore = profileSource.profile ?: return
         if (profileFunction.createProfileSwitch(
@@ -480,7 +477,7 @@ class InsulinDialog : DialogFragmentWithDate() {
             rxBus.send(
                 EventNewNotification(
                     NotificationUserMessage(
-                        rh.gs(R.string.basal_insulin_profile_updated, amount, previousDose, amount, flatRate),
+                        rh.gs(R.string.basal_insulin_profile_updated, amount, previousDose, flatRateTotal(amount), newFlatRate),
                         Notification.NORMAL
                     )
                 )
@@ -501,5 +498,24 @@ class InsulinDialog : DialogFragmentWithDate() {
                 protectionCheck.queryProtection(activity, ProtectionCheck.Protection.BOLUS, { queryingProtection = false }, cancelFail, cancelFail)
             }
         }
+    }
+
+    companion object {
+
+        private val BASAL_DOSE_REGEX = Regex("(?i)\\bLantus\\s*[:#]?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*U\\b")
+
+        // any difference (beyond FP noise) triggers the profile rewrite
+        internal fun basalMatchesProfile(amount: Double, previousDose: Double): Boolean =
+            Round.isSame(amount, previousDose)
+
+        internal fun extractBasalDose(note: String?): Double? =
+            note?.let { BASAL_DOSE_REGEX.find(it)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull() }
+
+        // flat U/h rate the rewrite stores for a dose, and the 24 h total that rate represents
+        internal fun flatRate(amount: Double): Double =
+            max(Round.roundTo(amount / 24.0, 0.01), 0.01)
+
+        internal fun flatRateTotal(amount: Double): Double =
+            flatRate(amount) * 24.0
     }
 }

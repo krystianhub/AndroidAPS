@@ -25,7 +25,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 ### 3. Recording long-acting (basal) insulin — Lantus
 
 - The Insulin dialog has a **"Record basal insulin (MDI)"** checkbox: it records the Lantus dose as a Note therapy event (`Lantus 10.0U ...`) — no bolus record, so TDD/IOB are not inflated — and syncs it to Nightscout.
-- The recorded dose is compared against the **last recorded Lantus dose** (parsed from previous notes, 7-day lookback; falls back to the profile's basal total). If it differs by more than 1 U or 10 %, the local profile's basal is rewritten to a flat `dose / 24` U/h rate, a profile switch is activated, and a notification confirms the change.
+- The recorded dose is compared against the **last recorded Lantus dose** (parsed from previous notes, 7-day lookback; falls back to the profile's basal total). If it differs by any amount, the local profile's basal is rewritten to a flat `dose / 24` U/h rate, a profile switch is activated, and a notification confirms the change. When no notes exist, the comparison uses the dose rounded through the same flat-rate quantization, so an already-flat profile (e.g. total 7.92 U from a past rewrite) matches a pen dose of 8 U without a spurious rewrite.
 - This keeps the profile basal honest, which matters: TDD in MDI mode includes the *assumed* profile basal, so DynamicISF and TDD-based autosens stay accurate only if the profile matches the actual Lantus dose.
 
 ### 4. Overview status lights for MDI

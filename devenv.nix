@@ -9,4 +9,5 @@
 {
   languages.java.enable = true;
   languages.python.enable = true;
+  languages.kotlin.enable = true;
 }
