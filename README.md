@@ -14,6 +14,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 
 - The APS engine (recommendations, predictions, DynamicISF) now runs in MDI/virtual-pump mode instead of being blocked outright — closed-loop enactment remains blocked, since a pen cannot accept temp basals.
 - In Open Loop, APS suggestions that would normally be a temp basal or SMB are converted into an **actionable manual bolus suggestion**. For SMBs, the full positive correction request is used instead of the micro-bolus half; suggestions remain subject to insulin constraints, Max IOB, and the configured per-suggestion cap. They are rounded *down* to the pen's minimum step, throttled to at most one suggestion per 60 minutes, and delivered as a system notification + Overview notification. Basal reductions are not administrable with a pen and are dismissed instead.
+- The **"Carbs required" alert now also fires in Open Loop** (upstream only raises it in closed loop): a notification when the APS requests extra carbs with the hypo projected within 15 minutes. Same gates as closed loop (alert preference, "Ignore" buttons, 15-min quiet period after a treatment); auto-dismissed once carbs are no longer needed.
 - Zero-temp (ZT) prediction lines are hidden on the graph in MDI mode — a pen cannot execute a zero temp, so the line is meaningless.
 
 ### 2. Injection position tracking ("pos" feature)

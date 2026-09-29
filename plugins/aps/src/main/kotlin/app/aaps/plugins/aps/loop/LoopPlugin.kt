@@ -143,7 +143,7 @@ class LoopPlugin @Inject constructor(
     override var lastBgTriggeredRun: Long = 0
     private var carbsSuggestionsSuspendedUntil: Long = 0
     private var lastPenSuggestion: Long = 0
-    private var prevCarbsreq = 0
+    @VisibleForTesting internal var prevCarbsreq = 0
     override var lastRun: LastRun? = null
     override var closedLoopEnabled: Constraint<Boolean>? = null
 
@@ -663,9 +663,10 @@ class LoopPlugin @Inject constructor(
                 } else {
                     // OPEN_LOOP
                     if (allowNotification) {
-                        if (!pump.pumpDescription.isTempBasalCapable) {
+                        if (pump.isMDI()) {
                             // MDI mode: temp basal changes cannot be administered with a pen;
                             // suggest manual boluses rounded to the pen's minimum step instead
+                            presentCarbsRequiredAlert(resultAfterConstraints)
                             presentPenBolusSuggestion(resultAfterConstraints, profile)
                         } else if (resultAfterConstraints.isChangeRequested) {
                             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -696,6 +697,26 @@ class LoopPlugin @Inject constructor(
         carbsSuggestionsSuspendedUntil = System.currentTimeMillis() + durationMinutes * 60 * 1000
         aapsLogger.debug(LTag.CORE, "CarbSuggestion disabled until ${dateUtil.dateAndTimeAndSecondsString(carbsSuggestionsSuspendedUntil)}")
         dismissSuggestion()
+    }
+
+    /**
+     * MDI fork: surface the carbs-required alert in open loop too (upstream only alerts in
+     * closed loop, so pen users never got it). Sends the CARBS_REQUIRED notification when all
+     * suppressors are clear; dismisses it again once carbs are no longer needed.
+     */
+    @VisibleForTesting
+    internal fun presentCarbsRequiredAlert(result: APSResult) {
+        val alertAllowed = result.isCarbsRequired &&
+            carbsSuggestionsSuspendedUntil < System.currentTimeMillis() &&
+            !treatmentTimeThreshold(-15) &&
+            preferences.get(BooleanKey.AlertCarbsRequired) &&
+            result.carbsReqWithin in 1..CARBS_ALERT_WINDOW_MINUTES
+        if (alertAllowed) {
+            rxBus.send(EventNewNotification(Notification(Notification.CARBS_REQUIRED, result.carbsRequiredText, Notification.NORMAL)))
+        } else if (prevCarbsreq > 0) {
+            // carbs were required previously but are no longer needed -> dismiss
+            rxBus.send(EventDismissNotification(Notification.CARBS_REQUIRED))
+        }
     }
 
     /**
@@ -796,7 +817,7 @@ class LoopPlugin @Inject constructor(
     override fun acceptChangeRequest() {
         val profile = profileFunction.getProfile() ?: return
         // Pen users (MDI) cannot enact temp basals; just dismiss the suggestion
-        if (!activePlugin.activePump.pumpDescription.isTempBasalCapable) {
+        if (activePlugin.activePump.isMDI()) {
             rxBus.send(EventDismissNotification(Notification.PEN_BOLUS_SUGGESTION))
             return
         }
@@ -1115,6 +1136,9 @@ class LoopPlugin @Inject constructor(
     companion object {
 
         private const val CHANNEL_ID = "AAPS-OpenLoop"
+
+        /** MDI carbs alert: only fire when the hypo is projected within this many minutes. */
+        internal const val CARBS_ALERT_WINDOW_MINUTES = 15
 
         /**
          * Pen suggestion size: fullInsulinReq ?: (smb + positive temp extra), capped by

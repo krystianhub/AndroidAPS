@@ -3,29 +3,46 @@ package app.aaps.plugins.aps.loop
 import android.app.NotificationManager
 import android.content.Context
 import androidx.preference.PreferenceManager
+import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.interfaces.aps.APSResult
+import app.aaps.core.interfaces.aps.AutosensResult
+import app.aaps.core.interfaces.aps.CurrentTemp
+import app.aaps.core.interfaces.aps.GlucoseStatus
+import app.aaps.core.interfaces.aps.IobTotal
+import app.aaps.core.interfaces.aps.MealData
+import app.aaps.core.interfaces.aps.OapsProfile
+import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
+import app.aaps.core.interfaces.aps.Predictions
+import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.pump.PumpStatusProvider
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.receivers.ReceiverStatusStore
+import app.aaps.core.interfaces.rx.events.EventDismissNotification
+import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.HardLimits
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.core.objects.constraints.ConstraintObject
+import app.aaps.core.data.model.GV
 import app.aaps.pump.virtual.VirtualPumpPlugin
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
 import io.reactivex.rxjava3.core.Single
+import org.json.JSONObject
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyLong
@@ -37,6 +54,8 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import android.text.SpannableString
+import android.text.Spanned
 
 class LoopPluginTest : TestBaseWithProfile() {
 
@@ -176,6 +195,150 @@ class LoopPluginTest : TestBaseWithProfile() {
         assertThat(LoopPlugin.penBolusSuggestion(smb = 0.73, tempExtraUnits = -0.5, fullInsulinReq = null, maxSuggestion = 4.0, bolusStep = 0.5))
             .isWithin(0.001).of(0.5)
     }
+
+    // region MDI carbs-required alert (open loop)
+
+    /** Collects notification events sent on the bus while [block] runs. */
+    private fun captureNotificationEvents(block: () -> Unit): Pair<MutableList<EventNewNotification>, MutableList<EventDismissNotification>> {
+        val newEvents = mutableListOf<EventNewNotification>()
+        val dismissEvents = mutableListOf<EventDismissNotification>()
+        val subs = listOf(
+            rxBus.toObservable(EventNewNotification::class.java).subscribe { newEvents.add(it) },
+            rxBus.toObservable(EventDismissNotification::class.java).subscribe { dismissEvents.add(it) }
+        )
+        block()
+        subs.forEach { it.dispose() }
+        return Pair(newEvents, dismissEvents)
+    }
+
+    private fun carbsResult(carbsReq: Int, carbsReqWithin: Int): APSResultStub = APSResultStub(carbsReq, carbsReqWithin)
+
+    /** Minimal APSResult carrying only what presentCarbsRequiredAlert reads. */
+    private class APSResultStub(carbsReq: Int, carbsReqWithin: Int) : APSResult {
+        override var carbsReq: Int = carbsReq
+        override var carbsReqWithin: Int = carbsReqWithin
+        override val carbsRequiredText: String get() = "Additional carbs required within $carbsReqWithin min"
+        // everything else unused by the alert path
+        override var date: Long = 0
+        override var reason: String = ""
+        override var rate = -1.0
+        override var percent = 0
+        override var usePercent = false
+        override var duration = -1
+        override var isTempBasalRequested = false
+        override var hasPredictions = false
+        override var smb = 0.0
+        override var insulinReq: Double? = null
+        override var deliverAt: Long = 0
+        override var targetBG = 0.0
+        override var variableSens: Double? = null
+        override var isfMgdlForCarbs: Double? = null
+        override var scriptDebug: List<String>? = null
+        override var inputConstraints: Constraint<Double>? = null
+        override var rateConstraint: Constraint<Double>? = null
+        override var percentConstraint: Constraint<Int>? = null
+        override var smbConstraint: Constraint<Double>? = null
+        override var algorithm: APSResult.Algorithm = APSResult.Algorithm.UNKNOWN
+        override var autosensResult: AutosensResult? = null
+        override var iobData: Array<IobTotal>? = null
+        override var glucoseStatus: GlucoseStatus? = null
+        override var currentTemp: CurrentTemp? = null
+        override var oapsProfile: OapsProfile? = null
+        override var oapsProfileAutoIsf: OapsProfileAutoIsf? = null
+        override var mealData: MealData? = null
+        override val isChangeRequested: Boolean get() = false
+        override fun resultAsString(): String = ""
+        override fun resultAsSpanned(): Spanned = SpannableString("")
+        override fun with(result: RT): APSResult = this
+        override fun newAndClone(): APSResult = this
+        override fun json(): JSONObject? = null
+        override fun predictions(): Predictions? = null
+        override fun rawData(): Any = RT(runningDynamicIsf = false)
+        override val predictionsAsGv: MutableList<GV> get() = mutableListOf()
+        override val latestPredictionsTime: Long get() = 0
+    }
+
+    private fun setupAlertDefaults() {
+        whenever(preferences.get(BooleanKey.AlertCarbsRequired)).thenReturn(true)
+        whenever(persistenceLayer.getNewestBolus()).thenReturn(null)
+        whenever(persistenceLayer.getNewestCarbs()).thenReturn(null)
+    }
+
+    @Test
+    fun `carbs alert sends notification when carbs required within window`() {
+        setupAlertDefaults()
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 20, carbsReqWithin = 10))
+        }
+        assertThat(newEvents).hasSize(1)
+        assertThat(newEvents[0].notification.id).isEqualTo(Notification.CARBS_REQUIRED)
+        assertThat(dismissEvents).isEmpty()
+    }
+
+    @Test
+    fun `carbs alert fires at the 15 minute window boundary`() {
+        setupAlertDefaults()
+        val (newEvents, _) = captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 20, carbsReqWithin = LoopPlugin.CARBS_ALERT_WINDOW_MINUTES))
+        }
+        assertThat(newEvents).hasSize(1)
+    }
+
+    @Test
+    fun `carbs alert suppressed when hypo projected beyond 15 minutes`() {
+        setupAlertDefaults()
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 20, carbsReqWithin = LoopPlugin.CARBS_ALERT_WINDOW_MINUTES + 1))
+        }
+        assertThat(newEvents).isEmpty()
+        assertThat(dismissEvents).isEmpty() // nothing shown before -> nothing to dismiss
+    }
+
+    @Test
+    fun `carbs alert suppressed when alert preference is off`() {
+        setupAlertDefaults()
+        whenever(preferences.get(BooleanKey.AlertCarbsRequired)).thenReturn(false)
+        val (newEvents, _) = captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 20, carbsReqWithin = 10))
+        }
+        assertThat(newEvents).isEmpty()
+    }
+
+    @Test
+    fun `carbs alert suppressed after recent bolus or carbs`() {
+        setupAlertDefaults()
+        // treatmentTimeThreshold compares against System.currentTimeMillis(), not dateUtil.now()
+        whenever(persistenceLayer.getNewestCarbs()).thenReturn(CA(timestamp = System.currentTimeMillis(), duration = 0, amount = 10.0))
+        val (newEvents, _) = captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 20, carbsReqWithin = 10))
+        }
+        assertThat(newEvents).isEmpty()
+    }
+
+    @Test
+    fun `carbs alert dismissed when carbs no longer required and previously shown`() {
+        setupAlertDefaults()
+        loopPlugin.prevCarbsreq = 20 // simulate previous run having requested carbs
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 0, carbsReqWithin = 0))
+        }
+        assertThat(newEvents).isEmpty()
+        assertThat(dismissEvents).hasSize(1)
+        assertThat(dismissEvents[0].id).isEqualTo(Notification.CARBS_REQUIRED)
+    }
+
+    @Test
+    fun `carbs alert not dismissed when never previously shown`() {
+        setupAlertDefaults()
+        loopPlugin.prevCarbsreq = 0
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 0, carbsReqWithin = 0))
+        }
+        assertThat(newEvents).isEmpty()
+        assertThat(dismissEvents).isEmpty()
+    }
+
+// endregion
 
     @Test
     fun `minutesToEndOfSuspend returns 0 when loop is not suspended`() {
