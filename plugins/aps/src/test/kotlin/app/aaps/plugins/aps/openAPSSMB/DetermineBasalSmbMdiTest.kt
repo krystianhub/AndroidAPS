@@ -24,7 +24,10 @@ class DetermineBasalSmbMdiTest : TestBaseWithProfile() {
         determineBasalSMB = DetermineBasalSMB(profileUtil, fabricPrivacy)
     }
 
-    private fun profile(basalAdjustmentAllowed: Boolean) =
+    private fun profile(
+        basalAdjustmentAllowed: Boolean,
+        carbsReqThreshold: Int = 20,
+    ) =
         OapsProfile(
             dia = 5.0,
             min_5m_carbimpact = 3.0,
@@ -60,7 +63,7 @@ class DetermineBasalSmbMdiTest : TestBaseWithProfile() {
             maxSMBBasalMinutes = 30,
             maxUAMSMBBasalMinutes = 30,
             bolus_increment = 0.5,
-            carbsReqThreshold = 20,
+            carbsReqThreshold = carbsReqThreshold,
             current_basal = 1.0,
             temptargetSet = false,
             autosens_max = 1.2,
@@ -72,17 +75,19 @@ class DetermineBasalSmbMdiTest : TestBaseWithProfile() {
             basal_adjustment_allowed = basalAdjustmentAllowed,
         )
 
-    private fun iobArray(): Array<IobTotal> {
+    private fun iobArray(iob: Double = 0.0, activity: Double = 0.0, ztActivity: Double = 0.0): Array<IobTotal> {
         val now = dateUtil.now()
         return Array(48) { i ->
             val t = now + i * 5 * 60000L
-            IobTotal(time = t, iob = 0.0, activity = 0.0, iobWithZeroTemp = IobTotal(time = t))
+            IobTotal(time = t, iob = iob, activity = activity, iobWithZeroTemp = IobTotal(time = t, activity = ztActivity))
         }
     }
 
     private fun run(
         basalAdjustmentAllowed: Boolean,
         ratio: Double,
+        activity: Double = 0.0,
+        ztActivity: Double = 0.0,
     ) = determineBasalSMB.determine_basal(
         glucose_status =
             GlucoseStatusSMB(
@@ -94,7 +99,7 @@ class DetermineBasalSmbMdiTest : TestBaseWithProfile() {
                 date = dateUtil.now(),
             ),
         currenttemp = CurrentTemp(duration = 0, rate = 0.0, minutesrunning = null),
-        iob_data_array = iobArray(),
+        iob_data_array = iobArray(activity = activity, ztActivity = ztActivity),
         profile = profile(basalAdjustmentAllowed),
         autosens_data = AutosensResult(ratio = ratio),
         meal_data = MealData(),
@@ -130,5 +135,54 @@ class DetermineBasalSmbMdiTest : TestBaseWithProfile() {
         assertThat(mdi.rate).isEqualTo(pump.rate)
         assertThat(mdi.targetBG).isEqualTo(pump.targetBG)
         assertThat(mdi.insulinReq).isEqualTo(pump.insulinReq)
+    }
+
+    @Test
+    fun `mdi carbsReq does not credit a zero temp`() {
+        // bg 80 with 0.5 U IOB: naive_eventualBG 55, undershoot 15 mg/dL; predictions cross the
+        // 70 threshold at 15 min -> pump credits 1.0 U/h * 50 mg/dL/U * 15 min / 60 = 12.5 mg/dL
+        // of hypothetical basal suspension, MDI credits nothing (basal cannot be suspended)
+        val falling = GlucoseStatusSMB(glucose = 80.0, noise = 0.0, delta = -5.0, shortAvgDelta = -5.0, longAvgDelta = -5.0, date = dateUtil.now())
+        val pump = determineBasalSMB.determine_basal(
+            glucose_status = falling,
+            currenttemp = CurrentTemp(duration = 0, rate = 0.0, minutesrunning = null),
+            iob_data_array = iobArray(iob = 0.5, activity = 0.02),
+            profile = profile(basalAdjustmentAllowed = true, carbsReqThreshold = 1),
+            autosens_data = AutosensResult(ratio = 1.0),
+            meal_data = MealData(),
+            microBolusAllowed = false,
+            currentTime = dateUtil.now(),
+            flatBGsDetected = false,
+            dynIsfMode = false
+        )
+        val mdi = determineBasalSMB.determine_basal(
+            glucose_status = falling,
+            currenttemp = CurrentTemp(duration = 0, rate = 0.0, minutesrunning = null),
+            iob_data_array = iobArray(iob = 0.5, activity = 0.02),
+            profile = profile(basalAdjustmentAllowed = false, carbsReqThreshold = 1),
+            autosens_data = AutosensResult(ratio = 1.0),
+            meal_data = MealData(),
+            microBolusAllowed = false,
+            currentTime = dateUtil.now(),
+            flatBGsDetected = false,
+            dynIsfMode = false
+        )
+        // pump: (15 - 12.5) / 5 = 0.5 g -> 1 g; mdi: 15 / 5 = 3 g
+        assertThat(pump.carbsReq).isEqualTo(1)
+        assertThat(mdi.carbsReq).isEqualTo(3)
+    }
+
+    @Test
+    fun `mdi ZT prediction follows plain activity, not the zero-temp counterfactual`() {
+        // plain activity 0.02 (bolus+basal), zero-temp activity 0.005 (bolus only, basal suspended):
+        // pump ZT curve falls at the suspended rate (139 after 5 min), MDI at the full rate (135)
+        val result = run(basalAdjustmentAllowed = false, ratio = 1.0, activity = 0.02, ztActivity = 0.005)
+        val mdiZt = result.predBGs?.ZT!!
+        val pump = run(basalAdjustmentAllowed = true, ratio = 1.0, activity = 0.02, ztActivity = 0.005)
+        val pumpZt = pump.predBGs?.ZT!!
+        // MDI: -0.02 * 50 mg/dL/U * 5 min = -5 mg/dL per 5 min from 140
+        assertThat(mdiZt[1]).isEqualTo(135)
+        // pump: -0.005 * 50 * 5 = -1.25 mg/dL per 5 min from 140
+        assertThat(pumpZt[1]).isEqualTo(139)
     }
 }

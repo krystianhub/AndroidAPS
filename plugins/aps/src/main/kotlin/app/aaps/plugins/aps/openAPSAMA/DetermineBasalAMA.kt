@@ -114,7 +114,8 @@ class DetermineBasalAMA @Inject constructor(
             consoleLog = consoleLog,
             consoleError = consoleError
         )
-        val basal = round_basal(profile.current_basal * autosens_data.ratio)
+        // MDI: basal is fixed by the long-acting insulin dose - the ratio must not scale it
+        val basal = round_basal(profile.current_basal * if (profile.basal_adjustment_allowed) autosens_data.ratio else 1.0)
         if (basal != profile.current_basal) {
             consoleError.add("Adjusting basal from ${profile.current_basal} to $basal")
         }

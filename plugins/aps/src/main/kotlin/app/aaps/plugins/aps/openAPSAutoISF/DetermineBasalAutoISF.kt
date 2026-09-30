@@ -250,10 +250,14 @@ class DetermineBasalAutoISF @Inject constructor(
         if (iob_threshold_percent != 100) {
             iobTH_reduction_ratio = profile_percentage / 100.0 * exercise_ratio     // later: * activityRatio;
         }
-        basal = profile.current_basal * sensitivityRatio
+        // MDI: basal is fixed by the long-acting insulin dose - the sensitivity ratio must not
+        // scale it (it keeps adjusting targets)
+        basal = profile.current_basal * if (profile.basal_adjustment_allowed) sensitivityRatio else 1.0
         basal = round_basal(basal)
         if (basal != profile_current_basal)
             consoleError.add("Adjusting basal from $profile_current_basal to $basal;")
+        else if (!profile.basal_adjustment_allowed && sensitivityRatio != 1.0)
+            consoleError.add("Basal fixed at $basal U/hr (MDI): ratio applies to targets only;")
         else
             consoleError.add("Basal unchanged: $basal;")
 
@@ -556,7 +560,9 @@ class DetermineBasalAutoISF @Inject constructor(
             val predBGI: Double = round((-iobTick.activity * sens * 5), 2)
             val IOBpredBGI: Double = predBGI
             iobTick.iobWithZeroTemp ?: error("iobTick.iobWithZeroTemp missing")
-            val predZTBGI = round((-iobTick.iobWithZeroTemp!!.activity * sens * 5), 2)
+            // MDI: the ZT curve must not credit a basal suspension a pen cannot perform
+            val ztActivity = if (profile.basal_adjustment_allowed) iobTick.iobWithZeroTemp!!.activity else iobTick.activity
+            val predZTBGI = round((-ztActivity * sens * 5), 2)
             val predUAMBGI = predBGI
             // for IOBpredBGs, predicted deviation impact drops linearly from current deviation down to zero
             // over 60 minutes (data points every 5m)
@@ -855,7 +861,12 @@ class DetermineBasalAutoISF @Inject constructor(
         // always include at least 30m worth of zero temp (carbs to 80, low temp up to target)
         val zeroTempDuration = minutesAboveThreshold
         // BG undershoot, minus effect of zero temps until hitting min_bg, converted to grams, minus COB
-        val zeroTempEffectDouble = profile.current_basal * sens * zeroTempDuration / 60
+        // MDI: basal cannot be suspended - without the credit the carbs alert fires earlier (safe direction)
+        val zeroTempEffectDouble =
+            if (profile.basal_adjustment_allowed) profile.current_basal * sens * zeroTempDuration / 60
+            else 0.0
+        if (!profile.basal_adjustment_allowed)
+            consoleError.add("MDI: no zero-temp credit in carbsReq (basal cannot be suspended)")
         // don't count the last 25% of COB against carbsReq
         val COBforCarbsReq = max(0.0, meal_data.mealCOB - 0.25 * meal_data.carbs)
         val carbsReq = round(((bgUndershoot - zeroTempEffectDouble) / csf - COBforCarbsReq))

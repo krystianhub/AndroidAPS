@@ -540,9 +540,12 @@ class DetermineBasalSMB @Inject constructor(
             // try to find where is crashing https://console.firebase.google.com/u/0/project/androidaps-c34f8/crashlytics/app/android:info.nightscout.androidaps/issues/950cdbaf63d545afe6d680281bb141e5?versions=3.3.0-dev-d%20(1500)&time=last-thirty-days&types=crash&sessionEventKey=673BF7DD032300013D4704707A053273_2017608123846397475
             if (iobTick.iobWithZeroTemp!!.activity.isNaN() || sens.isNaN())
                 fabricPrivacy.logCustom("iobTick.iobWithZeroTemp!!.activity=${iobTick.iobWithZeroTemp!!.activity} sens=$sens")
+            // MDI: the ZT curve must not credit a basal suspension a pen cannot perform -
+            // use the plain IOB activity (basal continues unchanged) instead of iobWithZeroTemp
+            val ztActivity = if (profile.basal_adjustment_allowed) iobTick.iobWithZeroTemp!!.activity else iobTick.activity
             val predZTBGI =
-                if (dynIsfMode) round((-iobTick.iobWithZeroTemp!!.activity * (1800 / (profile.TDD * (ln((max(ZTpredBGs[ZTpredBGs.size - 1], 39.0) / profile.insulinDivisor) + 1)))) * 5), 2)
-                else round((-iobTick.iobWithZeroTemp!!.activity * sens * 5), 2)
+                if (dynIsfMode) round((-ztActivity * (1800 / (profile.TDD * (ln((max(ZTpredBGs[ZTpredBGs.size - 1], 39.0) / profile.insulinDivisor) + 1)))) * 5), 2)
+                else round((-ztActivity * sens * 5), 2)
             val predUAMBGI =
                 if (dynIsfMode) round((-iobTick.activity * (1800 / (profile.TDD * (ln((max(UAMpredBGs[UAMpredBGs.size - 1], 39.0) / profile.insulinDivisor) + 1)))) * 5), 2)
                 else predBGI
@@ -866,7 +869,12 @@ class DetermineBasalSMB @Inject constructor(
         // always include at least 30m worth of zero temp (carbs to 80, low temp up to target)
         val zeroTempDuration = minutesAboveThreshold
         // BG undershoot, minus effect of zero temps until hitting min_bg, converted to grams, minus COB
-        val zeroTempEffectDouble = profile.current_basal * sens * zeroTempDuration / 60
+        // MDI: basal cannot be suspended - without the credit the carbs alert fires earlier (safe direction)
+        val zeroTempEffectDouble =
+            if (profile.basal_adjustment_allowed) profile.current_basal * sens * zeroTempDuration / 60
+            else 0.0
+        if (!profile.basal_adjustment_allowed)
+            consoleError.add("MDI: no zero-temp credit in carbsReq (basal cannot be suspended)")
         // don't count the last 25% of COB against carbsReq
         val COBforCarbsReq = max(0.0, meal_data.mealCOB - 0.25 * meal_data.carbs)
         val carbsReq = round(((bgUndershoot - zeroTempEffectDouble) / csf - COBforCarbsReq))

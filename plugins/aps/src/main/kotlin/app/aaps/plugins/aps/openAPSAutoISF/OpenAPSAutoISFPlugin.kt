@@ -385,7 +385,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             smb_max_range_extension = smbMaxRangeExtension,
             enableSMB_EvenOn_OddOff_always = enableSMB_EvenOn_OddOff_always,
             iob_threshold_percent = iobThresholdPercent,
-            profile_percentage = profile_percentage
+            profile_percentage = profile_percentage,
+            basal_adjustment_allowed = !pump.isMDI()
         )
         //done calculate exercise ratio
         var exerciseRatio = 1.0

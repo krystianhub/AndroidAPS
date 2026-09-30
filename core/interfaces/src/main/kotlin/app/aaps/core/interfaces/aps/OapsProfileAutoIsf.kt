@@ -63,5 +63,7 @@ data class OapsProfileAutoIsf(
     var smb_max_range_extension: Double,
     var enableSMB_EvenOn_OddOff_always: Boolean,
     var iob_threshold_percent: Int,
-    var profile_percentage: Int
+    var profile_percentage: Int,
+    // MDI: basal is fixed by the long-acting injection - sensitivity ratios must not scale it
+    var basal_adjustment_allowed: Boolean = true
 )
