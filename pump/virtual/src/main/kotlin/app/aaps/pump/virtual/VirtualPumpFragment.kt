@@ -131,16 +131,24 @@ class VirtualPumpFragment : DaggerFragment() {
 
     private fun PumpType.getFullDescription(i18nTemplate: String, hasExtendedBasals: Boolean, rh: ResourceHelper): String {
         val unit = if (pumpTempBasalType() == PumpTempBasalType.Percent) "%" else ""
-        val eb = extendedBolusSettings() ?: return "INVALID"
-        val tbr = tbrSettings() ?: return "INVALID"
+        // MDI (and USER) define no temp basal / extended bolus settings at all - show that
+        // instead of rendering the whole description as INVALID
+        val notAvailable = "-"
+        val eb = extendedBolusSettings()
+        val tbr = tbrSettings()
         val extendedNote = if (hasExtendedBasals) rh.gs(R.string.def_extended_note) else ""
         return String.format(
             i18nTemplate,
             getStep(bolusSize().toString(), specialBolusSize()),
-            eb.step, eb.durationStep, eb.maxDuration / 60,
+            eb?.step?.toString() ?: notAvailable,
+            eb?.durationStep?.toString() ?: notAvailable,
+            eb?.maxDuration?.let { (it / 60).toString() } ?: notAvailable,
             getStep(baseBasalRange(), baseBasalSpecialSteps()),
-            tbr.minDose.toString() + unit + "-" + tbr.maxDose + unit, tbr.step.toString() + unit,
-            tbr.durationStep, tbr.maxDuration / 60, extendedNote
+            tbr?.let { it.minDose.toString() + unit + "-" + it.maxDose + unit } ?: notAvailable,
+            tbr?.let { it.step.toString() + unit } ?: notAvailable,
+            tbr?.durationStep?.toString() ?: notAvailable,
+            tbr?.maxDuration?.let { (it / 60).toString() } ?: notAvailable,
+            extendedNote
         )
     }
 }

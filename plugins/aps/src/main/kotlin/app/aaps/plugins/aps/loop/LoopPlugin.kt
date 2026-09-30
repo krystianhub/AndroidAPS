@@ -181,8 +181,9 @@ class LoopPlugin @Inject constructor(
 
     override fun specialEnableCondition(): Boolean {
         // Allow the loop plugin in MDI mode (virtual pump): open-loop APS recommendations,
-        // predictions and dynISF work without temp basals. Closed-loop enactment remains
-        // blocked because the pump cannot accept temp basals.
+        // predictions and dynISF work without temp basals. Closed-loop enactment is
+        // disabled by SafetyPlugin.isClosedLoopAllowed() and by allowedNextModes(),
+        // because the pump cannot accept temp basals.
         return true
     }
 
@@ -227,6 +228,16 @@ class LoopPlugin @Inject constructor(
         }
         if (constraintChecker.isClosedLoopAllowed().value().not()) {
             modes.remove(RM.Mode.CLOSED_LOOP)
+        }
+        // MDI: nothing can enact a temp basal or a pump bolus. Drop closed loop and LGS
+        // (both enact temp basals), plus "disconnect pump" and "superbolus" — both are
+        // implemented as a 0 % temp basal, and there is no pump to disconnect.
+        // Only open loop / disabled / suspend / resume remain.
+        if (activePlugin.activePump.isMDI()) {
+            modes.remove(RM.Mode.CLOSED_LOOP)
+            modes.remove(RM.Mode.CLOSED_LOOP_LGS)
+            modes.remove(RM.Mode.DISCONNECTED_PUMP)
+            modes.remove(RM.Mode.SUPER_BOLUS)
         }
         return modes
     }
@@ -375,6 +386,13 @@ class LoopPlugin @Inject constructor(
             action = Action.LGS_LOOP_MODE
             newMode = RM.Mode.CLOSED_LOOP_LGS
             reasons = lgsModeForced.getReasons()
+        }
+        // MDI: LGS enacts temp basals just like closed loop, so it is not selectable.
+        // Downgrade an active LGS mode to open loop the same way closed loop is downgraded.
+        else if (runningMode.mode == RM.Mode.CLOSED_LOOP_LGS && activePlugin.activePump.isMDI()) {
+            action = Action.OPEN_LOOP_MODE
+            newMode = RM.Mode.OPEN_LOOP
+            reasons = closedLoopAllowed.getReasons()
         }
 
         // Perform change if needed
@@ -733,22 +751,34 @@ class LoopPlugin @Inject constructor(
      * Uses the built-in Notification mechanism (EventNewNotification -> NotificationStore) so the
      * suggestion is raised as a system notification AND displayed in the Overview main screen's
      * notifications list.
+     *
+     * Sizing uses the engine's own [APSResult.insulinReq] rather than the requested temp rate:
+     * the rate is clamped by the pump-oriented U/h caps (ApsMaxBasal & co), which for a pen-unit
+     * quantity reduced every suggestion to 0. U/h caps must never size a pen bolus.
      */
-    private fun presentPenBolusSuggestion(result: APSResult, profile: Profile) {
+    @VisibleForTesting
+    internal fun presentPenBolusSuggestion(result: APSResult, profile: Profile) {
         val pump = activePlugin.activePump
         val bolusStep = pump.pumpDescription.bolusStep
+        // The engine withheld insulin because a low is projected - never suggest more on top of it.
+        // In MDI this is the only low guard there is: SMB is structurally disabled in open loop, so
+        // the engine's own `enableSMB && minGuardBG < threshold` suppression never runs.
+        if (result.predictedLow) {
+            rxBus.send(EventDismissNotification(Notification.PEN_BOLUS_SUGGESTION))
+            return
+        }
         val tempExtraUnits =
             if (result.isTempBasalRequested)
                 // the APS expresses basal corrections as a 30m temp: extra units = (rate - basal) * 0.5h
                 (result.rate - profile.getBasal()) * T.mins(30).msecs() / T.hours(1).msecs()
             else 0.0
-        // full insulinReq replaces the halved micro-bolus; smb > 0 keeps zeroed SMBs suppressed
+        // full insulinReq replaces the halved micro-bolus. Deliberately NOT gated on smb > 0:
+        // SMB is always 0 in MDI (open loop), so that gate discarded insulinReq entirely and
+        // left only the U/h-clamped tempExtraUnits path.
         val fullInsulinReq =
-            if (result.smb > 0)
-                result.insulinReq
-                    ?.takeIf { it > 0 }
-                    ?.let { constraintChecker.applyBolusConstraints(ConstraintObject(it, aapsLogger)).value() }
-            else null
+            result.insulinReq
+                ?.takeIf { it > 0 }
+                ?.let { constraintChecker.applyBolusConstraints(ConstraintObject(it, aapsLogger)).value() }
         val suggestedUnits = penBolusSuggestion(
             smb = result.smb,
             tempExtraUnits = tempExtraUnits,
@@ -1000,6 +1030,10 @@ class LoopPlugin @Inject constructor(
             listValues = listValues
         ).blockingGet()
         if (config.APS) {
+            // MDI: basal is a fixed once-daily Lantus injection and there is no pump to
+            // disconnect. Writing a 0 % temp basal would tell IOB/COB/autosens/TDD that
+            // basal was suspended when it was not. Keep the running mode record only.
+            if (pump.isMDI()) return
             if (pump.pumpDescription.tempBasalStyle == PumpDescription.ABSOLUTE) {
                 commandQueue.tempBasalAbsolute(0.0, durationInMinutes, true, profile, PumpSync.TemporaryBasalType.EMULATED_PUMP_SUSPEND, object : Callback() {
                     override fun run() {
@@ -1042,7 +1076,7 @@ class LoopPlugin @Inject constructor(
             note = note,
             listValues = listValues
         ).blockingGet()
-        if (config.APS)
+        if (config.APS && !activePlugin.activePump.isMDI())
             commandQueue.cancelTempBasal(enforceNew = false, autoForced = autoForced, callback = object : Callback() {
                 override fun run() {
                     if (!result.success) {

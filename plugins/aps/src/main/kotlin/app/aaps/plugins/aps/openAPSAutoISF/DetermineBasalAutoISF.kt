@@ -838,6 +838,10 @@ class DetermineBasalAutoISF @Inject constructor(
             }
         }
 
+        // Expose the projected-low signal unconditionally: the enableSMB gate below is dead in MDI
+        // (SMB is structurally disabled in open loop), so without this the pen suggestion would
+        // have no low guard at all. predictedLow = never suggest insulin on top of it.
+        rT.predictedLow = minGuardBG < threshold
         if (enableSMB && minGuardBG < threshold) {
             consoleError.add("minGuardBG ${convert_bg(minGuardBG)} projected below ${convert_bg(threshold)} - disabling SMB")
             //rT.reason += "minGuardBG "+minGuardBG+"<"+threshold+": SMB disabled; ";

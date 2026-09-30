@@ -185,4 +185,32 @@ class DetermineBasalSmbMdiTest : TestBaseWithProfile() {
         // pump: -0.005 * 50 * 5 = -1.25 mg/dL per 5 min from 140
         assertThat(pumpZt[1]).isEqualTo(139)
     }
+
+    @Test
+    fun `predictedLow is false when no low is projected`() {
+        val mdi = run(basalAdjustmentAllowed = false, ratio = 1.0)
+        assertThat(mdi.predictedLow).isFalse()
+    }
+
+    @Test
+    fun `mdi exposes predictedLow when a low is projected`() {
+        // SMB is structurally disabled in MDI (open loop) -> microBolusAllowed is false -> the
+        // engine's own `enableSMB && minGuardBG < threshold` suppression never runs. The flag
+        // must still be set unconditionally so LoopPlugin.presentPenBolusSuggestion can bail out;
+        // without it the pen suggestion has no low guard at all.
+        val falling = GlucoseStatusSMB(glucose = 80.0, noise = 0.0, delta = -5.0, shortAvgDelta = -5.0, longAvgDelta = -5.0, date = dateUtil.now())
+        val mdi = determineBasalSMB.determine_basal(
+            glucose_status = falling,
+            currenttemp = CurrentTemp(duration = 0, rate = 0.0, minutesrunning = null),
+            iob_data_array = iobArray(iob = 0.5, activity = 0.02),
+            profile = profile(basalAdjustmentAllowed = false, carbsReqThreshold = 1),
+            autosens_data = AutosensResult(ratio = 1.0),
+            meal_data = MealData(),
+            microBolusAllowed = false,
+            currentTime = dateUtil.now(),
+            flatBGsDetected = false,
+            dynIsfMode = false
+        )
+        assertThat(mdi.predictedLow).isTrue()
+    }
 }

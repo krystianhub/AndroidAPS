@@ -70,8 +70,8 @@ class SafetyPlugin @Inject constructor(
      */
     override fun isLoopInvocationAllowed(value: Constraint<Boolean>): Constraint<Boolean> {
         // Loop invocation (APS computation) is allowed without temp basals (e.g. MDI mode):
-        // recommendations/predictions are computed, but closed-loop enactment stays blocked
-        // because the pump cannot accept temp basals.
+        // recommendations/predictions are computed, but closed-loop enactment is refused
+        // by isClosedLoopAllowed() below when the pump cannot accept temp basals.
         return value
     }
 
@@ -85,6 +85,13 @@ class SafetyPlugin @Inject constructor(
         val pump = activePlugin.activePump
         if (!pump.isFakingTempsByExtendedBoluses && persistenceLayer.getExtendedBolusActiveAt(dateUtil.now()) != null) {
             value.set(false, rh.gs(R.string.closed_loop_disabled_with_eb), this)
+        }
+        // MDI: insulin is delivered by pen and basal is a fixed once-daily Lantus injection.
+        // Nothing can enact a temp basal or a pump bolus, so closed loop — and LGS, which
+        // also enacts temp basals — must stay disabled. APS recommendations and pen
+        // suggestions are still computed in open loop.
+        if (pump.isMDI()) {
+            value.set(false, rh.gs(R.string.closed_loop_disabled_mdi), this)
         }
         return value
     }
@@ -105,15 +112,21 @@ class SafetyPlugin @Inject constructor(
         absoluteRate.setIfGreater(0.0, rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, 0.0, rh.gs(app.aaps.core.ui.R.string.itmustbepositivevalue)), this)
         absoluteRate.setIfSmaller(hardLimits.maxBasal(), rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, hardLimits.maxBasal(), rh.gs(R.string.hardlimit)), this)
         val pump = activePlugin.activePump
-        // check for pump max
-        if (pump.pumpDescription.tempBasalStyle == PumpDescription.ABSOLUTE) {
-            val pumpLimit = pump.pumpDescription.pumpType.tbrSettings()?.maxDose ?: 0.0
-            absoluteRate.setIfSmaller(pumpLimit, rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, pumpLimit, rh.gs(app.aaps.core.ui.R.string.pumplimit)), this)
-        }
+        // Pump specific temp basal limits and step rounding only apply to pumps that can actually
+        // run a temp basal. MDI has no pump and a fixed once-daily basal (Lantus).
+        // A missing limit means "no limit", never "limit to 0".
+        if (pump.pumpDescription.isTempBasalCapable) {
+            // check for pump max
+            if (pump.pumpDescription.tempBasalStyle == PumpDescription.ABSOLUTE) {
+                pump.pumpDescription.pumpType.tbrSettings()?.maxDose?.let { pumpLimit ->
+                    absoluteRate.setIfSmaller(pumpLimit, rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, pumpLimit, rh.gs(app.aaps.core.ui.R.string.pumplimit)), this)
+                }
+            }
 
-        // do rounding
-        if (pump.pumpDescription.tempBasalStyle == PumpDescription.ABSOLUTE) {
-            absoluteRate.set(Round.roundTo(absoluteRate.value(), pump.pumpDescription.tempAbsoluteStep))
+            // do rounding
+            if (pump.pumpDescription.tempBasalStyle == PumpDescription.ABSOLUTE && pump.pumpDescription.tempAbsoluteStep > 0) {
+                absoluteRate.set(Round.roundTo(absoluteRate.value(), pump.pumpDescription.tempAbsoluteStep))
+            }
         }
         return absoluteRate
     }
@@ -131,13 +144,18 @@ class SafetyPlugin @Inject constructor(
         percentRate.copyReasons(absoluteConstraint)
         val pump = activePlugin.activePump
         var percentRateAfterConst = java.lang.Double.valueOf(absoluteConstraint.value() / currentBasal * 100).toInt()
-        percentRateAfterConst =
-            if (percentRateAfterConst < 100) Round.ceilTo(percentRateAfterConst.toDouble(), pump.pumpDescription.tempPercentStep.toDouble())
-                .toInt() else Round.floorTo(percentRateAfterConst.toDouble(), pump.pumpDescription.tempPercentStep.toDouble()).toInt()
+        // percent temp basal rounding and limits only apply to pumps that can actually run a
+        // temp basal - MDI has no pump and a fixed once-daily basal (Lantus)
+        if (pump.pumpDescription.isTempBasalCapable && pump.pumpDescription.tempPercentStep > 0) {
+            percentRateAfterConst =
+                if (percentRateAfterConst < 100) Round.ceilTo(percentRateAfterConst.toDouble(), pump.pumpDescription.tempPercentStep.toDouble())
+                    .toInt() else Round.floorTo(percentRateAfterConst.toDouble(), pump.pumpDescription.tempPercentStep.toDouble()).toInt()
+        }
         percentRate.set(percentRateAfterConst, rh.gs(app.aaps.core.ui.R.string.limitingpercentrate, percentRateAfterConst, rh.gs(app.aaps.core.ui.R.string.pumplimit)), this)
-        if (pump.pumpDescription.tempBasalStyle == PumpDescription.PERCENT) {
-            val pumpLimit = pump.pumpDescription.pumpType.tbrSettings()?.maxDose ?: 0.0
-            percentRate.setIfSmaller(pumpLimit.toInt(), rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, pumpLimit, rh.gs(app.aaps.core.ui.R.string.pumplimit)), this)
+        if (pump.pumpDescription.isTempBasalCapable && pump.pumpDescription.tempBasalStyle == PumpDescription.PERCENT) {
+            pump.pumpDescription.pumpType.tbrSettings()?.maxDose?.let { pumpLimit ->
+                percentRate.setIfSmaller(pumpLimit.toInt(), rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, pumpLimit, rh.gs(app.aaps.core.ui.R.string.pumplimit)), this)
+            }
         }
         return percentRate
     }

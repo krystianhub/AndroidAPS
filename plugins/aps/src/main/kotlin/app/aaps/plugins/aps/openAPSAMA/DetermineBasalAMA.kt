@@ -313,6 +313,10 @@ class DetermineBasalAMA @Inject constructor(
         rT.reason.append("COB: ${round(meal_data.mealCOB, 1).withoutZeros()}, Dev: $deviation, BGI: ${bgi.withoutZeros()}, ISF: ${convert_bg(sens)}, Target: ${convert_bg(target_bg)}; ")
         if (profile.autosens_adjust_targets && autosens_data.ratio != 1.0)
             rT.reason.append("Autosens: " + autosens_data.ratio + "; ")
+        // Projected-low guard for the MDI pen suggestion (AMA has no minGuardBG/enableSMB gate -
+        // its own low handling is the bg < threshold branch below, which returns before any
+        // insulin is requested). Exposed so presentPenBolusSuggestion can bail out on it.
+        rT.predictedLow = minPredBG < threshold
         if (bg < threshold) { // low glucose suspend mode: BG is < ~80
             rT.reason.append("BG ${convert_bg(bg)}<${convert_bg(threshold)}")
             if ((glucose_status.delta <= 0 && minDelta <= 0) || (glucose_status.delta < expectedDelta && minDelta < expectedDelta) || bg < 60) {
@@ -473,6 +477,9 @@ class DetermineBasalAMA @Inject constructor(
                 rT.reason.append("max_iob " + max_iob + ", ")
                 insulinReq = max_iob - basaliob
             }
+
+            // MDI: the pen suggestion is sized from insulinReq, which AMA never exposed before
+            rT.insulinReq = insulinReq
 
             // rate required to deliver insulinReq more insulin over 30m:
             var rate = basal + (2 * insulinReq)

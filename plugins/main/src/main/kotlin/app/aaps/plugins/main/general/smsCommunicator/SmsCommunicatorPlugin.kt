@@ -307,11 +307,13 @@ class SmsCommunicatorPlugin @Inject constructor(
 
                 "BASAL"      ->
                     if (!remoteCommandsAllowed) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.smscommunicator_remote_command_not_allowed)))
+                    else if (activePlugin.activePump.isMDI()) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.smscommunicator_not_available_mdi)))
                     else if (divided.size == 2 || divided.size == 3) processBASAL(divided, receivedSms)
                     else sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.wrong_format)))
 
                 "EXTENDED"   ->
                     if (!remoteCommandsAllowed) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.smscommunicator_remote_command_not_allowed)))
+                    else if (activePlugin.activePump.isMDI()) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.smscommunicator_not_available_mdi)))
                     else if (divided.size == 2 || divided.size == 3) processEXTENDED(divided, receivedSms)
                     else sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.wrong_format)))
 
@@ -627,6 +629,13 @@ class SmsCommunicatorPlugin @Inject constructor(
                 return
             }
         } else if ((divided.size == 3) && (divided[1].equals("DISCONNECT", ignoreCase = true))) {
+            // MDI: "disconnect pump" is implemented as a 0 % temp basal and there is no pump to
+            // disconnect - basal is a fixed once-daily Lantus injection
+            if (activePlugin.activePump.isMDI()) {
+                receivedSms.processed = true
+                sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.smscommunicator_not_available_mdi)))
+                return
+            }
             var duration = SafeParse.stringToInt(divided[2])
             duration = max(0, duration)
             duration = min(120, duration)

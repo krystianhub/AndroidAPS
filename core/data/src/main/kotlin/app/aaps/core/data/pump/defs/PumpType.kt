@@ -350,8 +350,9 @@ enum class PumpType(
         manufacturer = ManufacturerType.AAPS,
         bolusSize = 0.5,
         model = "MDI",
-        tbrSettings = DoseSettings(1.0, 15, 24 * 60, 0.0, 500.0),
-        extendedBolusSettings = DoseSettings(0.1, 15, 12 * 60, 0.1),
+        // No temp basal / extended bolus settings on purpose: MDI delivers insulin by pen and
+        // basal is a fixed once-daily Lantus injection. pumpCapability is Bolus-only to match,
+        // so nothing may conclude that this "pump" can run a temp basal or an extended bolus.
         pumpCapability = PumpCapability.MDI
     ),
 

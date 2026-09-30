@@ -310,7 +310,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             autosensResult = autosensData.autosensResult
         } else autosensResult.sensResult = "autosens disabled"
-        val iobArray = iobCobCalculator.calculateIobArrayForSMB(autosensResult, SMBDefaults.exercise_mode, preferences.get(IntKey.ApsAutoIsfHalfBasalExerciseTarget), isTempTarget)
+        // MDI: basal is fixed (Lantus) - keep the basal-based IOB model (including the
+        // hypothetical zero-temp) at the profile rate instead of scaling it with the ratio
+        val iobArray = iobCobCalculator.calculateIobArrayForSMB(
+            if (pump.isMDI()) autosensResult.copy(ratio = 1.0) else autosensResult,
+            SMBDefaults.exercise_mode, preferences.get(IntKey.ApsAutoIsfHalfBasalExerciseTarget), isTempTarget
+        )
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
         val iobData = iobArray[0]
         val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
@@ -941,13 +946,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             requiredKey != "auto_isf_settings" &&
             requiredKey != "smb_delivery_settings"
         ) return
+        val isMdi = activePlugin.activePump.isMDI()
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {
             key = "openapsautoisf_settings"
             title = rh.gs(R.string.openaps_auto_isf)
             initialExpandedChildrenCount = 0
-            addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
+            // MDI: Max basal caps temp basal requests only - pen suggestions are capped by
+            // MdiMaxBolusSuggestion instead, so the setting is meaningless here
+            if (!isMdi)
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxBasal, dialogMessage = R.string.openapsma_max_basal_summary, title = R.string.openapsma_max_basal_title))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsSmbMaxIob, dialogMessage = R.string.openapssmb_max_iob_summary, title = R.string.openapssmb_max_iob_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseAutosens, title = R.string.openapsama_use_autosens))
             //addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsLgsThreshold, dialogMessage = R.string.lgs_threshold_summary, title = R.string.lgs_threshold_title))
@@ -964,10 +973,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmbAfterCarbs, summary = R.string.enable_smb_after_carbs_summary, title = R.string.enable_smb_after_carbs))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseUam, summary = R.string.enable_uam_summary, title = R.string.enable_uam))
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxSmbFrequency, title = R.string.smb_interval_summary))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxMinutesOfBasalToLimitSmb, title = R.string.smb_max_minutes_summary))
-            addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
-            // MDI: pen suggestion settings
-            if (activePlugin.activePump.isMDI()) {
+            // MDI: the basal-minutes caps below shape the internal SMB size, but pen bolus
+            // suggestions are capped by MdiMaxBolusSuggestion instead (see
+            // LoopPlugin.presentPenBolusSuggestion) - the settings would mislead users into
+            // thinking they limit suggestions, so hide them
+            if (!isMdi) {
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxMinutesOfBasalToLimitSmb, title = R.string.smb_max_minutes_summary))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
+            } else {
+                // MDI: pen suggestion settings
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.MdiMaxBolusSuggestion, dialogMessage = R.string.mdi_max_bolus_suggestion_summary, title = R.string.mdi_max_bolus_suggestion_title))
             }
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))
@@ -983,15 +997,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     )
                 )
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAlwaysUseShortDeltas, summary = R.string.always_use_short_avg_summary, title = R.string.always_use_short_avg))
-                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxDailyMultiplier, dialogMessage = R.string.openapsama_max_daily_safety_multiplier_summary, title = R.string.openapsama_max_daily_safety_multiplier))
-                addPreference(
-                    AdaptiveDoublePreference(
-                        ctx = context,
-                        doubleKey = DoubleKey.ApsMaxCurrentBasalMultiplier,
-                        dialogMessage = R.string.openapsama_current_basal_safety_multiplier_summary,
-                        title = R.string.openapsama_current_basal_safety_multiplier
+                // MDI: multipliers are overridden internally (MdiApsProfile) and do not limit
+                // pen bolus suggestions - hide them alongside the other pump-only caps
+                if (!isMdi) {
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsMaxDailyMultiplier, dialogMessage = R.string.openapsama_max_daily_safety_multiplier_summary, title = R.string.openapsama_max_daily_safety_multiplier))
+                    addPreference(
+                        AdaptiveDoublePreference(
+                            ctx = context,
+                            doubleKey = DoubleKey.ApsMaxCurrentBasalMultiplier,
+                            dialogMessage = R.string.openapsama_current_basal_safety_multiplier_summary,
+                            title = R.string.openapsama_current_basal_safety_multiplier
+                        )
                     )
-                )
+                }
             })
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "auto_isf_settings"

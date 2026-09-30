@@ -35,6 +35,7 @@ import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.data.model.GV
@@ -213,6 +214,62 @@ class LoopPluginTest : TestBaseWithProfile() {
 
     private fun carbsResult(carbsReq: Int, carbsReqWithin: Int): APSResultStub = APSResultStub(carbsReq, carbsReqWithin)
 
+    /** Stubs the pieces [LoopPlugin.presentPenBolusSuggestion] needs from the pump/constraints. */
+    private fun setupPenSuggestionDefaults() {
+        val pumpDescription = PumpDescription()
+        pumpDescription.bolusStep = 0.5
+        whenever(virtualPumpPlugin.pumpDescription).thenReturn(pumpDescription)
+        whenever(preferences.get(DoubleKey.MdiMaxBolusSuggestion)).thenReturn(4.0)
+        whenever(rh.gs(app.aaps.plugins.aps.R.string.bolus_suggestion_text)).thenReturn("Bolus %1\$s U now")
+        // applyBolusConstraints is a pass-through: return the constraint it was given
+        whenever(constraintChecker.applyBolusConstraints(anyOrNull())).thenAnswer { it.arguments[0] }
+    }
+
+    private fun penResult(insulinReq: Double? = null, smb: Double = 0.0, predictedLow: Boolean = false) =
+        APSResultStub(carbsReq = 0, carbsReqWithin = 0).also {
+            it.insulinReq = insulinReq
+            it.smb = smb
+            it.predictedLow = predictedLow
+        }
+
+    @Test
+    fun `pen suggestion is sized from insulinReq even when smb is zero`() {
+        // Regression: smb is always 0 in MDI (open loop), and the old `if (result.smb > 0)` gate
+        // discarded insulinReq entirely - leaving only the U/h-clamped temp rate path, which
+        // always produced 0. The suggestion must survive smb == 0.
+        setupPenSuggestionDefaults()
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 2.0), validProfile)
+        }
+        assertThat(dismissEvents).isEmpty()
+        assertThat(newEvents).hasSize(1)
+        assertThat(newEvents[0].notification.id).isEqualTo(Notification.PEN_BOLUS_SUGGESTION)
+        // 2.0 U requested -> 2.0 U suggested (already on the 0.5 U pen step), NOT 0
+        assertThat(newEvents[0].notification.text).contains("Bolus 2.0 U now")
+    }
+
+    @Test
+    fun `pen suggestion is suppressed when a low is projected`() {
+        // MDI has no other low guard: SMB is structurally disabled in open loop, so the engine's
+        // own minGuardBG suppression never runs. predictedLow must stop the suggestion.
+        setupPenSuggestionDefaults()
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 2.0, predictedLow = true), validProfile)
+        }
+        assertThat(newEvents).isEmpty()
+        assertThat(dismissEvents).hasSize(1)
+    }
+
+    @Test
+    fun `pen suggestion is dismissed when nothing is actionable`() {
+        setupPenSuggestionDefaults()
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = null), validProfile)
+        }
+        assertThat(newEvents).isEmpty()
+        assertThat(dismissEvents).hasSize(1)
+    }
+
     /** Minimal APSResult carrying only what presentCarbsRequiredAlert reads. */
     private class APSResultStub(carbsReq: Int, carbsReqWithin: Int) : APSResult {
         override var carbsReq: Int = carbsReq
@@ -229,6 +286,7 @@ class LoopPluginTest : TestBaseWithProfile() {
         override var hasPredictions = false
         override var smb = 0.0
         override var insulinReq: Double? = null
+        override var predictedLow = false
         override var deliverAt: Long = 0
         override var targetBG = 0.0
         override var variableSens: Double? = null

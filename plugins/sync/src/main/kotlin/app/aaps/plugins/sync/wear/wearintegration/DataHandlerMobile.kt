@@ -1800,15 +1800,33 @@ class DataHandlerMobile @Inject constructor(
                     ValueWithUnit.Hour(carbsDuration).takeIf { carbsDuration != 0 }
                 )
             )
-            commandQueue.bolus(detailedBolusInfo, object : Callback() {
-                override fun run() {
-                    if (!result.success)
-                        sendError(rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror) + "\n" + result.comment)
-                }
-            })
+            if (activePlugin.activePump.isMDI()) {
+                // MDI: there is no pump to deliver insulin with - record the treatment directly,
+                // bypassing the command queue (and the fake delivery progress of the virtual pump)
+                if (detailedBolusInfo.carbs != 0.0)
+                    persistenceLayer.insertOrUpdateCarbs(
+                        carbs = detailedBolusInfo.createCarbs(),
+                        action = action,
+                        source = Sources.Wear
+                    ).subscribe()
+                if (detailedBolusInfo.insulin > 0)
+                    persistenceLayer.insertOrUpdateBolus(
+                        bolus = detailedBolusInfo.createBolus(),
+                        action = action,
+                        source = Sources.Wear
+                    ).subscribe()
+            } else {
+                commandQueue.bolus(detailedBolusInfo, object : Callback() {
+                    override fun run() {
+                        if (!result.success)
+                            sendError(rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror) + "\n" + result.comment)
+                    }
+                })
+            }
             bolusCalculatorResult?.let { persistenceLayer.insertOrUpdateBolusCalculatorResult(it).blockingGet() }
             lastQuickWizardEntry?.let { lastQuickWizardEntry ->
-                if (lastQuickWizardEntry.useSuperBolus() == QuickWizardEntry.YES) {
+                // superbolus is implemented as a zero TBR - meaningless without a pump (MDI)
+                if (lastQuickWizardEntry.useSuperBolus() == QuickWizardEntry.YES && !activePlugin.activePump.isMDI()) {
                     val profile = profileFunction.getProfile() ?: return
                     loop.handleRunningModeChange(
                         newRM = RM.Mode.SUPER_BOLUS,
@@ -1830,13 +1848,23 @@ class DataHandlerMobile @Inject constructor(
             action = Action.PRIME_BOLUS, source = Sources.Wear,
             listValues = listOfNotNull(ValueWithUnit.Insulin(amount).takeIf { amount != 0.0 })
         )
-        commandQueue.bolus(detailedBolusInfo, object : Callback() {
-            override fun run() {
-                if (!result.success) {
-                    sendError(rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror) + "\n" + result.comment)
+        if (activePlugin.activePump.isMDI()) {
+            // MDI: record the priming directly, no pump to deliver with
+            if (detailedBolusInfo.insulin > 0)
+                persistenceLayer.insertOrUpdateBolus(
+                    bolus = detailedBolusInfo.createBolus(),
+                    action = Action.PRIME_BOLUS,
+                    source = Sources.Wear
+                ).subscribe()
+        } else {
+            commandQueue.bolus(detailedBolusInfo, object : Callback() {
+                override fun run() {
+                    if (!result.success) {
+                        sendError(rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror) + "\n" + result.comment)
+                    }
                 }
-            }
-        })
+            })
+        }
     }
 
     private fun doECarbs(carbs: Int, carbsTime: Long, duration: Int, notes: String? = null) {

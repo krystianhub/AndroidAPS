@@ -18,6 +18,9 @@ interface APSResult {
 
     /** Full correction before SMB halving. Null if not provided. */
     var insulinReq: Double?
+
+    /** Engine withheld insulin because a low is projected - never suggest a bolus on top of it. */
+    var predictedLow: Boolean
     var usePercent: Boolean
     var carbsReq: Int
     var carbsReqWithin: Int

@@ -43,6 +43,8 @@ data class RT(
     var IOB: Double? = null,
     var variable_sens: Double? = null,
     var isfMgdlForCarbs: Double? = null, // used to pass to AAPS client
+    /** Engine withheld insulin because a low is projected (minGuardBG < threshold). */
+    var predictedLow: Boolean = false,
 
 
     var consoleLog: MutableList<String>? = null,

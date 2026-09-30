@@ -63,6 +63,13 @@ class LocalAlertUtilsImpl @Inject constructor(
     }
 
     override fun checkPumpUnreachableAlarm(lastConnection: Long, isStatusOutdated: Boolean, isDisconnected: Boolean) {
+        // MDI: there is no pump that could become unreachable - insulin is delivered by pen and
+        // basal is a fixed once-daily Lantus injection. Skip the alarm and drop a stale one.
+        // Note the preference is hidden in MDI settings, so the user cannot re-enable it.
+        if (activePlugin.activePump.isMDI()) {
+            rxBus.send(EventDismissNotification(Notification.PUMP_UNREACHABLE))
+            return
+        }
         val alarmTimeoutExpired = isAlarmTimeoutExpired(lastConnection, pumpUnreachableThreshold())
         val nextAlarmOccurrenceReached = preferences.get(LocalAlertLongKey.NextPumpDisconnectedAlarm) < dateUtil.now()
         if (config.APS && isStatusOutdated && alarmTimeoutExpired && nextAlarmOccurrenceReached && !isDisconnected) {

@@ -69,6 +69,7 @@ class SafetyPluginTest : TestBaseWithProfile() {
         whenever(rh.gs(app.aaps.plugins.aps.R.string.increasing_max_basal)).thenReturn("Increasing max basal value because setting is lower than your max basal in profile")
         whenever(rh.gs(app.aaps.plugins.aps.R.string.smb_disabled_in_preferences)).thenReturn("SMB disabled in preferences")
         whenever(rh.gs(app.aaps.plugins.constraints.R.string.closed_loop_disabled_on_dev_branch)).thenReturn("Running dev version. Closed loop is disabled.")
+        whenever(rh.gs(app.aaps.plugins.constraints.R.string.closed_loop_disabled_mdi)).thenReturn("Closed loop disabled in MDI mode")
         whenever(rh.gs(app.aaps.plugins.constraints.R.string.smbalwaysdisabled)).thenReturn("SMB always and after carbs disabled because active BG source doesn\\'t support advanced filtering")
         whenever(rh.gs(app.aaps.plugins.constraints.R.string.smbnotallowedinopenloopmode)).thenReturn("SMB not allowed in open loop mode")
         whenever(rh.gs(app.aaps.core.ui.R.string.lowglucosesuspend)).thenReturn("Low Glucose Suspend")
@@ -97,6 +98,42 @@ class SafetyPluginTest : TestBaseWithProfile() {
         pumpDescription.isTempBasalCapable = false
         val c = safetyPlugin.isLoopInvocationAllowed(ConstraintObject(true, aapsLogger))
         assertThat(c.value()).isTrue()
+    }
+
+    @Test
+    fun closedLoopIsDisabledForMdi() {
+        // MDI delivers insulin by pen and basal is a fixed Lantus injection: closed loop (and
+        // LGS, which enacts temp basals too) must be refused even though loop invocation is ok
+        whenever(config.isEngineeringModeOrRelease()).thenReturn(true)
+        whenever(virtualPumpPlugin.isMDI()).thenReturn(true)
+        pumpDescription.isTempBasalCapable = false
+        val c = safetyPlugin.isClosedLoopAllowed(ConstraintObject(true, aapsLogger))
+        assertThat(c.value()).isFalse()
+        assertThat(c.getReasons()).contains("Closed loop disabled in MDI mode")
+    }
+
+    @Test
+    fun mdiHasNoPumpLimitOnBasalRate() {
+        // MDI cannot run a temp basal at all - there is no pump limit to report. Critically the
+        // missing limit must not be treated as "limit to 0", that would zero the pen suggestion.
+        pumpDescription.isTempBasalCapable = false
+        pumpDescription.tempBasalStyle = PumpDescription.ABSOLUTE
+        whenever(preferences.get(StringKey.SafetyAge)).thenReturn("child")
+        val c = ConstraintObject(Double.MAX_VALUE, aapsLogger)
+        safetyPlugin.applyBasalConstraints(c, validProfile)
+        assertThat(c.value()).isWithin(0.01).of(2.0)
+        // the "U/h ... pump limit" variant is the one only a temp basal capable pump can add
+        assertThat(c.getReasons()).doesNotContain("U/h because of pump limit")
+    }
+
+    @Test
+    fun mdiHasNoPumpLimitOnPercentBasalRate() {
+        pumpDescription.isTempBasalCapable = false
+        pumpDescription.tempBasalStyle = PumpDescription.PERCENT
+        whenever(preferences.get(StringKey.SafetyAge)).thenReturn("child")
+        val i = ConstraintObject(Int.MAX_VALUE, aapsLogger)
+        safetyPlugin.applyBasalPercentConstraints(i, validProfile)
+        assertThat(i.getReasons()).doesNotContain("U/h because of pump limit")
     }
 
     @Test

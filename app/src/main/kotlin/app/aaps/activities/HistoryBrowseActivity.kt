@@ -326,7 +326,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             graphData.addTherapyEvents()
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
             graphData.addActivity(0.8)
-        if (pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
+        // MDI: no temp basals, but the flat profile basal (Lantus) is worth drawing
+        if ((pump.pumpDescription.isTempBasalCapable || pump.isMDI()) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
         graphData.addTargetLine()
         graphData.addRunningModes()
