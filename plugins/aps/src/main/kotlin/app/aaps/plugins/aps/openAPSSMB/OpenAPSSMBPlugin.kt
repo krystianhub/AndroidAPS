@@ -413,8 +413,13 @@ open class OpenAPSSMBPlugin @Inject constructor(
             } else autosensResult.sensResult = "autosens disabled"
         }
 
+        // MDI: basal is fixed (Lantus) - keep the basal-based IOB model (including the
+        // hypothetical zero-temp) at the profile rate instead of scaling it with the ratio
         @Suppress("KotlinConstantConditions")
-        val iobArray = iobCobCalculator.calculateIobArrayForSMB(autosensResult, SMBDefaults.exercise_mode, SMBDefaults.half_basal_exercise_target, isTempTarget)
+        val iobArray = iobCobCalculator.calculateIobArrayForSMB(
+            if (pump.isMDI()) autosensResult.copy(ratio = 1.0) else autosensResult,
+            SMBDefaults.exercise_mode, SMBDefaults.half_basal_exercise_target, isTempTarget
+        )
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
 
         @Suppress("KotlinConstantConditions")
@@ -466,7 +471,8 @@ open class OpenAPSSMBPlugin @Inject constructor(
             out_units = if (profileFunction.getUnits() == GlucoseUnit.MMOL) "mmol/L" else "mg/dl",
             variable_sens = if (dynIsfMode) dynIsfResult.variableSensitivity ?: 0.0 else 0.0,
             insulinDivisor = dynIsfResult.insulinDivisor,
-            TDD = dynIsfResult.tdd ?: 0.0
+            TDD = dynIsfResult.tdd ?: 0.0,
+            basal_adjustment_allowed = !pump.isMDI()
         )
         val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
         val flatBGsDetected = bgQualityCheck.state == BgQualityCheck.State.FLAT
@@ -608,7 +614,14 @@ open class OpenAPSSMBPlugin @Inject constructor(
             // MDI: LGS (Low Glucose Suspend) is a closed-loop mode - the threshold is never used
             if (!activePlugin.activePump.isMDI())
                 addPreference(AdaptiveUnitPreference(ctx = context, unitKey = UnitDoubleKey.ApsLgsThreshold, dialogMessage = R.string.lgs_threshold_summary, title = R.string.lgs_threshold_title))
-            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsDynIsfAdjustSensitivity, summary = R.string.dynisf_adjust_sensitivity_summary, title = R.string.dynisf_adjust_sensitivity))
+            // MDI: basal cannot be changed by the loop - the ratio adjusts glucose targets only
+            addPreference(
+                AdaptiveSwitchPreference(
+                    ctx = context, booleanKey = BooleanKey.ApsDynIsfAdjustSensitivity,
+                    summary = if (isMdi) R.string.dynisf_adjust_sensitivity_summary_mdi else R.string.dynisf_adjust_sensitivity_summary,
+                    title = if (isMdi) R.string.dynisf_adjust_sensitivity_title_mdi else R.string.dynisf_adjust_sensitivity
+                )
+            )
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsSensitivityRaisesTarget, summary = R.string.sensitivity_raises_target_summary, title = R.string.sensitivity_raises_target_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsResistanceLowersTarget, summary = R.string.resistance_lowers_target_summary, title = R.string.resistance_lowers_target_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseSmb, summary = R.string.enable_smb_summary, title = R.string.enable_smb))

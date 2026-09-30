@@ -246,10 +246,14 @@ class DetermineBasalSMB @Inject constructor(
             sensitivityRatio = autosens_data.ratio
             consoleLog.add("Autosens ratio: $sensitivityRatio; ")
         }
-        basal = profile.current_basal * sensitivityRatio
+        // MDI: basal is fixed by the long-acting insulin dose - the sensitivity ratio must not
+        // scale it (it keeps adjusting targets and, outside DynISF, ISF)
+        basal = profile.current_basal * if (profile.basal_adjustment_allowed) sensitivityRatio else 1.0
         basal = round_basal(basal)
         if (basal != profile_current_basal)
             consoleLog.add("Adjusting basal from $profile_current_basal to $basal; ")
+        else if (!profile.basal_adjustment_allowed && sensitivityRatio != 1.0)
+            consoleLog.add("Basal fixed at $basal U/hr (MDI): ratio applies to targets only; ")
         else
             consoleLog.add("Basal unchanged: $basal; ")
 

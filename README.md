@@ -39,7 +39,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 
 - **OpenAPS SMB, AMA and AutoISF** are all selectable in Config Builder in MDI mode (upstream hides AutoISF behind engineering + dev mode).
 - **Recommended: OpenAPS SMB + dynamic sensitivity.** AutoISF is the experimental ga-zelle algorithm (dynamic ISF + BG-acceleration/brake modifiers) — its micro-bolus shaping has little leverage in open loop; treat it as an experiment.
-- With dynamic sensitivity on, the sensitivity ratio comes from TDD; classic autosens is only a **fallback** for missing TDD data — keep it ON.
+- Dynamic sensitivity **hides and ignores the classic autosens toggle**. Its separate TDD-ratio option controls basal/target adjustments and, subject to constraints, classic autosens fallback when TDD data is missing.
 
 ### 6. Autotune enabled
 
@@ -117,9 +117,12 @@ The APS math is identical for pumps and pens; only enactment differs (SMB → bo
 | **Max IOB** | start at **~8 U**, walk down to 5–6 if nights stay flat | Must exceed your upfront meal dose (else suggestions are dead for hours after injecting); caps cumulative dosing |
 | **SMB frequency** | keep small (**1–3 min**) | Suppresses suggestions after a recorded bolus; raising it only stacks on top of the 60-min pen throttle |
 | SMB max minutes / UAM max minutes / Max u/h basal / multipliers | leave at **defaults** (hidden in MDI) | Overridden internally; shape nothing user-visible |
-| Autosens | keep **ON** | With DynISF on, autosens is only a fallback for missing TDD data — not redundant |
+| Autosens | **Hidden when DynISF is ON** | Classic toggle ignored; see TDD-ratio option below |
+| Enable TDD based sensitivity ratio for glucose target modification | keep **OFF initially** (default) | MDI: adjusts glucose targets only — basal is never scaled; DynamicISF still works with it off |
 
 Everything else (Enable SMB, SMB-with-X triggers, UAM, DynISF, target adjustments, carbs threshold) works fine at defaults.
+
+**TDD ratio in this MDI fork:** Start **OFF**. In MDI the ratio adjusts **glucose targets only** — the working basal is never scaled, since Lantus is fixed until your next injection (the option is renamed accordingly in MDI mode). Enabling it makes the algorithm raise targets when recent TDD is below the 7-day average (more aggressive corrections) and lower them when it is above (gentler corrections), which shifts pen suggestions. TDD is calculated from profile basal (assumed delivered) plus recorded boluses, so larger meals can look like resistance; carb compensation needs sufficient logs. Consider enabling only with an accurate Lantus-backed profile and reliable bolus/carb records, then review its effects with your diabetes team.
 
 ### Honest limitations
 

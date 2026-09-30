@@ -47,5 +47,7 @@ data class OapsProfile(
     //DynISF only
     var variable_sens: Double,
     var insulinDivisor: Int,
-    var TDD: Double
+    var TDD: Double,
+    // MDI: basal is fixed by the long-acting injection - sensitivity ratios must not scale it
+    var basal_adjustment_allowed: Boolean = true
 )
