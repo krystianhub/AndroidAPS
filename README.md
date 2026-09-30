@@ -120,13 +120,13 @@ The APS math is identical for pumps and pens; only enactment differs — a corre
 - **A projected low stops the suggestion.** If the algorithm's guard prediction falls below the low threshold, no bolus is suggested and a pending one is dismissed. Basal reductions are never suggested either — a pen cannot lower a Lantus rate.
 - **Suggestions are throttled to one per 60 minutes** and always rounded **down** to the pen's 0.5 U step (under-dosing is the safe direction).
 - **Max IOB stays the true safety bound**: it caps cumulative suggested dosing, exactly as for pumps (each suggestion is also limited to `Max IOB − current IOB`).
-- **SMB frequency still applies in MDI**: after any recorded bolus (upfront dose, correction), suggestions are suppressed for N minutes (the "How frequently SMB will be given" setting). Since the pen throttle (60 min) is much longer anyway, keep this at its small default (1–3 min) — never raise it, it only stacks on top.
+- **SMB frequency does not gate the suggestion.** The "How frequently SMB will be given" setting zeroes SMBs, which the sizing ignores. Suppression after a recorded bolus is soft instead: the fresh bolus raises IOB, which shrinks or zeroes the next `insulinReq`, and the 60-minute throttle stands regardless.
 
 | Setting | Value | Why |
 | --- | --- | --- |
 | **Max pen bolus suggestion (MDI)** | default **4 U** | The cap that actually matters; raise toward 6–8 U only with experience |
 | **Max IOB** | start at **~8 U**, walk down to 5–6 if nights stay flat | Must exceed your upfront meal dose (else suggestions are dead for hours after injecting); caps cumulative dosing |
-| **SMB frequency** | keep small (**1–3 min**) | Suppresses suggestions after a recorded bolus; raising it only stacks on top of the 60-min pen throttle |
+| SMB frequency | default (**3 min**) | Irrelevant for MDI suggestions — it gates SMB delivery only |
 | SMB max minutes / UAM max minutes / Max u/h basal / multipliers | **hidden in MDI** | Not part of the pen-suggestion path — sizing is `insulinReq`, capped by Max pen bolus suggestion |
 | Autosens | **Hidden when DynISF is ON** | Classic toggle ignored; see TDD-ratio option below |
 | Enable TDD based sensitivity ratio for glucose target modification | keep **OFF initially** (default) | MDI: adjusts glucose targets only — basal is never scaled; DynamicISF still works with it off |
