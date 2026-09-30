@@ -115,19 +115,18 @@ These are **starting points to validate against your own data, not medical advic
 The APS math is identical for pumps and pens; only enactment differs — a correction becomes a manual bolus suggestion instead of a micro-bolus or a temp basal. The upstream SMB caps are designed for a **closed loop dosing every few minutes**; with hourly pen suggestions they would cap each one at ~1.6 U and make the feature useless. So the cap model here is different:
 
 - **Suggestions are sized from the engine's correction request** (`insulinReq`), never from a temp-basal *rate*. A U/h cap must not size a pen bolus, so the pump-oriented caps (Max u/h basal and the safety multipliers) are not part of this path at all.
-- **Max pen bolus suggestion (MDI)** — setting in the OpenAPS SMB and AutoISF screens (MDI only, default **4 U**, range 0.5–15): the real, single lever for how big one suggestion can get.
+- **Max pen bolus suggestion (MDI)** — setting in the OpenAPS SMB and AutoISF screens (MDI only, default **4 U**, range 0.5–15): the pen-specific cap for how big one suggestion can get. It is **not** the only one — every suggestion also passes the generic **Max bolus** limit (Preferences → Safety, default **3 U**) and the age-based hard limit. The smaller cap silently wins: to actually suggest more than 3 U, raise **both** Max pen bolus suggestion and Max bolus.
 - **SMB max minutes / UAM max minutes / Max u/h basal / multipliers**: overridden internally in MDI and **hidden** in MDI mode across all three APS engines (SMB, AMA, AutoISF). They do not touch the pen suggestion at all — nothing to tune.
 - **A projected low stops the suggestion.** If the algorithm's guard prediction falls below the low threshold, no bolus is suggested and a pending one is dismissed. Basal reductions are never suggested either — a pen cannot lower a Lantus rate.
 - **Suggestions are throttled to one per 60 minutes** and always rounded **down** to the pen's 0.5 U step (under-dosing is the safe direction).
 - **Max IOB stays the true safety bound**: it caps cumulative suggested dosing, exactly as for pumps (each suggestion is also limited to `Max IOB − current IOB`).
-- **SMB frequency does not gate the suggestion.** The "How frequently SMB will be given" setting zeroes SMBs, which the sizing ignores. Suppression after a recorded bolus is soft instead: the fresh bolus raises IOB, which shrinks or zeroes the next `insulinReq`, and the 60-minute throttle stands regardless.
 
 | Setting | Value | Why |
 | --- | --- | --- |
-| **Max pen bolus suggestion (MDI)** | default **4 U** | The cap that actually matters; raise toward 6–8 U only with experience |
+| **Max pen bolus suggestion (MDI)** | default **4 U** | The pen-specific cap; raise toward 6–8 U only with experience |
+| **Max bolus** (Preferences → Safety) | default **3 U** | Caps each suggestion too — raise it together with the pen cap, or the bigger pen cap silently does nothing |
 | **Max IOB** | start at **~8 U**, walk down to 5–6 if nights stay flat | Must exceed your upfront meal dose (else suggestions are dead for hours after injecting); caps cumulative dosing |
-| SMB frequency | default (**3 min**) | Irrelevant for MDI suggestions — it gates SMB delivery only |
-| SMB max minutes / UAM max minutes / Max u/h basal / multipliers | **hidden in MDI** | Not part of the pen-suggestion path — sizing is `insulinReq`, capped by Max pen bolus suggestion |
+| SMB max minutes / UAM max minutes / Max u/h basal / multipliers | **hidden in MDI** | Not part of the pen-suggestion path — sizing is `insulinReq`, capped by Max pen bolus suggestion + Max bolus |
 | Autosens | **Hidden when DynISF is ON** | Classic toggle ignored; see TDD-ratio option below |
 | Enable TDD based sensitivity ratio for glucose target modification | keep **OFF initially** (default) | MDI: adjusts glucose targets only — basal is never scaled; DynamicISF still works with it off |
 
@@ -137,7 +136,7 @@ Everything else (Enable SMB, SMB-with-X triggers, UAM, DynISF, target adjustment
 
 ### Honest limitations
 
-Even fully tuned, MDI suggestions are **slower** than a pump loop's corrections: at most one suggestion per 60 minutes, each ≤ the Max pen bolus suggestion (default 4 U), and basal *reductions* are never suggested (can't be done with a pen). Expect a patient advisor, not a loop. If coverage during a big meal tail feels too slow, the levers are **Max pen bolus suggestion** (bigger single doses) and **Max IOB** (more total headroom).
+Even fully tuned, MDI suggestions are **slower** than a pump loop's corrections: at most one suggestion per 60 minutes, each capped by Max pen bolus suggestion *and* Max bolus (defaults 4 U and 3 U), and basal *reductions* are never suggested (can't be done with a pen). Expect a patient advisor, not a loop. If coverage during a big meal tail feels too slow, the levers are **Max pen bolus suggestion + Max bolus** (bigger single doses — raise both) and **Max IOB** (more total headroom).
 
 ## Building
 
