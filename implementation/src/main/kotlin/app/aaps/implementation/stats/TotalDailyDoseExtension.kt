@@ -16,6 +16,10 @@ val TDD.total
 val TDD.basalPct: Double
     get() = if (total > 0) basalAmount / total * 100 else 0.0
 
+/** Derived I:C ratio (g per 1U) formatted for display, `n/a` if not calculable. */
+fun TDD.icRatioText(rh: ResourceHelper): String =
+    icRatio?.let { "%.1f".format(it) } ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+
 fun TDD.Companion.toTableRowHeader(context: Context, rh: ResourceHelper, includeCarbs: Boolean): TableRow =
     TableRow(context).also { header ->
         val lp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.WRAP_CONTENT)
@@ -26,8 +30,10 @@ fun TDD.Companion.toTableRowHeader(context: Context, rh: ResourceHelper, include
         header.addView(TextView(context).apply { gravity = Gravity.CENTER_HORIZONTAL; layoutParams = lp.apply { column = 2; weight = 1f }; text = rh.gs(app.aaps.core.ui.R.string.bolus) })
         header.addView(TextView(context).apply { gravity = Gravity.CENTER_HORIZONTAL; layoutParams = lp.apply { column = 3; weight = 1f }; text = rh.gs(app.aaps.core.ui.R.string.basal) })
         header.addView(TextView(context).apply { gravity = Gravity.CENTER_HORIZONTAL; layoutParams = lp.apply { column = 4; weight = 1f }; text = rh.gs(app.aaps.core.ui.R.string.basalpct) })
-        if (includeCarbs)
+        if (includeCarbs) {
             header.addView(TextView(context).apply { layoutParams = lp.apply { column = 5; weight = 1f }; text = rh.gs(R.string.carbs_short) })
+            header.addView(TextView(context).apply { gravity = Gravity.CENTER_HORIZONTAL; layoutParams = lp.apply { column = 6; weight = 1f }; text = rh.gs(app.aaps.core.ui.R.string.ic_short) })
+        }
     }
 
 fun TDD.toTableRow(context: Context, rh: ResourceHelper, dateUtil: DateUtil, includeCarbs: Boolean): TableRow =
@@ -50,13 +56,17 @@ fun TDD.toTableRow(context: Context, rh: ResourceHelper, dateUtil: DateUtil, inc
                 rh.gs(app.aaps.core.ui.R.string.format_insulin_units1, basalAmount)
             })
             row.addView(TextView(context).apply { gravity = Gravity.CENTER_HORIZONTAL; layoutParams = lp.apply { column = 4 }; text = rh.gs(app.aaps.core.ui.R.string.formatPercent, basalPct) })
-            if (includeCarbs)
+            if (includeCarbs) {
                 row.addView(TextView(context).apply {
                     gravity = Gravity.CENTER_HORIZONTAL; layoutParams = lp.apply { column = 5 }; text = rh.gs(
                     app.aaps.core.objects.R.string.format_carbs, carbs
                         .toInt()
                 )
                 })
+                row.addView(TextView(context).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL; layoutParams = lp.apply { column = 6 }; text = icRatioText(rh)
+                })
+            }
         }
     }
 
@@ -84,12 +94,16 @@ fun TDD.toTableRow(context: Context, rh: ResourceHelper, days: Int, includeCarbs
                 rh.gs(app.aaps.core.ui.R.string.format_insulin_units1, basalAmount)
             })
             row.addView(TextView(context).apply { gravity = Gravity.CENTER_HORIZONTAL; layoutParams = lp.apply { column = 4 }; text = rh.gs(app.aaps.core.ui.R.string.formatPercent, basalPct) })
-            if (includeCarbs)
+            if (includeCarbs) {
                 row.addView(TextView(context).apply {
                     gravity = Gravity.CENTER_HORIZONTAL; layoutParams = lp.apply { column = 5 }; text = rh.gs(
                     app.aaps.core.objects.R.string.format_carbs, carbs
                         .toInt()
                 )
                 })
+                row.addView(TextView(context).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL; layoutParams = lp.apply { column = 6 }; text = icRatioText(rh)
+                })
+            }
         }
     }

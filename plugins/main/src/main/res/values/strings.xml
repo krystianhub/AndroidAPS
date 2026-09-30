@@ -212,6 +212,11 @@
     <string name="statuslights_bat_warning">Threshold warning pump battery level [%]</string>
     <string name="statuslights_bat_critical">Threshold critical pump battery level [%]</string>
     <string name="statuslights_copy_ns">Copy settings from NS</string>
+    <string name="ic_estimate_title">I:C estimate (today)</string>
+    <string name="ic_estimate_from">Carbs / bolus today: %1$.0f g / %2$.1f U</string>
+    <string name="ic_estimate_ratio">Estimated I:C: %1$s</string>
+    <string name="ic_estimate_profile">Profile I:C: %1$s</string>
+    <string name="ic_estimate_diff_label">Difference from profile:</string>
     <string name="graph_scale_6h">6h</string>
     <string name="graph_scale_12h">12h</string>
     <string name="graph_scale_18h">18h</string>

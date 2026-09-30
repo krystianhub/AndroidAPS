@@ -90,7 +90,14 @@ Gated on the pump being configured as **MDI** (`Pump.isMDI()`, not the coarse `i
 
 - All objectives are marked as accomplished on start, so no functionality is gated behind the tutorial. The objectives screen remains as an informational checklist.
 
-### 10. Housekeeping
+### 10. Derived I:C (carbs ÷ bolus)
+
+A quick sanity check on the insulin-to-carb ratio, derived from recorded carbs and boluses alone:
+
+- **Statistics screen**: the TDD table (day rows, week average, today) gets an `IC` column as the rightmost column — carbs ÷ bolus for the row, shown as a bare number ("8.5" = 8.5 g per 1 U), `n/a` when carbs or bolus is missing.
+- **Overview COB icon**: tapping the carbs icon in the top info row (next to IOB) opens a dialog with today's estimated I:C (midnight → now, same data as the "Today" stats row), the profile's I:C for the current time block, and the difference — absolute, percentage and a colored arrow (▲ green when less insulin per gram was needed than the profile assumes, ▼ orange when more). Anything that cannot be calculated shows `n/a`.
+
+### 11. Housekeeping
 
 - Removed upstream Git-blocked build restrictions; added a devenv (Nix) development environment.
 - BG quality check: sources delivering regular sub-5-minute readings (e.g. Juggluco/Libre 2 at 1 min) no longer trigger the "Recalculated data used" warning — data spacing is classified and dense-but-regular data is treated as clean.

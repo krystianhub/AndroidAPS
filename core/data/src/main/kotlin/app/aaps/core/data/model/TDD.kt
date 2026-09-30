@@ -17,5 +17,12 @@ data class TDD(
     var carbs: Double = 0.0
 ) : HasIDs {
 
+    /**
+     * Insulin-to-carb ratio derived from carbs and bolus alone (g per 1U),
+     * null if it cannot be calculated (no carbs or no bolus recorded).
+     */
+    val icRatio: Double?
+        get() = if (carbs > 0 && bolusAmount > 0) carbs / bolusAmount else null
+
     companion object
 }

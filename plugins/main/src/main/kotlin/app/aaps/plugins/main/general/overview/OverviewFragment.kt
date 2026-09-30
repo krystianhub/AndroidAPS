@@ -13,6 +13,9 @@ import android.graphics.drawable.AnimationDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
@@ -82,6 +85,7 @@ import app.aaps.core.interfaces.rx.events.EventWearUpdateTiles
 import app.aaps.core.interfaces.rx.weardata.EventData
 import app.aaps.core.interfaces.source.DexcomBoyda
 import app.aaps.core.interfaces.source.XDripSource
+import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
@@ -105,6 +109,7 @@ import app.aaps.core.ui.elements.SingleClickButton
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.extensions.toVisibilityKeepSpace
+import app.aaps.core.utils.MidnightUtils
 import app.aaps.plugins.main.R
 import app.aaps.plugins.main.databinding.OverviewFragmentBinding
 import app.aaps.plugins.main.general.overview.graphData.GraphData
@@ -160,6 +165,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     @Inject lateinit var bgQualityCheck: BgQualityCheck
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var decimalFormatter: DecimalFormatter
+    @Inject lateinit var tddCalculator: TddCalculator
     @Inject lateinit var graphDataProvider: Provider<GraphData>
     @Inject lateinit var commandQueue: CommandQueue
 
@@ -1023,9 +1029,44 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             rh.gs(app.aaps.core.ui.R.string.bolus) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, bolusIob().iob) + "\n" +
             rh.gs(app.aaps.core.ui.R.string.basal) + ": " + rh.gs(app.aaps.core.ui.R.string.format_insulin_units, basalIob().basaliob)
 
+    private fun icValueText(ic: Double?): String =
+        ic?.let { "%.1f g/U".format(it) } ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+
+    private fun icDialogText(context: Context?): Spanned {
+        val tdd = tddCalculator.calculateToday()
+        val todayIc = tdd?.icRatio
+        val profileIc = profileFunction.getProfile()
+            ?.getIcTimeFromMidnight(MidnightUtils.secondsFromMidnight())
+            ?.takeIf { it > 0 && !it.isNaN() }
+        val builder = SpannableStringBuilder()
+        builder.append(rh.gs(R.string.ic_estimate_from, tdd?.carbs ?: 0.0, tdd?.bolusAmount ?: 0.0)).append("\n")
+        builder.append(rh.gs(R.string.ic_estimate_ratio, icValueText(todayIc))).append("\n")
+        builder.append(rh.gs(R.string.ic_estimate_profile, icValueText(profileIc)))
+        if (todayIc != null && profileIc != null) {
+            val diff = todayIc - profileIc
+            val diffPct = diff / profileIc * 100
+            val arrow = when {
+                diff > 0 -> "▲"
+                diff < 0 -> "▼"
+                else     -> "="
+            }
+            val value = SpannableStringBuilder("%+.1f g/U (%+.0f%%) %s".format(diff, diffPct, arrow))
+            if (diff != 0.0) {
+                val colorAttr = when {
+                    diff > 0 -> app.aaps.core.ui.R.attr.metadataTextOkColor
+                    else     -> app.aaps.core.ui.R.attr.metadataTextWarningColor
+                }
+                value.setSpan(ForegroundColorSpan(rh.gac(context, colorAttr)), 0, value.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            builder.append("\n").append(rh.gs(R.string.ic_estimate_diff_label)).append(" ").append(value)
+        }
+        return builder
+    }
+
     private fun updateIobCob() {
         val iobText = iobText()
         val iobDialogText = iobDialogText()
+        val icDialogText = icDialogText(context)
         val displayText = iobCobCalculator.getCobInfo("Overview COB").displayText(rh, decimalFormatter)
         val lastCarbsTime = persistenceLayer.getNewestCarbs()?.timestamp ?: 0L
         runOnUiThread {
@@ -1051,6 +1092,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
             }
             binding.infoLayout.cob.text = cobText
+            binding.infoLayout.cobLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(R.string.ic_estimate_title), icDialogText) } }
         }
     }
 
