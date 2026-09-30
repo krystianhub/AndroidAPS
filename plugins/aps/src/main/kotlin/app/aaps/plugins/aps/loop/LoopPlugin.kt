@@ -753,16 +753,17 @@ class LoopPlugin @Inject constructor(
      * notifications list.
      *
      * Sizing uses the engine's own [APSResult.insulinReq] rather than the requested temp rate:
-     * the rate is clamped by the pump-oriented U/h caps (ApsMaxBasal & co), which for a pen-unit
-     * quantity reduced every suggestion to 0. U/h caps must never size a pen bolus.
+     * the rate is clamped by the pump-oriented U/h caps (ApsMaxBasal & co), which cap a pen-unit
+     * quantity below the 0.5 U step. U/h caps must never size a pen bolus.
      */
     @VisibleForTesting
     internal fun presentPenBolusSuggestion(result: APSResult, profile: Profile) {
         val pump = activePlugin.activePump
         val bolusStep = pump.pumpDescription.bolusStep
         // The engine withheld insulin because a low is projected - never suggest more on top of it.
-        // In MDI this is the only low guard there is: SMB is structurally disabled in open loop, so
-        // the engine's own `enableSMB && minGuardBG < threshold` suppression never runs.
+        // In MDI this is the only low guard there is: isClosedLoopAllowed() refuses MDI, so
+        // microBolusAllowed is false and the engine's SMB path (incl. its `minGuardBG < threshold`
+        // suppression) never runs.
         if (result.predictedLow) {
             rxBus.send(EventDismissNotification(Notification.PEN_BOLUS_SUGGESTION))
             return
@@ -773,8 +774,8 @@ class LoopPlugin @Inject constructor(
                 (result.rate - profile.getBasal()) * T.mins(30).msecs() / T.hours(1).msecs()
             else 0.0
         // full insulinReq replaces the halved micro-bolus. Deliberately NOT gated on smb > 0:
-        // SMB is always 0 in MDI (open loop), so that gate discarded insulinReq entirely and
-        // left only the U/h-clamped tempExtraUnits path.
+        // isClosedLoopAllowed() refuses MDI, so smb is always 0 and that gate would discard
+        // insulinReq entirely (before the MDI refusal, smb fed the suggestions instead).
         val fullInsulinReq =
             result.insulinReq
                 ?.takeIf { it > 0 }

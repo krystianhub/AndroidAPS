@@ -41,7 +41,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 - **OpenAPS SMB, AMA and AutoISF** are all selectable in Config Builder in MDI mode (upstream hides AutoISF behind engineering + dev mode).
 - **Recommended: OpenAPS SMB + dynamic sensitivity.** AutoISF is the experimental ga-zelle algorithm (dynamic ISF + BG-acceleration/brake modifiers) — its micro-bolus shaping has little leverage in open loop; treat it as an experiment.
 - Dynamic sensitivity **hides and ignores the classic autosens toggle**. Its separate TDD-ratio option controls basal/target adjustments and, subject to constraints, classic autosens fallback when TDD data is missing.
-- **Fixed-basal modeling (MDI)**: the algorithm never scales the working basal with the sensitivity ratio, no prediction pretends Lantus can be suspended, and the "carbs required" alert gets no zero-temp credit — so it fires earlier, which is the safe direction for a pen user. All of it is scoped to MDI; see *Fixed-basal predictions* below for the effect on predictions.
+- **Fixed-basal modeling (MDI)**: the algorithm never scales the working basal with the sensitivity ratio, and no prediction pretends Lantus can be suspended. A pump loop credits a hypothetical basal suspension both in the zero-temp prediction curve and in the "carbs required" math; a pen cannot suspend Lantus, so both assumptions are removed: predictions project the basal as continuing unchanged, and the carbs alert no longer discounts a projected hypo by a suspension that will never happen — it fires earlier, which is the safe direction. All of it is scoped to MDI.
 
 ### 6. Autotune enabled
 
@@ -134,8 +134,6 @@ The APS math is identical for pumps and pens; only enactment differs — a corre
 Everything else (Enable SMB, SMB-with-X triggers, UAM, DynISF, target adjustments, carbs threshold) works fine at defaults.
 
 **TDD ratio in this MDI fork:** Start **OFF**. In MDI the ratio adjusts **glucose targets only** — the working basal is never scaled, since Lantus is fixed until your next injection (the option is renamed accordingly in MDI mode). Enabling it makes the algorithm raise targets when recent TDD is below the 7-day average (more aggressive corrections) and lower them when it is above (gentler corrections), which shifts pen suggestions. TDD is calculated from profile basal (assumed delivered) plus recorded boluses, so larger meals can look like resistance; carb compensation needs sufficient logs. Consider enabling only with an accurate Lantus-backed profile and reliable bolus/carb records, then review its effects with your diabetes team.
-
-**Fixed-basal predictions:** pump loops assume they can always suspend basal to rescue a projected low — the algorithm credits that hypothetical suspension both in the zero-temp prediction curve and in the "carbs required" math. A pen cannot suspend Lantus, so in MDI mode both assumptions are removed: predictions project the basal as continuing unchanged, and the carbs alert no longer discounts the hypo by a suspension that will never happen (it fires earlier — the safe direction).
 
 ### Honest limitations
 
