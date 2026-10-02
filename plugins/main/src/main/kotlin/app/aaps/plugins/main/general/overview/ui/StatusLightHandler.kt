@@ -2,6 +2,7 @@ package app.aaps.plugins.main.general.overview.ui
 
 import android.annotation.SuppressLint
 import android.widget.TextView
+import androidx.annotation.VisibleForTesting
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
@@ -10,6 +11,7 @@ import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.aps.Predictions
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -265,17 +267,32 @@ class StatusLightHandler @Inject constructor(
         }
     }
 
-    /** Displays the latest APS eventual BG and target in the user's glucose units. */
+    /**
+     * Displays the latest APS eventual BG and target in the user's glucose units.
+     *
+     * When prediction curves are available the text shows the lowest predicted BG followed
+     * by the eventual landing value ("82→150"). Color is driven by the trough of the
+     * prediction, not just the landing value: a curve that dips low and rebounds is flagged
+     * even when eventualBG lands in range - and in MDI no automatic microbolus will smooth
+     * that dip.
+     */
     fun updateEventualBg(view: TextView?, targetView: TextView?, units: GlucoseUnit, profileUtil: ProfileUtil) {
         if (view == null || targetView == null) return
         scope.launch {
             val now = dateUtil.now()
             val latest = recentApsResults(now).maxByOrNull { it.first }
-            val eventualBgValue = latest?.second?.rawData()?.let { it as? RT }?.eventualBG?.takeIf { it.isFinite() && it != 0.0 }
-            val targetBgValue = latest?.second?.rawData()?.let { it as? RT }?.targetBG?.takeIf { it.isFinite() && it != 0.0 }
-            val eventualBg = eventualBgValue?.let { profileUtil.fromMgdlToStringInUnits(it, units) }
-                ?.takeIf { it.isNotBlank() }
-                ?: "-"
+            val rt = latest?.second?.rawData() as? RT
+            val eventualBgValue = rt?.eventualBG?.takeIf { it.isFinite() }
+            val targetBgValue = rt?.targetBG?.takeIf { it.isFinite() && it != 0.0 }
+            val minPredBgValue = latest?.second?.predictions()?.let { minPredictedBg(it) }
+            val eventualBgText = eventualBgValue?.let { profileUtil.fromMgdlToStringInUnits(it, units) }?.takeIf { it.isNotBlank() }
+            val minPredBgText = minPredBgValue?.let { profileUtil.fromMgdlToStringInUnits(it, units) }?.takeIf { it.isNotBlank() }
+            val eventualBg = when {
+                eventualBgText == null -> "-"
+                minPredBgValue != null && eventualBgValue != null && minPredBgText != null && minPredBgValue < eventualBgValue ->
+                    "$minPredBgText→$eventualBgText"
+                else -> eventualBgText
+            }
             val targetBg = targetBgValue?.let { profileUtil.fromMgdlToStringInUnits(it, units) }
                 ?.takeIf { it.isNotBlank() }
                 ?: "-"
@@ -284,13 +301,7 @@ class StatusLightHandler @Inject constructor(
                     profile.getTargetLowMgdl(timestamp)..profile.getTargetHighMgdl(timestamp)
                 }
             }
-            val eventualBgColor = when {
-                eventualBgValue == null -> app.aaps.core.ui.R.attr.defaultTextColor
-                eventualBgValue < Constants.STATS_RANGE_LOW_MMOL * GlucoseUnit.MMOLL_TO_MGDL ||
-                    eventualBgValue > Constants.STATS_RANGE_HIGH_MMOL * GlucoseUnit.MMOLL_TO_MGDL -> app.aaps.core.ui.R.attr.urgentColor
-                targetRange?.contains(eventualBgValue) == true -> app.aaps.core.ui.R.attr.metadataTextOkColor
-                else -> app.aaps.core.ui.R.attr.metadataTextWarningColor
-            }
+            val eventualBgColor = eventualBgColorAttr(eventualBgValue, minPredBgValue, targetRange)
             withContext(Dispatchers.Main) {
                 view.text = eventualBg
                 view.setTextColor(rh.gac(view.context, eventualBgColor))
@@ -341,11 +352,43 @@ class StatusLightHandler @Inject constructor(
         return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2.0
     }
 
-    private companion object {
-        val APS_INSULIN_REQ_WINDOW_MS = T.mins(15).msecs()
-        val APS_STALE_THRESHOLD_MS = T.mins(5).msecs()
-        val APS_RESULT_PERSIST_DELAY_MS = T.mins(1).msecs()
-        const val STALE_APS_VALUE_ALPHA = 0.45f
+    companion object {
+
+        private val APS_INSULIN_REQ_WINDOW_MS = T.mins(15).msecs()
+        private val APS_STALE_THRESHOLD_MS = T.mins(5).msecs()
+        private val APS_RESULT_PERSIST_DELAY_MS = T.mins(1).msecs()
+        private const val STALE_APS_VALUE_ALPHA = 0.45f
+        private val STATS_RANGE_LOW_MGDL = Constants.STATS_RANGE_LOW_MMOL * GlucoseUnit.MMOLL_TO_MGDL
+        private val STATS_RANGE_HIGH_MGDL = Constants.STATS_RANGE_HIGH_MMOL * GlucoseUnit.MMOLL_TO_MGDL
+
+        /** Lowest predicted BG (mg/dL) across all prediction curves; null when there are no predictions. */
+        @VisibleForTesting
+        fun minPredictedBg(predictions: Predictions): Double? =
+            listOfNotNull(predictions.IOB, predictions.ZT, predictions.COB, predictions.aCOB, predictions.UAM)
+                .flatten()
+                .minOrNull()
+                ?.toDouble()
+
+        /**
+         * Color attr for the eventual BG light: the landing value plus the trough of the prediction.
+         * A projected dip below the hypo threshold is urgent even when the landing value is in range;
+         * a dip below target is at least a warning.
+         */
+        @VisibleForTesting
+        fun eventualBgColorAttr(
+            eventualBgValue: Double?,
+            minPredBgValue: Double?,
+            targetRange: ClosedFloatingPointRange<Double>?
+        ): Int =
+            when {
+                eventualBgValue == null                                                           -> app.aaps.core.ui.R.attr.defaultTextColor
+                eventualBgValue < STATS_RANGE_LOW_MGDL ||
+                    eventualBgValue > STATS_RANGE_HIGH_MGDL                                       -> app.aaps.core.ui.R.attr.urgentColor
+                minPredBgValue != null && minPredBgValue < STATS_RANGE_LOW_MGDL                    -> app.aaps.core.ui.R.attr.urgentColor
+                targetRange?.contains(eventualBgValue) == true &&
+                    (minPredBgValue == null || minPredBgValue >= targetRange.start)               -> app.aaps.core.ui.R.attr.metadataTextOkColor
+                else                                                                              -> app.aaps.core.ui.R.attr.metadataTextWarningColor
+            }
     }
 
     @SuppressLint("SetTextI18n")
