@@ -36,6 +36,16 @@ data class MealMacroPlan(
     val hasTails: Boolean
         get() = primaryTailCarbs > 0 || fatTailCarbs > 0
 
+    /**
+     * Immediate meal-carb insulin actually given now. The upfront percentage derates only the
+     * insulin for the carbs eaten up front (fat/protein slow down their absorption) - BG correction,
+     * COB and IOB are never scaled. The withheld share is deliberately not dosed (conservative
+     * bias, later pen suggestions pick up a shortfall). An explicit percentage set by the user
+     * ([usePercentage]) overrides the plan's derate.
+     */
+    fun upfrontCarbInsulin(fullCarbInsulin: Double, usePercentage: Boolean): Double =
+        if (usePercentage) fullCarbInsulin else fullCarbInsulin * suggestedUpfrontPercentage / 100.0
+
     companion object {
         /**
          * Computes the dosing plan for a meal.
@@ -43,8 +53,9 @@ data class MealMacroPlan(
          * Conservative model (all factors configurable through [params]):
          *  - part of the real carbs is recognized as slow-absorbing (scaled by meal intensity) and moved
          *    to the primary tail together with protein carb-equivalents
-         *  - fat grams are converted to carb-equivalents at params.fatPctPerHour per hour over the fat
-         *    tail duration
+         *  - fat grams are converted to carb-equivalents at params.fatPct percent of the fat grams,
+         *    spread over the fat tail duration (the duration only spreads the tail, the total
+         *    equivalent grams do not depend on it)
          *  - the suggested upfront percentage interpolates between the lean and heavy preference
          *    based on the meal intensity (mean of normalized fat and protein content)
          *
@@ -70,7 +81,8 @@ data class MealMacroPlan(
             val slowCarbs = (carbs - upfrontCarbs).coerceAtLeast(0)
 
             val primaryTailCarbs = slowCarbs + (protein * params.proteinPct / 100.0).toInt()
-            val fatTailCarbs = (fat * params.fatPctPerHour / 100.0 * params.fatDurationH).toInt()
+            // total fat equivalent is independent of how long it is spread out
+            val fatTailCarbs = (fat * params.fatPct / 100.0).toInt()
 
             // Degenerate plan (e.g. fat-only meal whose equivalents truncate to 0 g) -> plain wizard
             if (primaryTailCarbs == 0 && fatTailCarbs == 0) return null
@@ -101,7 +113,7 @@ data class MealMacroPlan(
             proteinPct = 10,
             proteinShiftMin = 60,
             proteinDurationH = 4,
-            fatPctPerHour = 1.0,
+            fatPct = 8.0,
             fatShiftMin = 90,
             fatDurationH = 8,
             upfrontPctLean = 100,
@@ -118,10 +130,10 @@ data class MealMacroPlan(
      *
      * @param proteinPct    part of protein grams added as carb equivalents to the primary tail (0-50)
      * @param proteinShiftMin start delay of the primary tail in minutes
-     * @param proteinDurationH duration of the primary tail in hours (1-10, hard limited)
-     * @param fatPctPerHour   fat grams converted to tail carbs per hour (0.0-5.0), e.g. 1.0 -> 30 g fat over 8 h = 2.4 g
+     * @param proteinDurationH duration of the primary tail in hours (1-10, hard limited) - only spreads the tail, it does not change its total grams
+     * @param fatPct        fat grams converted to tail carbs as percent of the fat grams (0.0-50.0), e.g. 8.0 -> 30 g fat = 2.4 g tail carbs
      * @param fatShiftMin   start delay of the fat tail in minutes
-     * @param fatDurationH    duration of the fat tail in hours (1-10, hard limited)
+     * @param fatDurationH    duration of the fat tail in hours (1-10, hard limited) - only spreads the tail, it does not change its total grams
      * @param upfrontPctLean  suggested upfront percentage for a lean meal
      * @param upfrontPctHeavy suggested upfront percentage for a heavy meal
      * @param fatIntensityRef  fat grams considered a "heavy" meal (intensity 1.0 contribution)
@@ -134,7 +146,7 @@ data class MealMacroPlan(
         val proteinPct: Int,
         val proteinShiftMin: Int,
         val proteinDurationH: Int,
-        val fatPctPerHour: Double,
+        val fatPct: Double,
         val fatShiftMin: Int,
         val fatDurationH: Int,
         val upfrontPctLean: Int,

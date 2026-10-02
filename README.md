@@ -54,12 +54,12 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 Fatty, slowly-absorbed meals (pizza, burgers, curries) are the classic MDI pain: a single upfront bolus guesses at a carb curve that lasts hours. The bolus **Wizard** has **Fat** and **Protein** fields (grams). Filling either one activates a dosing plan, shown as a one-line preview above the calculation:
 
 ```
-Tail 66g @ +60min/4h · Fat 3g @ +90min/8h · upfront 63%
+Now 70g @ 63% · Tail 66g @ +60min/4h · Fat-eq 3g @ +90min/8h
 ```
 
-- **Upfront part**: a meal-heaviness score (0–1, from normalized fat/protein content) splits the real carbs into a fast part (bolused now) and a slow part, and interpolates the upfront bolus percentage between the *lean* and *heavy* preferences (defaults 100 % ↔ 60 %).
+- **Upfront part**: a meal-heaviness score (0–1, from normalized fat/protein content) splits the real carbs into a fast part (eaten/bolused now) and a slow part, and interpolates the upfront share between the *lean* and *heavy* preferences (defaults 100 % ↔ 60 %). The share derates **only the insulin for the fast carbs** — BG correction, COB and IOB are untouched — and the withheld part is *deliberately not dosed* (conservative bias: a shortfall is picked up by later pen suggestions, an overshoot can't be undone). An explicit value in the wizard's % field overrides the derate entirely.
 - **Primary tail**: slow carbs + protein equivalents (default 10 % of protein grams) are scheduled as **eCarbs** starting +60 min, spread over 4 h.
-- **Fat tail**: fat equivalents (default 1 % of fat grams per hour over 8 h ≈ 8 % total) are scheduled as a second eCarbs record starting +90 min, spread over 8 h.
+- **Fat tail**: fat equivalents (default 8 % of the fat grams, e.g. 47 g fat ≈ 3.8 g) are scheduled as a second eCarbs record starting +90 min, spread over 8 h — the duration only spreads the tail, the total equivalents don't depend on it.
 - On OK both tails are recorded (record-only, like everything in MDI) and feed COB/predictions — the loop then converts the rising glucose predictions into pen-bolus suggestions while the meal is still being absorbed. Protein/fat equivalents also keep autosens from misreading the late rise as insulin resistance.
 - **Everything is adjustable before confirming** — the preview is informational, the percentage can be overridden with the existing % checkbox (manual values always win), and zero macros give exactly the upstream wizard.
 - **Activation safeguard**: meals with less than 5 g fat *and* less than 10 g protein (both configurable) skip the assistant entirely — plain wizard logic applies, so a splash of oil or a spoon of yogurt can't produce a silly 99 %-upfront micro-plan.
@@ -68,9 +68,11 @@ All conversion factors live in *Settings → Overview → Meal macro assistant* 
 
 | Preset | Protein | Fat | Heavy-meal upfront |
 | --- | --- | --- | --- |
-| **Conservative** (default) | 10 % / 4 h | 1.0 %/h / 8 h | 60 % |
-| **Warsaw method** | 30 % / 4 h | 3.5 %/h / 8 h | 50 % |
-| **Modified Warsaw (0.7×)** | 21 % / 5 h | 2.5 %/h / 8 h | 55 % |
+| **Conservative** (default) | 10 % / 4 h | 8 % / 8 h | 60 % |
+| **Warsaw-style (derated)** | 30 % / 4 h | 28 % / 8 h | 50 % |
+| **Warsaw-style 0.7×** | 21 % / 5 h | 20 % / 8 h | 55 % |
+
+Note: the Warsaw-style presets are deliberately derated against the classic Warsaw method (which converts ~40 % of protein and ~90 % of fat grams into carb equivalents — roughly double the tail grams); the fat conversion setting is capped at 50 % of fat grams.
 
 > ⚠️ The conversion factors are community heuristics, **not** validated dosing rules. Start with Conservative, compare the actual glucose curve against the plan for a few meals (each entry is logged with its inputs), and only move toward Warsaw if the tail consistently outlasts the coverage. Sanity-check with your diabetes team.
 

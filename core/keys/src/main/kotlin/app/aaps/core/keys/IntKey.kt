@@ -46,7 +46,7 @@ enum class IntKey(
     MealProteinPercentage("meal_protein_percentage", 10, 0, 50),
     MealProteinDurationH("meal_protein_duration_h", 4, 1, 10),
     MealProteinShiftMin("meal_protein_shift_min", 60, 0, 300),
-    MealFatPercentagePerHourTenths("meal_fat_percentage_per_hour_tenths", 10, 0, 50),
+    MealFatPercentageTenths("meal_fat_percentage_tenths", 80, 0, 500),
     MealFatDurationH("meal_fat_duration_h", 8, 1, 10),
     MealFatShiftMin("meal_fat_shift_min", 90, 0, 300),
     MealUpfrontPercentageLean("meal_upfront_percentage_lean", 100, 40, 100),

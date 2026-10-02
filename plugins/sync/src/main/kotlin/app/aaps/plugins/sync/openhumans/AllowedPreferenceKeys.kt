@@ -161,7 +161,7 @@ private val allowedKeys = """
     meal_protein_percentage
     meal_protein_duration_h
     meal_protein_shift_min
-    meal_fat_percentage_per_hour_tenths
+    meal_fat_percentage_tenths
     meal_fat_duration_h
     meal_fat_shift_min
     meal_upfront_percentage_lean

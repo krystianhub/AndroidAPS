@@ -51,7 +51,6 @@ import app.aaps.core.objects.extensions.round
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.core.utils.JsonHelper
-import java.util.Calendar
 import java.util.LinkedList
 import javax.inject.Inject
 import kotlin.math.abs
@@ -235,6 +234,10 @@ class BolusWizard @Inject constructor(
         // Insulin from carbs
         ic = profile.getIc()
         insulinFromCarbs = carbs / ic
+        // Meal macro plan: only the planned share of the immediate meal-carb insulin is bolused now,
+        // the deferred part is covered by the eCarbs tails. BG correction, COB and IOB are not scaled
+        // and an explicit percentage set by the user overrides the plan's derate.
+        mealMacroPlan?.let { insulinFromCarbs = it.upfrontCarbInsulin(insulinFromCarbs, usePercentage) }
         insulinFromCOB = if (useCob) (cob / ic) else 0.0
 
         // Insulin from IOB
@@ -395,17 +398,19 @@ class BolusWizard @Inject constructor(
             }
         }
         mealMacroPlan?.let { plan ->
+            if (plan.upfrontCarbs > 0)
+                actions.add(rh.gs(app.aaps.core.ui.R.string.wizard_meal_macro_now, plan.upfrontCarbs, plan.suggestedUpfrontPercentage))
             if (plan.primaryTailCarbs > 0)
                 actions.add(
                     rh.gs(app.aaps.core.ui.R.string.uel_extended_carbs) + ": " + rh.gs(
                         app.aaps.core.ui.R.string.format_carbs, plan.primaryTailCarbs
-                    ) + "/" + plan.primaryTailDurationH + "h ( +" + plan.primaryTailShiftMin + "min)"
+                    ) + "/" + plan.primaryTailDurationH + "h (+" + plan.primaryTailShiftMin + "min)"
                 )
             if (plan.fatTailCarbs > 0)
                 actions.add(
                     rh.gs(app.aaps.core.ui.R.string.uel_extended_carbs) + ": " + rh.gs(
                         app.aaps.core.ui.R.string.format_carbs, plan.fatTailCarbs
-                    ) + "/" + plan.fatTailDurationH + "h ( +" + plan.fatTailShiftMin + "min)"
+                    ) + "/" + plan.fatTailDurationH + "h (+" + plan.fatTailShiftMin + "min)"
                 )
         }
         val displayNotes = if (position != null) InjectionPosition.stripPosition(notes) else notes
@@ -640,7 +645,7 @@ class BolusWizard @Inject constructor(
      * In MDI mode the record is persisted directly (no pump to deliver with), same as wizard treatments.
      */
     private fun scheduleECarbs(ctx: Context, carbs: Int, timeOffsetMin: Int, durationH: Int, notes: String, source: Sources) {
-        val currentTime = Calendar.getInstance().timeInMillis
+        val currentTime = dateUtil.now()
         val eventTime: Long = currentTime + (timeOffsetMin * 60000L)
         val duration = durationH.coerceAtLeast(0)
 
@@ -684,12 +689,16 @@ class BolusWizard @Inject constructor(
     private fun scheduleECarbs(ctx: Context, plan: MealMacroPlan, source: Sources) {
         // tail shifts are relative to the meal start (carb time), not to "now" - e.g. with
         // "eat in 10 min" the +60 min protein tail must start at now + 70 min
-        val mealOffsetMin = if (carbs > 0) carbTime else 0
+        val mealOffsetMin = carbTime
         if (plan.primaryTailCarbs > 0)
-            scheduleECarbs(ctx, plan.primaryTailCarbs, plan.primaryTailShiftMin + mealOffsetMin, plan.primaryTailDurationH, notes, source)
+            scheduleECarbs(ctx, plan.primaryTailCarbs, plan.primaryTailShiftMin + mealOffsetMin, plan.primaryTailDurationH, tailNotes("P"), source)
         if (plan.fatTailCarbs > 0)
-            scheduleECarbs(ctx, plan.fatTailCarbs, plan.fatTailShiftMin + mealOffsetMin, plan.fatTailDurationH, notes, source)
+            scheduleECarbs(ctx, plan.fatTailCarbs, plan.fatTailShiftMin + mealOffsetMin, plan.fatTailDurationH, tailNotes("F"), source)
     }
+
+    /** Notes for a macro tail record: the wizard notes plus a marker so the tails can be told apart later */
+    private fun tailNotes(tag: String): String =
+        if (notes.isBlank()) "macro-$tag" else "$notes macro-$tag"
 
     private fun calcPercentageWithConstraints() {
         calculatedPercentage = 100

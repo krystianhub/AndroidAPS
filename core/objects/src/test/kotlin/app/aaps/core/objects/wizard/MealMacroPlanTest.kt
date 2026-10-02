@@ -41,7 +41,7 @@ class MealMacroPlanTest {
 
     @Test
     fun `degenerate fat-only plan with zero gram tails falls back to plain wizard`() {
-        // 10 g fat at 1%/h x 8 h = 0.8 g -> truncates to 0 -> no measurable tail -> no plan
+        // 10 g fat at 8% = 0.8 g -> truncates to 0 -> no measurable tail -> no plan
         assertThat(MealMacroPlan.compute(carbs = 0, fat = 10, protein = 0, params = params)).isNull()
         // 20 g fat = 1.6 -> 1 g tail -> plan exists
         assertThat(MealMacroPlan.compute(carbs = 0, fat = 20, protein = 0, params = params)).isNotNull()
@@ -65,7 +65,7 @@ class MealMacroPlanTest {
         assertThat(plan.primaryTailShiftMin).isEqualTo(60)
         assertThat(plan.primaryTailDurationH).isEqualTo(4)
 
-        // fat tail = int(47 * 1%/h * 8h) = 3
+        // fat tail = int(47 * 8%) = 3
         assertThat(plan.fatTailCarbs).isEqualTo(3)
         assertThat(plan.fatTailShiftMin).isEqualTo(90)
         assertThat(plan.fatTailDurationH).isEqualTo(8)
@@ -143,6 +143,27 @@ class MealMacroPlanTest {
         val plan = MealMacroPlan.compute(carbs = 100, fat = 50, protein = 50, params = customParams)!!
         assertThat(plan.primaryTailDurationH).isAtMost(10)
         assertThat(plan.fatTailDurationH).isAtMost(10)
+        // tail grams do not depend on the spread duration: 50 g fat at 8% stays 4 g
+        assertThat(plan.fatTailCarbs).isEqualTo(4)
+    }
+
+    @Test
+    fun `fat tail grams do not depend on the spread duration`() {
+        val short = MealMacroPlan.compute(carbs = 100, fat = 50, protein = 0, params = params.copy(fatDurationH = 4))!!
+        val long = MealMacroPlan.compute(carbs = 100, fat = 50, protein = 0, params = params.copy(fatDurationH = 8))!!
+        assertThat(short.fatTailCarbs).isEqualTo(long.fatTailCarbs)
+        assertThat(short.fatTailCarbs).isEqualTo(4) // 8% of 50 g
+        assertThat(short.fatTailDurationH).isEqualTo(4)
+        assertThat(long.fatTailDurationH).isEqualTo(8)
+    }
+
+    @Test
+    fun `upfront share derates only meal carb insulin`() {
+        val plan = MealMacroPlan.compute(carbs = 131, fat = 47, protein = 53, params = params)!!
+        // pizza: 70 g immediate carbs at 63% -> 4.41 U of the 7.0 U, corrections are not plan-scaled
+        assertThat(plan.upfrontCarbInsulin(7.0, usePercentage = false)).isWithin(0.001).of(4.41)
+        // explicit user percentage takes over -> no plan derate
+        assertThat(plan.upfrontCarbInsulin(7.0, usePercentage = true)).isEqualTo(7.0)
     }
 
     @Test

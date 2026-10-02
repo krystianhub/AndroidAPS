@@ -120,8 +120,9 @@
     <string name="shortgramm">g</string>
     <string name="fat_label">Fat</string>
     <string name="protein_label">Protein</string>
-    <string name="wizard_meal_macro_plan">Tail %1$dg @ +%2$dmin/%3$dh · Fat %4$dg @ +%5$dmin/%6$dh · upfront %7$d%%</string>
-    <string name="wizard_meal_macro_plan_no_fat">Tail %1$dg @ +%2$dmin/%3$dh · upfront %4$d%%</string>
+    <string name="wizard_meal_macro_plan">Now %1$dg @ %2$d%% · Tail %3$dg @ +%4$dmin/%5$dh · Fat-eq %6$dg @ +%7$dmin/%8$dh</string>
+    <string name="wizard_meal_macro_plan_no_fat">Now %1$dg @ %2$d%% · Tail %3$dg @ +%4$dmin/%5$dh</string>
+    <string name="wizard_meal_macro_now">Meal macro now: %1$dg @ %2$d%%</string>
     <string name="pumpsuspended">Pump suspended</string>
     <string name="pump_running">Pump running</string>
     <string name="notconfigured">Not configured</string>

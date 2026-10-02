@@ -93,7 +93,7 @@
             android:textColor="?attr/infoColor"
             android:visibility="gone"
             tools:ignore="HardcodedText"
-            tools:text="Tail 66g @ +60min/4h · Fat 3g @ +90min/8h · upfront 63%" />
+            tools:text="Now 70g @ 63% · Tail 66g @ +60min/4h · Fat-eq 3g @ +90min/8h" />
 
         <TableLayout
             android:layout_width="match_parent"

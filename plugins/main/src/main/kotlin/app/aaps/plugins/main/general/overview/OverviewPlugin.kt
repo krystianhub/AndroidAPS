@@ -70,7 +70,7 @@ enum class MealMacroPreset(
     val proteinPct: Int,
     val proteinShiftMin: Int,
     val proteinDurationH: Int,
-    val fatPctPerHourTenths: Int,
+    val fatPctTenths: Int,
     val fatDurationH: Int,
     val fatShiftMin: Int,
     val upfrontPctLean: Int,
@@ -78,14 +78,14 @@ enum class MealMacroPreset(
     val fatIntensityRefG: Int,
     val proteinIntensityRefG: Int
 ) {
-    /** PECBC-style conservative: protein ~10% over 4-5h, fat ~1%/h */
-    CONSERVATIVE(proteinPct = 10, proteinShiftMin = 60, proteinDurationH = 4, fatPctPerHourTenths = 10, fatDurationH = 8, fatShiftMin = 90, upfrontPctLean = 100, upfrontPctHeavy = 60, fatIntensityRefG = 40, proteinIntensityRefG = 80),
+    /** PECBC-style conservative: protein ~10 % of protein grams over 4 h, fat ~8 % of fat grams over 8 h */
+    CONSERVATIVE(proteinPct = 10, proteinShiftMin = 60, proteinDurationH = 4, fatPctTenths = 80, fatDurationH = 8, fatShiftMin = 90, upfrontPctLean = 100, upfrontPctHeavy = 60, fatIntensityRefG = 40, proteinIntensityRefG = 80),
 
-    /** Warsaw method: protein ~30%, fat ~10% of meal calories (Petrov/ANSWER-style). Aggressive - only with CGM experience */
-    WARSAW(proteinPct = 30, proteinShiftMin = 60, proteinDurationH = 4, fatPctPerHourTenths = 35, fatDurationH = 8, fatShiftMin = 90, upfrontPctLean = 100, upfrontPctHeavy = 50, fatIntensityRefG = 40, proteinIntensityRefG = 80),
+    /** Warsaw-inspired but deliberately derated (classic Warsaw converts ~40 % of protein and ~90 % of fat grams). Aggressive - only with CGM experience */
+    WARSAW(proteinPct = 30, proteinShiftMin = 60, proteinDurationH = 4, fatPctTenths = 280, fatDurationH = 8, fatShiftMin = 90, upfrontPctLean = 100, upfrontPctHeavy = 50, fatIntensityRefG = 40, proteinIntensityRefG = 80),
 
-    /** Warsaw derate: ~70% of Warsaw values, safer entry point */
-    WARSAW_MODIFIED(proteinPct = 21, proteinShiftMin = 60, proteinDurationH = 5, fatPctPerHourTenths = 25, fatDurationH = 8, fatShiftMin = 90, upfrontPctLean = 100, upfrontPctHeavy = 55, fatIntensityRefG = 40, proteinIntensityRefG = 80)
+    /** ~70 % of the Warsaw-inspired values above, safer entry point */
+    WARSAW_MODIFIED(proteinPct = 21, proteinShiftMin = 60, proteinDurationH = 5, fatPctTenths = 200, fatDurationH = 8, fatShiftMin = 90, upfrontPctLean = 100, upfrontPctHeavy = 55, fatIntensityRefG = 40, proteinIntensityRefG = 80)
 }
 
 @Singleton
@@ -374,11 +374,11 @@ class OverviewPlugin @Inject constructor(
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealProteinPercentage, dialogMessage = R.string.meal_protein_percentage_message, title = R.string.meal_protein_percentage))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealProteinDurationH, title = R.string.meal_protein_duration))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealProteinShiftMin, title = R.string.meal_protein_shift))
-                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealFatPercentagePerHourTenths, dialogMessage = R.string.meal_fat_percentage_per_hour_message, title = R.string.meal_fat_percentage_per_hour))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealFatPercentageTenths, dialogMessage = R.string.meal_fat_percentage_message, title = R.string.meal_fat_percentage))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealFatDurationH, title = R.string.meal_fat_duration))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealFatShiftMin, title = R.string.meal_fat_shift))
-                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealUpfrontPercentageLean, title = R.string.meal_upfront_percentage_lean))
-                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealUpfrontPercentageHeavy, title = R.string.meal_upfront_percentage_heavy))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealUpfrontPercentageLean, dialogMessage = R.string.meal_upfront_percentage_message, title = R.string.meal_upfront_percentage_lean))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealUpfrontPercentageHeavy, dialogMessage = R.string.meal_upfront_percentage_message, title = R.string.meal_upfront_percentage_heavy))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealFatIntensityRefG, title = R.string.meal_fat_intensity_ref))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealProteinIntensityRefG, title = R.string.meal_protein_intensity_ref))
                     addPreference(
@@ -435,7 +435,7 @@ class OverviewPlugin @Inject constructor(
         preferences.put(IntKey.MealProteinPercentage, preset.proteinPct)
         preferences.put(IntKey.MealProteinShiftMin, preset.proteinShiftMin)
         preferences.put(IntKey.MealProteinDurationH, preset.proteinDurationH)
-        preferences.put(IntKey.MealFatPercentagePerHourTenths, preset.fatPctPerHourTenths)
+        preferences.put(IntKey.MealFatPercentageTenths, preset.fatPctTenths)
         preferences.put(IntKey.MealFatShiftMin, preset.fatShiftMin)
         preferences.put(IntKey.MealFatDurationH, preset.fatDurationH)
         preferences.put(IntKey.MealUpfrontPercentageLean, preset.upfrontPctLean)

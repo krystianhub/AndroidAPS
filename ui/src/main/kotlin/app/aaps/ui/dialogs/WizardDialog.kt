@@ -200,11 +200,11 @@ class WizardDialog : DaggerDialogFragment() {
         )
         binding.fatInput.setParams(
             savedInstanceState?.getDouble("fat_input")
-                ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+                ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
         binding.proteinInput.setParams(
             savedInstanceState?.getDouble("protein_input")
-                ?: 0.0, 0.0, maxCarbs.toDouble(), 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
+                ?: 0.0, 0.0, 200.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
 
         // If there is no BG using % lower that 100% leads to high BGs
@@ -507,15 +507,15 @@ class WizardDialog : DaggerDialogFragment() {
                 binding.mealMacroPlan.text = if (plan.fatTailCarbs > 0)
                     rh.gs(
                         app.aaps.core.ui.R.string.wizard_meal_macro_plan,
+                        plan.upfrontCarbs, plan.suggestedUpfrontPercentage,
                         plan.primaryTailCarbs, plan.primaryTailShiftMin, plan.primaryTailDurationH,
-                        plan.fatTailCarbs, plan.fatTailShiftMin, plan.fatTailDurationH,
-                        plan.suggestedUpfrontPercentage
+                        plan.fatTailCarbs, plan.fatTailShiftMin, plan.fatTailDurationH
                     )
                 else
                     rh.gs(
                         app.aaps.core.ui.R.string.wizard_meal_macro_plan_no_fat,
-                        plan.primaryTailCarbs, plan.primaryTailShiftMin, plan.primaryTailDurationH,
-                        plan.suggestedUpfrontPercentage
+                        plan.upfrontCarbs, plan.suggestedUpfrontPercentage,
+                        plan.primaryTailCarbs, plan.primaryTailShiftMin, plan.primaryTailDurationH
                     )
                 binding.mealMacroPlan.visibility = View.VISIBLE
             } else {
@@ -536,8 +536,7 @@ class WizardDialog : DaggerDialogFragment() {
             else
                 SafeParse.stringToInt(binding.correctionInput.text)
         } else
-        // without explicit percentage selection use the one suggested by the meal macro plan (if any)
-            mealMacroPlan?.suggestedUpfrontPercentage ?: preferences.get(IntKey.OverviewBolusPercentage)
+            preferences.get(IntKey.OverviewBolusPercentage)
         val carbsAfterConstraint = constraintChecker.applyCarbsConstraints(ConstraintObject(carbs, aapsLogger)).value()
         if (abs(carbs - carbsAfterConstraint) > 0.01) {
             binding.carbsInput.value = 0.0
@@ -546,7 +545,7 @@ class WizardDialog : DaggerDialogFragment() {
         }
         // tails are scheduled as eCarbs on OK - constrain the upfront part only
         val upfrontCarbsAfterConstraint = constraintChecker.applyCarbsConstraints(ConstraintObject(upfrontCarbs, aapsLogger)).value().toInt()
-        if (abs(carbs - carbsAfterConstraint) > 0.01) {
+        if (abs(upfrontCarbs - upfrontCarbsAfterConstraint) > 0.01) {
             binding.carbsInput.value = 0.0
             ToastUtils.warnToast(ctx, R.string.carbs_constraint_applied)
             return
@@ -654,7 +653,7 @@ class WizardDialog : DaggerDialogFragment() {
             proteinPct = preferences.get(IntKey.MealProteinPercentage),
             proteinShiftMin = preferences.get(IntKey.MealProteinShiftMin),
             proteinDurationH = preferences.get(IntKey.MealProteinDurationH).coerceAtMost(HardLimits.MAX_CARBS_DURATION_HOURS.toInt()),
-            fatPctPerHour = preferences.get(IntKey.MealFatPercentagePerHourTenths) / 10.0,
+            fatPct = preferences.get(IntKey.MealFatPercentageTenths) / 10.0,
             fatShiftMin = preferences.get(IntKey.MealFatShiftMin),
             fatDurationH = preferences.get(IntKey.MealFatDurationH).coerceAtMost(HardLimits.MAX_CARBS_DURATION_HOURS.toInt()),
             upfrontPctLean = preferences.get(IntKey.MealUpfrontPercentageLean),
