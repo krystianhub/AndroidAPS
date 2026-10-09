@@ -143,6 +143,7 @@ class LoopPlugin @Inject constructor(
     private val disposable = CompositeDisposable()
     override var lastBgTriggeredRun: Long = 0
     private var carbsSuggestionsSuspendedUntil: Long = 0
+    private var lastCarbsAlertShown: Long = 0
     private var lastPenSuggestion: Long = 0
     @VisibleForTesting internal var prevCarbsreq = 0
     override var lastRun: LastRun? = null
@@ -721,7 +722,8 @@ class LoopPlugin @Inject constructor(
     /**
      * MDI fork: surface the carbs-required alert in open loop too (upstream only alerts in
      * closed loop, so pen users never got it). Sends the CARBS_REQUIRED notification when all
-     * suppressors are clear; dismisses it again once carbs are no longer needed.
+     * suppressors are clear; dismisses it again once carbs are no longer needed. Re-raises at
+     * most once per [CARBS_ALERT_QUIET_MINUTES] so a dismissed alert does not nag every run.
      */
     @VisibleForTesting
     internal fun presentCarbsRequiredAlert(result: APSResult) {
@@ -730,9 +732,11 @@ class LoopPlugin @Inject constructor(
             !treatmentTimeThreshold(-15) &&
             preferences.get(BooleanKey.AlertCarbsRequired) &&
             result.carbsReqWithin in 1..CARBS_ALERT_WINDOW_MINUTES
-        if (alertAllowed) {
+        val quiet = System.currentTimeMillis() < lastCarbsAlertShown + T.mins(CARBS_ALERT_QUIET_MINUTES.toLong()).msecs()
+        if (alertAllowed && !quiet) {
+            lastCarbsAlertShown = System.currentTimeMillis()
             rxBus.send(EventNewNotification(Notification(Notification.CARBS_REQUIRED, result.carbsRequiredText, Notification.NORMAL)))
-        } else if (prevCarbsreq > 0) {
+        } else if (!alertAllowed && prevCarbsreq > 0) {
             // carbs were required previously but are no longer needed -> dismiss
             rxBus.send(EventDismissNotification(Notification.CARBS_REQUIRED))
         }
@@ -1194,6 +1198,9 @@ class LoopPlugin @Inject constructor(
 
         /** MDI carbs alert: only fire when the hypo is projected within this many minutes. */
         internal const val CARBS_ALERT_WINDOW_MINUTES = 15
+
+        /** MDI carbs alert: do not re-raise within this many minutes of showing it. */
+        internal const val CARBS_ALERT_QUIET_MINUTES = 10
 
         /**
          * Pen suggestion size: fullInsulinReq ?: (smb + positive temp extra), capped by

@@ -503,6 +503,35 @@ class LoopPluginTest : TestBaseWithProfile() {
         assertThat(dismissEvents).isEmpty()
     }
 
+    @Test
+    fun `carbs alert does not reappear within the quiet window`() {
+        setupAlertDefaults()
+        val (shown, _) = captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 20, carbsReqWithin = 10))
+        }
+        assertThat(shown).hasSize(1)
+        // same condition one cycle later: neither re-raised nor dismissed
+        val (repeat, repeatDismiss) = captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 20, carbsReqWithin = 10))
+        }
+        assertThat(repeat).isEmpty()
+        assertThat(repeatDismiss).isEmpty()
+    }
+
+    @Test
+    fun `carbs alert is dismissed mid quiet window when carbs are no longer required`() {
+        setupAlertDefaults()
+        captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 20, carbsReqWithin = 10))
+        }
+        loopPlugin.prevCarbsreq = 20
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentCarbsRequiredAlert(carbsResult(carbsReq = 0, carbsReqWithin = 0))
+        }
+        assertThat(newEvents).isEmpty()
+        assertThat(dismissEvents).hasSize(1)
+    }
+
 // endregion
 
     @Test
