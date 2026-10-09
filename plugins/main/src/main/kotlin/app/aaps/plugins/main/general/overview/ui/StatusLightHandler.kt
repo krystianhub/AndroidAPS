@@ -21,6 +21,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.WarnColors
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.stats.TddCalculator
+import app.aaps.core.interfaces.utils.ApsResults
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.IntKey
@@ -236,12 +237,7 @@ class StatusLightHandler @Inject constructor(
             val now = dateUtil.now()
             val results = recentApsResults(now)
             val latestResult = results.maxByOrNull { it.first }
-            val median = median(
-                results.asSequence()
-                    .filter { (timestamp, _) -> latestResult != null && timestamp in (latestResult.first - APS_INSULIN_REQ_WINDOW_MS)..latestResult.first }
-                    .mapNotNull { (_, result) -> result.insulinReq?.takeIf { it.isFinite() } }
-                    .toList()
-            )
+            val median = latestResult?.let { ApsResults.medianInsulinReq(results, it.first, APS_INSULIN_REQ_WINDOW_MS) }
             val insulinUnit = rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname)
             val insulinReq = latestResult?.second?.insulinReq?.takeIf { it.isFinite() }
             val currentText = insulinReq?.let { decimalFormatter.to2Decimal(it, insulinUnit) }
@@ -313,25 +309,12 @@ class StatusLightHandler @Inject constructor(
 
     private fun recentApsResults(now: Long): List<Pair<Long, APSResult>> {
         val windowStart = now - APS_INSULIN_REQ_WINDOW_MS
-        val persisted = try {
-            persistenceLayer.getApsResults(windowStart, now)
-                .filter { it.date in windowStart..now }
-                .map { it.date to it }
-        } catch (_: Exception) {
-            emptyList()
-        }
         val live = loop.lastRun
             ?.takeIf { it.lastAPSRun in windowStart..now }
             ?.let { run -> run.lastAPSRun to run.request }
             ?.takeIf { it.second != null }
             ?.let { it.first to it.second!! }
-        val combined = (persisted + listOfNotNull(live)).associateBy { it.first }.toMutableMap()
-        live?.let { (timestamp, result) ->
-            persisted.firstOrNull { timestamp - it.first in 0..APS_RESULT_PERSIST_DELAY_MS }
-                ?.let { combined.remove(it.first) }
-            combined[timestamp] = timestamp to result
-        }
-        return combined.values.toList()
+        return ApsResults.recent(persistenceLayer, now, APS_INSULIN_REQ_WINDOW_MS, live)
     }
 
     private fun setApsValueStaleness(views: List<TextView>, timestamp: Long?, now: Long, hasApsResult: Boolean) {
@@ -345,18 +328,10 @@ class StatusLightHandler @Inject constructor(
         }
     }
 
-    private fun median(values: List<Double>): Double? {
-        if (values.isEmpty()) return null
-        val sorted = values.sorted()
-        val middle = sorted.size / 2
-        return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2.0
-    }
-
     companion object {
 
         private val APS_INSULIN_REQ_WINDOW_MS = T.mins(15).msecs()
         private val APS_STALE_THRESHOLD_MS = T.mins(5).msecs()
-        private val APS_RESULT_PERSIST_DELAY_MS = T.mins(1).msecs()
         private const val STALE_APS_VALUE_ALPHA = 0.45f
         private val STATS_RANGE_LOW_MGDL = Constants.STATS_RANGE_LOW_MMOL * GlucoseUnit.MMOLL_TO_MGDL
         private val STATS_RANGE_HIGH_MGDL = Constants.STATS_RANGE_HIGH_MMOL * GlucoseUnit.MMOLL_TO_MGDL

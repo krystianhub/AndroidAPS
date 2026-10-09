@@ -36,6 +36,7 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.data.model.GV
@@ -220,6 +221,10 @@ class LoopPluginTest : TestBaseWithProfile() {
         pumpDescription.bolusStep = 0.5
         whenever(virtualPumpPlugin.pumpDescription).thenReturn(pumpDescription)
         whenever(preferences.get(DoubleKey.MdiMaxBolusSuggestion)).thenReturn(4.0)
+        whenever(preferences.get(DoubleKey.MdiMinBolusSuggestion)).thenReturn(0.5)
+        whenever(preferences.get(BooleanKey.MdiBolusSuggestionEnabled)).thenReturn(true)
+        whenever(preferences.get(BooleanKey.MdiBolusSuggestionSmoothing)).thenReturn(false)
+        whenever(preferences.get(IntKey.MdiBolusSuggestionMedianMinutes)).thenReturn(15)
         whenever(rh.gs(app.aaps.plugins.aps.R.string.bolus_suggestion_text)).thenReturn("Bolus %1\$s U now")
         // applyBolusConstraints is a pass-through: return the constraint it was given
         whenever(constraintChecker.applyBolusConstraints(anyOrNull())).thenAnswer { it.arguments[0] }
@@ -268,6 +273,108 @@ class LoopPluginTest : TestBaseWithProfile() {
         }
         assertThat(newEvents).isEmpty()
         assertThat(dismissEvents).hasSize(1)
+    }
+
+    @Test
+    fun `pen suggestion is suppressed entirely when the master switch is off`() {
+        setupPenSuggestionDefaults()
+        whenever(preferences.get(BooleanKey.MdiBolusSuggestionEnabled)).thenReturn(false)
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 2.0), validProfile)
+        }
+        assertThat(newEvents).isEmpty()
+        assertThat(dismissEvents).hasSize(1)
+    }
+
+    @Test
+    fun `pen suggestion below the configured minimum is suppressed`() {
+        setupPenSuggestionDefaults()
+        whenever(preferences.get(DoubleKey.MdiMinBolusSuggestion)).thenReturn(1.5)
+        // 1.4 U rounds down to the 1.0 U pen step -> below the 1.5 U minimum
+        val (belowMin, belowMinDismiss) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 1.4), validProfile)
+        }
+        assertThat(belowMin).isEmpty()
+        assertThat(belowMinDismiss).hasSize(1)
+        // 1.6 U rounds down to 1.5 U -> at the minimum, notified
+        val (atMin, atMinDismiss) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 1.6), validProfile)
+        }
+        assertThat(atMinDismiss).isEmpty()
+        assertThat(atMin).hasSize(1)
+        assertThat(atMin[0].notification.text).contains("Bolus 1.5 U now")
+    }
+
+    @Test
+    fun `minimum pen suggestion is clamped to the max suggestion`() {
+        setupPenSuggestionDefaults()
+        whenever(preferences.get(DoubleKey.MdiMinBolusSuggestion)).thenReturn(100.0)
+        // clamped to the 4.0 U max: 3.5 U is below it
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 3.5), validProfile)
+        }
+        assertThat(newEvents).isEmpty()
+        assertThat(dismissEvents).hasSize(1)
+    }
+
+    @Test
+    fun `pen suggestion smoothing suppresses a transient spike`() {
+        setupPenSuggestionDefaults()
+        whenever(preferences.get(BooleanKey.MdiBolusSuggestionSmoothing)).thenReturn(true)
+        val now = dateUtil.now()
+        // median (0, 0, 1.5) = 0 -> nothing to suggest
+        whenever(persistenceLayer.getApsResults(anyLong(), anyLong())).thenReturn(
+            listOf(
+                penResult(insulinReq = 0.0).also { it.date = now - T.mins(10).msecs() },
+                penResult(insulinReq = 0.0).also { it.date = now - T.mins(5).msecs() }
+            )
+        )
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 1.5), validProfile)
+        }
+        // must not fall back to the raw 1.5 U value
+        assertThat(newEvents).isEmpty()
+        assertThat(dismissEvents).hasSize(1)
+    }
+
+    @Test
+    fun `pen suggestion smoothing sizes from the median`() {
+        setupPenSuggestionDefaults()
+        whenever(preferences.get(BooleanKey.MdiBolusSuggestionSmoothing)).thenReturn(true)
+        val now = dateUtil.now()
+        whenever(persistenceLayer.getApsResults(anyLong(), anyLong())).thenReturn(
+            listOf(
+                penResult(insulinReq = 1.0).also { it.date = now - T.mins(10).msecs() },
+                penResult(insulinReq = 2.0).also { it.date = now - T.mins(5).msecs() }
+            )
+        )
+        // median (1.0, 2.0, 3.0) = 2.0 U - not the raw 3.0 U
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 3.0), validProfile)
+        }
+        assertThat(dismissEvents).isEmpty()
+        assertThat(newEvents).hasSize(1)
+        assertThat(newEvents[0].notification.text).contains("Bolus 2.0 U now")
+    }
+
+    @Test
+    fun `pen suggestion smoothing does not double count the persisted twin of the current run`() {
+        setupPenSuggestionDefaults()
+        whenever(preferences.get(BooleanKey.MdiBolusSuggestionSmoothing)).thenReturn(true)
+        val now = dateUtil.now()
+        whenever(persistenceLayer.getApsResults(anyLong(), anyLong())).thenReturn(
+            listOf(
+                penResult(insulinReq = 1.0).also { it.date = now - T.mins(10).msecs() },
+                penResult(insulinReq = 2.0).also { it.date = now - T.mins(5).msecs() },
+                penResult(insulinReq = 9.0).also { it.date = now } // twin of the current run
+            )
+        )
+        // median (1.0, 2.0, 3.0) = 2.0 U - the 9.0 U twin must be dropped
+        val (newEvents, _) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 3.0), validProfile)
+        }
+        assertThat(newEvents).hasSize(1)
+        assertThat(newEvents[0].notification.text).contains("Bolus 2.0 U now")
     }
 
     /** Minimal APSResult carrying only what presentCarbsRequiredAlert reads. */

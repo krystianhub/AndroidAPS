@@ -642,7 +642,12 @@ open class OpenAPSSMBPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsMaxMinutesOfBasalToLimitSmb, title = R.string.smb_max_minutes_summary))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsUamMaxMinutesOfBasalToLimitSmb, dialogMessage = R.string.uam_smb_max_minutes, title = R.string.uam_smb_max_minutes_summary))
             } else {
+                // MDI: pen suggestion notification settings (see LoopPlugin.presentPenBolusSuggestion)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiBolusSuggestionEnabled, summary = R.string.mdi_bolus_suggestion_enabled_summary, title = R.string.mdi_bolus_suggestion_enabled_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.MdiMinBolusSuggestion, dialogMessage = R.string.mdi_min_bolus_suggestion_summary, title = R.string.mdi_min_bolus_suggestion_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.MdiMaxBolusSuggestion, dialogMessage = R.string.mdi_max_bolus_suggestion_summary, title = R.string.mdi_max_bolus_suggestion_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiBolusSuggestionSmoothing, summary = R.string.mdi_bolus_suggestion_smoothing_summary, title = R.string.mdi_bolus_suggestion_smoothing_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiBolusSuggestionMedianMinutes, dialogMessage = R.string.mdi_bolus_suggestion_median_minutes_summary, title = R.string.mdi_bolus_suggestion_median_minutes_title))
             }
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseUam, summary = R.string.enable_uam_summary, title = R.string.enable_uam))
             addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.ApsCarbsRequestThreshold, dialogMessage = R.string.carbs_req_threshold_summary, title = R.string.carbs_req_threshold))

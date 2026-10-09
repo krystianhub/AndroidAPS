@@ -77,6 +77,9 @@ enum class BooleanKey(
     SmsAllowRemoteCommands("smscommunicator_remotecommandsallowed", false),
     SmsReportPumpUnreachable("smscommunicator_report_pump_unreachable", true),
 
+    MdiBolusSuggestionEnabled("mdi_bolus_suggestion_enabled", true),
+    MdiBolusSuggestionSmoothing("mdi_bolus_suggestion_smoothing", false, dependency = MdiBolusSuggestionEnabled),
+
     VirtualPumpStatusUpload("virtualpump_uploadstatus", false, showInNsClientMode = false),
     NsClientUploadData("ns_upload", true, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptCgmData("ns_receive_cgm", false, showInNsClientMode = false, hideParentScreenIfHidden = true),

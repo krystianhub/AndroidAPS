@@ -68,6 +68,7 @@ import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.rx.events.EventTempTargetChange
 import app.aaps.core.interfaces.rx.weardata.EventData
 import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.interfaces.utils.ApsResults
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
@@ -755,11 +756,19 @@ class LoopPlugin @Inject constructor(
      * Sizing uses the engine's own [APSResult.insulinReq] rather than the requested temp rate:
      * the rate is clamped by the pump-oriented U/h caps (ApsMaxBasal & co), which cap a pen-unit
      * quantity below the 0.5 U step. U/h caps must never size a pen bolus.
+     *
+     * MDI settings: [BooleanKey.MdiBolusSuggestionEnabled] (master switch),
+     * [DoubleKey.MdiMinBolusSuggestion] (suppress below), [BooleanKey.MdiBolusSuggestionSmoothing]
+     * (median insulinReq sizing over [IntKey.MdiBolusSuggestionMedianMinutes]).
      */
     @VisibleForTesting
     internal fun presentPenBolusSuggestion(result: APSResult, profile: Profile) {
         val pump = activePlugin.activePump
         val bolusStep = pump.pumpDescription.bolusStep
+        if (!preferences.get(BooleanKey.MdiBolusSuggestionEnabled)) {
+            rxBus.send(EventDismissNotification(Notification.PEN_BOLUS_SUGGESTION))
+            return
+        }
         // The engine withheld insulin because a low is projected - never suggest more on top of it.
         // In MDI this is the only low guard there is: isClosedLoopAllowed() refuses MDI, so
         // microBolusAllowed is false and the engine's SMB path (incl. its `minGuardBG < threshold`
@@ -780,14 +789,25 @@ class LoopPlugin @Inject constructor(
             result.insulinReq
                 ?.takeIf { it > 0 }
                 ?.let { constraintChecker.applyBolusConstraints(ConstraintObject(it, aapsLogger)).value() }
+        // the median governs completely - 0.0 suppresses instead of falling back to the raw
+        // value; only an empty window falls back to it
+        val smoothedInsulinReq =
+            if (preferences.get(BooleanKey.MdiBolusSuggestionSmoothing))
+                medianInsulinReq(result)?.let { median ->
+                    if (median > 0) constraintChecker.applyBolusConstraints(ConstraintObject(median, aapsLogger)).value() else 0.0
+                }
+            else null
+        val effectiveInsulinReq = smoothedInsulinReq ?: fullInsulinReq
         val suggestedUnits = penBolusSuggestion(
             smb = result.smb,
             tempExtraUnits = tempExtraUnits,
-            fullInsulinReq = fullInsulinReq,
+            fullInsulinReq = effectiveInsulinReq,
             maxSuggestion = preferences.get(DoubleKey.MdiMaxBolusSuggestion),
             bolusStep = bolusStep
         )
-        if (suggestedUnits < bolusStep) {
+        val minSuggestion = preferences.get(DoubleKey.MdiMinBolusSuggestion)
+            .coerceIn(bolusStep, preferences.get(DoubleKey.MdiMaxBolusSuggestion))
+        if (suggestedUnits < minSuggestion) {
             // nothing actionable with a pen
             rxBus.send(EventDismissNotification(Notification.PEN_BOLUS_SUGGESTION))
             return
@@ -1190,5 +1210,16 @@ class LoopPlugin @Inject constructor(
             // round down to the pen's minimum step — under-dosing is safer than over-dosing
             return floor(min(requested, maxSuggestion) / bolusStep) * bolusStep
         }
+    }
+
+    /**
+     * Median insulinReq over recent persisted APS runs + the current one. The current run may
+     * already be persisted - its twin is dropped. Null when the window holds no finite value.
+     */
+    @VisibleForTesting
+    internal fun medianInsulinReq(result: APSResult): Double? {
+        val now = dateUtil.now()
+        val windowMs = T.mins(preferences.get(IntKey.MdiBolusSuggestionMedianMinutes).toLong()).msecs()
+        return ApsResults.medianInsulinReq(ApsResults.recent(persistenceLayer, now, windowMs, now to result), now, windowMs)
     }
 }

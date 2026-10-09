@@ -51,6 +51,7 @@ enum class DoubleKey(
     ApsAutoIsfSmbDeliveryRatioMin("openapsama_smb_delivery_ratio_min", 0.5, 0.5, 1.0, defaultedBySM = true),
     ApsAutoIsfSmbDeliveryRatioMax("openapsama_smb_delivery_ratio_max", 0.5, 0.5, 1.0, defaultedBySM = true),
     ApsAutoIsfSmbMaxRangeExtension("openapsama_smb_max_range_extension", 1.0, 1.0, 5.0, defaultedBySM = true),
+    MdiMinBolusSuggestion("mdi_min_bolus_suggestion", 0.5, 0.5, 15.0, dependency = BooleanKey.MdiBolusSuggestionEnabled),
     MdiMaxBolusSuggestion("mdi_max_bolus_suggestion", 4.0, 0.5, 15.0),
 
 }
