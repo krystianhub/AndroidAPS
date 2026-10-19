@@ -10,10 +10,12 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
+import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
@@ -21,6 +23,7 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
+import app.aaps.core.interfaces.pump.BasalInjection
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -34,6 +37,7 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.extensions.toVisibility
+import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.plugins.main.R
 import app.aaps.plugins.main.databinding.ProfileFragmentBinding
 import app.aaps.plugins.main.profile.ui.TimeListEdit
@@ -44,6 +48,8 @@ import io.reactivex.rxjava3.kotlin.plusAssign
 import java.math.RoundingMode
 import java.text.DecimalFormat
 import javax.inject.Inject
+import org.json.JSONArray
+import org.json.JSONObject
 
 class ProfileFragment : DaggerFragment() {
 
@@ -63,11 +69,13 @@ class ProfileFragment : DaggerFragment() {
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var decimalFormatter: DecimalFormatter
     @Inject lateinit var loop: Loop
+    @Inject lateinit var persistenceLayer: PersistenceLayer
 
     private var disposable: CompositeDisposable = CompositeDisposable()
     private var inMenu = false
     private var queryingProtection = false
     private var basalView: TimeListEdit? = null
+    private var lastBasalDose: Double? = null
 
     private val save = Runnable {
         doEdit()
@@ -137,6 +145,7 @@ class ProfileFragment : DaggerFragment() {
         val pumpDescription = activePlugin.activePump.pumpDescription
         if (profilePlugin.numOfProfiles == 0) profilePlugin.addNewProfile()
         val currentProfile = profilePlugin.currentProfile() ?: return
+        lastBasalDose = loadLastBasalDose()
         val units = if (currentProfile.mgdl) GlucoseUnit.MGDL.asText else GlucoseUnit.MMOL.asText
 
         binding.name.removeTextChangedListener(textWatch)
@@ -330,6 +339,20 @@ class ProfileFragment : DaggerFragment() {
             }
         }
 
+        binding.basalFromLantus.setOnClickListener {
+            val dose = lastBasalDose ?: return@setOnClickListener
+            val profile = profilePlugin.currentProfile() ?: return@setOnClickListener
+            val newFlatRate = BasalInjection.flatRate(dose)
+            profile.basal = JSONArray().put(JSONObject().put("time", "00:00").put("timeAsSeconds", 0).put("value", newFlatRate))
+            uel.log(
+                action = Action.STORE_PROFILE, source = Sources.LocalProfile,
+                value = ValueWithUnit.SimpleString(profile.name)
+            )
+            profilePlugin.storeSettings(activity, dateUtil.now())
+            build()
+            ToastUtils.infoToast(context, rh.gs(R.string.profile_sync_basal_done, dose, newFlatRate))
+        }
+
         binding.reset.setOnClickListener {
             profilePlugin.loadSettings()
             build()
@@ -377,6 +400,30 @@ class ProfileFragment : DaggerFragment() {
         updateGUI()
     }
 
+    /** Last recorded long-acting (basal) injection dose, same 7-day lookback as the Insulin dialog. */
+    private fun loadLastBasalDose(): Double? =
+        try {
+            persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), false)
+                .blockingGet()
+                .sortedByDescending { it.timestamp }
+                .firstNotNullOfOrNull { BasalInjection.extractDose(it.note) }
+        } catch (e: Exception) {
+            null
+        }
+
+    /**
+     * True when the profile does not reflect the last recorded injection: anything other than a
+     * single flat block at the quantized `dose / 24` rate needs an update.
+     */
+    private fun basalUpdateRequired(): Boolean {
+        val dose = lastBasalDose ?: return false
+        val blocks = profilePlugin.currentProfile()?.basal ?: return false
+        if (blocks.length() != 1) return true
+        val block = blocks.optJSONObject(0) ?: return true
+        return !(block.optInt("timeAsSeconds", -1) == 0 &&
+            BasalInjection.matchesProfile(block.optDouble("value", Double.NaN), BasalInjection.flatRate(dose)))
+    }
+
     private fun roundUp(number: Double): Double {
         return number.toBigDecimal().setScale(1, RoundingMode.UP).toDouble()
     }
@@ -414,6 +461,10 @@ class ProfileFragment : DaggerFragment() {
         } else {
             binding.reset.visibility = View.GONE
         }
+
+        // MDI: one-tap basal update from the last recorded injection, enabled only when the profile is out of sync
+        binding.basalFromLantus.visibility = activePlugin.activePump.isMDI().toVisibility()
+        binding.basalFromLantus.isEnabled = isValid && !isEdited && basalUpdateRequired()
     }
 
     private fun processVisibility(position: Int) {

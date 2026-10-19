@@ -28,6 +28,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.BasalInjection
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -37,7 +38,6 @@ import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.HardLimits
-import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.SafeParse
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
@@ -502,20 +502,18 @@ class InsulinDialog : DialogFragmentWithDate() {
 
     companion object {
 
-        private val BASAL_DOSE_REGEX = Regex("(?i)\\bLantus\\s*[:#]?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*U\\b")
-
         // any difference (beyond FP noise) triggers the profile rewrite
         internal fun basalMatchesProfile(amount: Double, previousDose: Double): Boolean =
-            Round.isSame(amount, previousDose)
+            BasalInjection.matchesProfile(amount, previousDose)
 
         internal fun extractBasalDose(note: String?): Double? =
-            note?.let { BASAL_DOSE_REGEX.find(it)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull() }
+            BasalInjection.extractDose(note)
 
         // flat U/h rate the rewrite stores for a dose, and the 24 h total that rate represents
         internal fun flatRate(amount: Double): Double =
-            max(Round.roundTo(amount / 24.0, 0.01), 0.01)
+            BasalInjection.flatRate(amount)
 
         internal fun flatRateTotal(amount: Double): Double =
-            flatRate(amount) * 24.0
+            BasalInjection.flatRateTotal(amount)
     }
 }

@@ -157,6 +157,9 @@ class TddCalculatorImpl @Inject constructor(
     override fun stats(context: Context): TableLayout {
         val tdds = calculate(7, allowMissingDays = true) ?: return TableLayout(context)
         val averageTdd = averageTDD(tdds)
+        val tdds3 = calculate(3, allowMissingDays = true)
+        val averageTdd3 = averageTDD(tdds3)
+        val days3 = tdds3?.size() ?: 0
         val todayTdd = calculateToday()
         val lp = TableRow.LayoutParams(TableRow.LayoutParams.WRAP_CONTENT, TableRow.LayoutParams.WRAP_CONTENT)
         return TableLayout(context).also { layout ->
@@ -169,7 +172,7 @@ class TddCalculatorImpl @Inject constructor(
             })
             layout.addView(TDD.toTableRowHeader(context, rh, includeCarbs = true))
             for (i in 0 until tdds.size()) layout.addView(tdds.valueAt(i).toTableRow(context, rh, dateUtil, includeCarbs = true))
-            averageTdd?.let { averageTdd ->
+            if (averageTdd != null || averageTdd3 != null) {
                 layout.addView(TextView(context).apply {
                     layoutParams = lp
                     text = rh.gs(app.aaps.core.ui.R.string.average)
@@ -177,7 +180,9 @@ class TddCalculatorImpl @Inject constructor(
                     gravity = Gravity.CENTER_HORIZONTAL
                     setTextAppearance(android.R.style.TextAppearance_Material_Medium)
                 })
-                layout.addView(averageTdd.data.toTableRow(context, rh, tdds.size(), includeCarbs = true))
+                // shorter window first
+                averageTdd3?.let { layout.addView(it.data.toTableRow(context, rh, days3, includeCarbs = true)) }
+                averageTdd?.let { layout.addView(it.data.toTableRow(context, rh, tdds.size(), includeCarbs = true)) }
             }
             todayTdd?.let {
                 layout.addView(TextView(context).apply {

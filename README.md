@@ -29,6 +29,7 @@ This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS
 - The Insulin dialog has a **"Record basal insulin (MDI)"** checkbox: it records the Lantus dose as a Note therapy event (`Lantus 10.0U ...`) — no bolus record, so TDD/IOB are not inflated — and syncs it to Nightscout.
 - The recorded dose is compared against the **last recorded Lantus dose** (parsed from previous notes, 7-day lookback; falls back to the profile's basal total). On any difference the local profile's basal is rewritten to a flat `dose / 24` U/h rate, a profile switch is activated, and a notification confirms the change. The comparison is made on the quantized flat rate, so re-recording the same pen dose does not trigger a spurious rewrite.
 - This keeps the profile basal honest, which matters: TDD in MDI mode includes the *assumed* profile basal, so DynamicISF and TDD-based autosens stay accurate only if the profile matches the actual Lantus dose.
+- The **Profile** screen has a **"Sync basal"** button (MDI only, above *Activate profile*). It is enabled only when the profile basal is out of sync with the last recorded injection; tapping it rewrites and saves the profile basal without activating it.
 
 ### 4. Overview status lights for MDI
 
@@ -96,7 +97,7 @@ Gated on the pump being configured as **MDI** (`Pump.isMDI()`, not the coarse `i
 
 A quick sanity check on the insulin-to-carb ratio, derived from recorded carbs and boluses alone:
 
-- **Statistics screen**: the TDD table (day rows, week average, today) gets an `IC` column as the rightmost column — carbs ÷ bolus for the row, shown as a bare number ("8.5" = 8.5 g per 1 U), `n/a` when carbs or bolus is missing.
+- **Statistics screen**: the TDD table (day rows, 3-day average, week average, today) gets an `IC` column as the rightmost column — carbs ÷ bolus for the row, shown as a bare number ("8.5" = 8.5 g per 1 U), `n/a` when carbs or bolus is missing.
 - **Overview COB icon**: tapping the carbs icon in the top info row (next to IOB) opens a dialog with today's estimated I:C (midnight → now, same data as the "Today" stats row), the profile's I:C for the current time block, and the difference — absolute, percentage and a colored arrow (▲ green when less insulin per gram was needed than the profile assumes, ▼ orange when more). Anything that cannot be calculated shows `n/a`.
 
 ### 11. Housekeeping

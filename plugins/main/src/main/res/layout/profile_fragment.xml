@@ -311,6 +311,21 @@
             </LinearLayout>
 
             <com.google.android.material.button.MaterialButton
+                android:id="@+id/basal_from_lantus"
+                style="@style/GrayButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:text="@string/profile_sync_basal"
+                android:visibility="gone"
+                app:icon="@drawable/ic_local_save"
+                app:iconTint="@color/ic_local_save" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/profileswitch"
                 style="@style/GrayButton"
                 android:layout_width="wrap_content"
