@@ -1,71 +1,57 @@
 # AndroidAPS — MDI fork
 
-This is a personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS) (based on latest upstream `master`) with changes targeted at **MDI users** (multiple daily injections, pen users running the app in "virtual pump" mode). This fork makes the app genuinely useful as a decision-support tool with pens.
+Personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS) (upstream `master`) aimed at **MDI users** — pen users running the app with the virtual pump. Makes the app usable as a decision-support tool with pens.
 
-> ## ⚠️ WARNING — READ THIS FIRST
+> ## ⚠️ WARNING
 >
-> **These changes were vibe-coded for personal purposes only.** They have been heavily reviewed by an experienced developer, but they are **not** tested to upstream standards, **not** reviewed or endorsed by the AndroidAPS project, and come with **no guarantees of correctness or safety whatsoever**.
->
-> This software controls insulin dosing decisions. Bugs here can have serious health consequences. **Use it entirely at your own risk.** If you are not prepared to read the code and fully understand every change yourself, do not use this fork.
+> **Vibe-coded for personal use.** Reviewed by an experienced developer, but not tested to upstream standards, not endorsed by the AndroidAPS project, and with **no guarantee of correctness or safety**. This software influences insulin dosing — bugs can hurt you. **Use entirely at your own risk.** If you won't read and understand every change yourself, don't use this fork.
 
 ## What's different from upstream
 
-### 1. Open Loop works in MDI mode
+### Open loop in MDI
 
-- The APS engine (recommendations, predictions, DynamicISF) runs in MDI/virtual-pump mode. Upstream blocks it outright for pen users.
-- **MDI never produces a temp basal, zero temp or extended bolus** — there is no pump to command and Lantus cannot be suspended. Closed loop and LGS are refused (Open Loop only), "disconnect pump" and superbolus are not offered, SMS `BASAL` / `BASALPCT` / `EXTENDED` / `PUMP DISCONNECT` are rejected, watch actions use the same record-only path as the phone, and the pump-unreachable alert is disabled. Every treatment is record-only.
-- In Open Loop, APS suggestions that would normally be a temp basal or SMB are converted into an **actionable manual bolus suggestion**, sized from the engine's correction request (`insulinReq`) rather than the micro-bolus half. Suggestions remain subject to insulin constraints, Max IOB, and the configured per-suggestion cap. They are rounded *down* to the pen's minimum step, throttled to at most one suggestion per 60 minutes, and delivered as a system notification + Overview notification. Suggestions can be suppressed below a configurable minimum size or switched off entirely, and can optionally be sized from a smoothed (median) `insulinReq` — see [How pen suggestions are capped in MDI](#how-pen-suggestions-are-capped-in-mdi-differs-from-pump-logic). Basal reductions are not administrable with a pen and are dismissed instead, as is any suggestion while a low is projected.
-- The **"Carbs required" alert also fires in Open Loop** (upstream raises it only in closed loop): a notification when the APS requests extra carbs with the hypo projected within 15 minutes. Same gates as closed loop (alert preference, 15-min quiet period after a treatment); auto-dismissed once carbs are no longer needed. Re-raised at most once per 10 minutes, so dismissing it does not bring it back every cycle.
-- Zero-temp (ZT) prediction lines are hidden on the graph in MDI mode — a pen cannot execute a zero temp, so the line is meaningless.
+- APS engine (recommendations, predictions, DynISF) runs in MDI mode; upstream blocks it for pens.
+- **No temp basal, zero temp or extended bolus, ever.** Closed loop and LGS are refused (open loop only); disconnect/superbolus not offered; SMS `BASAL`/`BASALPCT`/`EXTENDED`/`PUMP DISCONNECT` rejected; pump-unreachable alert disabled. Every treatment is record-only.
+- Corrections become **manual bolus suggestions** sized from `insulinReq` (not the SMB half), subject to insulin constraints, Max IOB and the pen cap. Rounded **down** to the pen step, max one per 60 min, delivered as notifications. Suppressible below a minimum size, switchable off, optionally sized from a median `insulinReq`. Basal reductions and any suggestion during a projected low are dismissed.
+- **"Carbs required" alert also fires in open loop** (hypo projected within 15 min), auto-dismissed when no longer needed, re-raised at most every 10 min.
+- Zero-temp prediction lines hidden on the graph.
 
-### 2. Injection position tracking ("pos" feature)
+### Injection position ("pos")
 
-- Injections can be tagged with a **site position 1–12** (like hours on a clock). The position is stored as a `pos x` note on the treatment record, so it persists locally and syncs to Nightscout.
-- The Insulin, Treatment and Wizard dialogs show the position field (MDI only, opt-in via *Show position in dialogs*), display the last used position, and pre-suggest the next one in rotation.
-- Position history is also used to visualize site rotation.
+Site position 1–12 stored as a `pos x` note on the treatment (syncs to Nightscout). Insulin/Treatment/Wizard dialogs show the field (opt-in via *Show position in dialogs*), display the last position and pre-suggest the next in rotation.
 
-### 3. Recording long-acting (basal) insulin — Lantus
+### Lantus recording
 
-- The Insulin dialog has a **"Record basal insulin (MDI)"** checkbox: it records the Lantus dose as a Note therapy event (`Lantus 10.0U ...`) — no bolus record, so TDD/IOB are not inflated — and syncs it to Nightscout.
-- The recorded dose is compared against the **last recorded Lantus dose** (parsed from previous notes, 7-day lookback; falls back to the profile's basal total). On any difference the local profile's basal is rewritten to a flat `dose / 24` U/h rate, a profile switch is activated, and a notification confirms the change. The comparison is made on the quantized flat rate, so re-recording the same pen dose does not trigger a spurious rewrite.
-- This keeps the profile basal honest, which matters: TDD in MDI mode includes the *assumed* profile basal, so DynamicISF and TDD-based autosens stay accurate only if the profile matches the actual Lantus dose.
-- The **Profile** screen has a **"Sync basal"** button (MDI only, above *Activate profile*). It is enabled only when the profile basal is out of sync with the last recorded injection; tapping it rewrites and saves the profile basal without activating it.
+- Insulin dialog checkbox **"Record basal insulin (MDI)"** records the dose as a Note (`Lantus 10.0U ...`) — no bolus, so TDD/IOB aren't inflated.
+- On any dose change the profile basal is rewritten to a flat `dose / 24` U/h and a profile switch is activated (compared on the quantized rate, so re-recording the same dose doesn't retrigger). Keeps TDD/DynISF honest.
+- Profile screen **"Sync basal"** button (MDI only) rewrites the profile without activating it; enabled only when out of sync.
 
-### 4. Overview status lights for MDI
+### Overview status lights
 
-- Pump-specific lights (cannula age, insulin age, reservoir, battery) are **hidden in MDI mode**; sensor age stays.
-- New MDI-only lights: a dedicated APS row with **insulinReq** (current value / median of recent 15-minute APS runs) and **lowest predicted → eventual BG** / target in the configured glucose units (e.g. `82→150`), colored by the projected dip — a curve that dips low and rebounds shows red even when the landing value is in range, all informational only; plus **last bolus ago** (`2h 15m`, with the recorded dose and colored by the configured insulin's action curve — green near peak, red when worn off) and **last basal insulin ago** (time since the last recorded Lantus injection, with dose, colored by the Lantus curve — red when overdue).
-- The same last bolus / last basal insulin age also appear as rows in the Actions tab stats.
+Pump lights (cannula, insulin, reservoir, battery) hidden; sensor age stays. New MDI lights: APS row with **insulinReq** (current / median) and **lowest predicted → eventual BG** (colored by the projected dip), **last bolus ago** (colored by the insulin curve) and **last basal insulin ago** (colored by the Lantus curve). Last bolus/basal ages also appear in the Actions stats.
 
-### 5. APS algorithm plugins un-gated
+### APS plugins
 
-- **OpenAPS SMB, AMA and AutoISF** are all selectable in Config Builder in MDI mode (upstream hides AutoISF behind engineering + dev mode).
-- **Recommended: OpenAPS SMB + dynamic sensitivity.** AutoISF is the experimental ga-zelle algorithm (dynamic ISF + BG-acceleration/brake modifiers) — its micro-bolus shaping has little leverage in open loop; treat it as an experiment.
-- Dynamic sensitivity **hides and ignores the classic autosens toggle**. Its separate TDD-ratio option controls basal/target adjustments and, subject to constraints, classic autosens fallback when TDD data is missing.
-- **Fixed-basal modeling (MDI)**: the algorithm never scales the working basal with the sensitivity ratio, and no prediction pretends Lantus can be suspended. A pump loop credits a hypothetical basal suspension both in the zero-temp prediction curve and in the "carbs required" math; a pen cannot suspend Lantus, so both assumptions are removed: predictions project the basal as continuing unchanged, and the carbs alert no longer discounts a projected hypo by a suspension that will never happen — it fires earlier, which is the safe direction. All of it is scoped to MDI.
+- **OpenAPS SMB, AMA and AutoISF** all selectable in MDI (upstream hides AutoISF behind dev mode). Recommended: **SMB + dynamic sensitivity**; AutoISF is experimental.
+- Dynamic sensitivity hides/ignores the classic autosens toggle.
+- **Fixed-basal modeling**: the working basal is never scaled by the sensitivity ratio, and no prediction pretends Lantus can be suspended (zero-temp curve and carbs-required math both assume basal continues).
 
-### 6. Autotune enabled
+### Autotune
 
-- The Autotune plugin is always available (upstream hides it behind a hidden flag file), and the **Run Autotune automation action** is available without engineering mode.
-- Note: with no temp basal records it assumes the profile basal was delivered exactly — reasonable here since the Lantus feature keeps the profile in sync, but sanity-check the tuned basal against your Lantus notes.
-- **MDI**: the results table gains a "Lantus (U)" row (current dose from the last recorded Lantus injection, tuned 24h basal total, both rounded to whole units). The proposed curve remains visible, but every save, copy, and profile-switch action preserves the input profile's basal; only the Lantus injection/profile-update flow changes MDI basal.
+Always available (no flag file), automation action usable without engineering mode. MDI results table gains a "Lantus (U)" row; save/copy/profile-switch actions never change the profile basal — only the Lantus flow does.
 
-### 7. Meal macro assistant — fat/protein → eCarbs dosing plan
+### Meal macro assistant
 
-Fatty, slowly-absorbed meals (pizza, burgers, curries) are the classic MDI pain: a single upfront bolus guesses at a carb curve that lasts hours. The bolus **Wizard** has **Fat** and **Protein** fields (grams). Filling either one activates a dosing plan, shown as a one-line preview above the calculation:
+Wizard gains **Fat** and **Protein** fields (grams). Filling either shows a plan preview:
 
 ```
 Now 70g @ 63% · Tail 66g @ +60min/4h · Fat-eq 3g @ +90min/8h
 ```
 
-- **Upfront part**: a meal-heaviness score (0–1, from normalized fat/protein content) splits the real carbs into a fast part (eaten/bolused now) and a slow part, and interpolates the upfront share between the *lean* and *heavy* preferences (defaults 100 % ↔ 60 %). The share derates **only the insulin for the fast carbs** — BG correction, COB and IOB are untouched — and the withheld part is *deliberately not dosed* (conservative bias: a shortfall is picked up by later pen suggestions, an overshoot can't be undone). An explicit value in the wizard's % field overrides the derate entirely.
-- **Primary tail**: slow carbs + protein equivalents (default 10 % of protein grams) are scheduled as **eCarbs** starting +60 min, spread over 4 h.
-- **Fat tail**: fat equivalents (default 8 % of the fat grams, e.g. 47 g fat ≈ 3.8 g) are scheduled as a second eCarbs record starting +90 min, spread over 8 h — the duration only spreads the tail, the total equivalents don't depend on it.
-- On OK both tails are recorded (record-only, like everything in MDI) and feed COB/predictions — the loop then converts the rising glucose predictions into pen-bolus suggestions while the meal is still being absorbed. Protein/fat equivalents also keep autosens from misreading the late rise as insulin resistance.
-- **Everything is adjustable before confirming** — the preview is informational, the percentage can be overridden with the existing % checkbox (manual values always win), and zero macros give exactly the upstream wizard.
-- **Activation safeguard**: meals with less than 5 g fat *and* less than 10 g protein (both configurable) skip the assistant entirely — plain wizard logic applies, so a splash of oil or a spoon of yogurt can't produce a silly 99 %-upfront micro-plan.
-
-All conversion factors live in *Settings → Overview → Meal macro assistant* and are applied to every new wizard run. Three **preset buttons** overwrite them with community methods, so you can switch approaches without recompiling:
+- **Upfront**: a heaviness score splits carbs into fast/slow and derates **only the fast-carb insulin** between the lean/heavy preferences (defaults 100 % ↔ 60 %). The withheld part is deliberately not dosed; an explicit wizard % overrides it.
+- **Tails**: slow carbs + protein equivalents (default 10 % of protein) as eCarbs from +60 min over 4 h; fat equivalents (default 8 % of fat) as a second eCarbs record from +90 min over 8 h. Both feed COB/predictions.
+- Meals under 5 g fat *and* 10 g protein skip the assistant (plain wizard).
+- Settings in *Overview → Meal macro assistant*, with presets:
 
 | Preset | Protein | Fat | Heavy-meal upfront |
 | --- | --- | --- | --- |
@@ -73,94 +59,57 @@ All conversion factors live in *Settings → Overview → Meal macro assistant* 
 | **Warsaw-style (derated)** | 30 % / 4 h | 28 % / 8 h | 50 % |
 | **Warsaw-style 0.7×** | 21 % / 5 h | 20 % / 8 h | 55 % |
 
-Note: the Warsaw-style presets are deliberately derated against the classic Warsaw method (which converts ~40 % of protein and ~90 % of fat grams into carb equivalents — roughly double the tail grams); the fat conversion setting is capped at 50 % of fat grams.
+> ⚠️ Community heuristics, **not** validated dosing rules. Start Conservative and compare the actual curve against the plan for a few meals before moving up.
 
-> ⚠️ The conversion factors are community heuristics, **not** validated dosing rules. Start with Conservative, compare the actual glucose curve against the plan for a few meals (each entry is logged with its inputs), and only move toward Warsaw if the tail consistently outlasts the coverage. Sanity-check with your diabetes team.
+### MDI UI cleanup
 
-Calculator math is unit-tested with real meals (frozen pizza 131 C/47 F/53 P, 2× Big Mac 82 C/54 P/50 F) as golden cases — see `MealMacroPlanTest`.
+Gated on `Pump.isMDI()`:
 
-### 8. MDI-aware UI cleanup
+- **Actions**: card hidden when no action applies.
+- **Insulin dialog**: eating-soon TT hidden, last Lantus dose prefilled, "record only" checkbox hidden.
+- **Carbs dialog**: TT checkboxes hidden; 🍬 **hypo treatment** button (configurable carbs + note), disabled until an amount is set.
+- **Preferences**: BT watchdog, pump-unreachable alert, prime/fill, pump status-light thresholds, partial bolus wizard, superbolus, LGS threshold and pump basal caps hidden. SMB/DynISF settings kept.
+- **Loop mode icon** visible — the only way into the Loop dialog.
 
-Gated on the pump being configured as **MDI** (`Pump.isMDI()`, not the coarse `is VirtualPump`):
+### Other
 
-- **Actions tab**: "Actions" card hidden when no action button applies.
-- **Insulin dialog**: eating-soon TT hidden; "Record basal insulin (MDI)" prefills the last Lantus dose; the redundant "record only" checkbox is hidden (in MDI every bolus is record-only).
-- **Carbs dialog**: all "Start xxx TT" checkboxes hidden; new 🍬 **hypo treatment** button adds a configurable carbs amount and prefills a "hypo treatment" note. It ships **disabled** — set the amount (e.g. 4 g, one glucose chew) to show the button, 0 to hide it again.
-- **Preferences**: BT watchdog, pump-unreachable alert, prime/fill settings, pump status-light thresholds, partial bolus wizard, superbolus, LGS threshold, and the pump-only basal caps (Max u/h basal and the safety multipliers) — hidden. SMB/DynISF settings kept (they still shape suggestions).
-- **Loop mode icon** on the Overview is visible in MDI mode — the only entry point to the Loop dialog (needed to switch to Open Loop).
+- **Objectives** pre-marked accomplished (screen stays as a checklist).
+- **Derived I:C**: `IC` column in the Statistics TDD table; tapping the Overview COB icon shows today's I:C vs the profile's, with the difference and a colored arrow.
+- Removed upstream Git-blocked build restrictions; added a Nix devenv.
+- BG quality check no longer flags regular sub-5-minute sources (e.g. Juggluco/Libre 2 at 1 min).
 
-### 9. Objectives unlocked
+## Suggested settings for MDI
 
-- All objectives are marked as accomplished on start, so no functionality is gated behind the tutorial. The objectives screen remains as an informational checklist.
+Starting points to validate against your own data — **not medical advice**.
 
-### 10. Derived I:C (carbs ÷ bolus)
-
-A quick sanity check on the insulin-to-carb ratio, derived from recorded carbs and boluses alone:
-
-- **Statistics screen**: the TDD table (day rows, 3-day average, week average, today) gets an `IC` column as the rightmost column — carbs ÷ bolus for the row, shown as a bare number ("8.5" = 8.5 g per 1 U), `n/a` when carbs or bolus is missing.
-- **Overview COB icon**: tapping the carbs icon in the top info row (next to IOB) opens a dialog with today's estimated I:C (midnight → now, same data as the "Today" stats row), the profile's I:C for the current time block, and the difference — absolute, percentage and a colored arrow (▲ green when less insulin per gram was needed than the profile assumes, ▼ orange when more). Anything that cannot be calculated shows `n/a`.
-
-### 11. Housekeeping
-
-- Removed upstream Git-blocked build restrictions; added a devenv (Nix) development environment.
-- BG quality check: sources delivering regular sub-5-minute readings (e.g. Juggluco/Libre 2 at 1 min) no longer trigger the "Recalculated data used" warning — data spacing is classified and dense-but-regular data is treated as clean.
-
-## Safety
-
-This fork runs the APS in a configuration upstream does not support (MDI / virtual pump) and lifts the objectives gate, but it **refuses closed-loop enactment and never issues a temp basal or zero temp**. It is intended for **personal use by an experienced MDI user**. See the warning at the top of this file.
-
-## Suggested OpenAPS/SMB settings for MDI
-
-These are **starting points to validate against your own data, not medical advice** — adjust with your diabetes team's input.
-
-### How pen suggestions are capped in MDI (differs from pump logic!)
-
-The APS math is identical for pumps and pens; only enactment differs — a correction becomes a manual bolus suggestion instead of a micro-bolus or a temp basal. The upstream SMB caps are designed for a **closed loop dosing every few minutes**; with hourly pen suggestions they would cap each one at ~1.6 U and make the feature useless. So the cap model here is different:
-
-- **Suggestions are sized from the engine's correction request** (`insulinReq`), never from a temp-basal *rate*. A U/h cap must not size a pen bolus, so the pump-oriented caps (Max u/h basal and the safety multipliers) are not part of this path at all.
-- **Max pen bolus suggestion (MDI)** — setting in the OpenAPS SMB and AutoISF screens (MDI only, default **4 U**, range 0.5–15): the pen-specific cap for how big one suggestion can get. It is **not** the only one — every suggestion also passes the generic **Max bolus** limit (Preferences → Safety, default **3 U**) and the age-based hard limit. The smaller cap silently wins: to actually suggest more than 3 U, raise **both** Max pen bolus suggestion and Max bolus.
-- **Pen bolus suggestions (MDI)** — master switch (same screens, default **on**): turns the pen-bolus notifications off entirely; while off a pending suggestion is dismissed.
-- **Min pen bolus suggestion (MDI)** — same screens, default **0.5 U**, range 0.5–15: suggestions smaller than this are suppressed. Compared against the pen-step-rounded value, clamped between the pen step and Max pen bolus suggestion.
-- **Smooth pen bolus suggestions (MDI)** — same screens, default **off**, with a **smoothing window** (5–15 min, default 15): sizes the suggestion from the *median* `insulinReq` of the recent APS runs instead of the latest value. A one-cycle spike gives a median of 0 → **no suggestion**; the smoothed value never falls back to the raw one.
-- **SMB max minutes / UAM max minutes / Max u/h basal / multipliers**: overridden internally in MDI and **hidden** in MDI mode across all three APS engines (SMB, AMA, AutoISF). They do not touch the pen suggestion at all — nothing to tune.
-- **A projected low stops the suggestion.** If the algorithm's guard prediction falls below the low threshold, no bolus is suggested and a pending one is dismissed. Basal reductions are never suggested either — a pen cannot lower a Lantus rate.
-- **Suggestions are throttled to one per 60 minutes** and always rounded **down** to the pen's 0.5 U step (under-dosing is the safe direction).
-- **Max IOB stays the true safety bound**: it caps cumulative suggested dosing, exactly as for pumps (each suggestion is also limited to `Max IOB − current IOB`).
+Pen suggestions are sized from `insulinReq`, never from a U/h rate, so the pump caps (Max u/h basal, multipliers, SMB/UAM max minutes) are irrelevant and hidden in MDI.
 
 | Setting | Value | Why |
 | --- | --- | --- |
-| **Max pen bolus suggestion (MDI)** | default **4 U** | The pen-specific cap; raise toward 6–8 U only with experience |
-| **Min pen bolus suggestion (MDI)** | default **0.5 U** | Suppresses smaller suggestions |
-| **Pen bolus suggestions (MDI)** master switch | default **on** | Turns the pen-bolus notifications off entirely |
-| **Smooth pen bolus suggestions (MDI)** (+ window 5–15 min) | default **off** | Sizes from the median `insulinReq` of recent runs |
-| **Max bolus** (Preferences → Safety) | default **3 U** | Caps each suggestion too — raise it together with the pen cap, or the bigger pen cap silently does nothing |
-| **Max IOB** | start at **~8 U**, walk down to 5–6 if nights stay flat | Must exceed your upfront meal dose (else suggestions are dead for hours after injecting); caps cumulative dosing |
-| SMB max minutes / UAM max minutes / Max u/h basal / multipliers | **hidden in MDI** | Not part of the pen-suggestion path — sizing is `insulinReq`, capped by Max pen bolus suggestion + Max bolus |
-| Autosens | **Hidden when DynISF is ON** | Classic toggle ignored; see TDD-ratio option below |
-| Enable TDD based sensitivity ratio for glucose target modification | keep **OFF initially** (default) | MDI: adjusts glucose targets only — basal is never scaled; DynamicISF still works with it off |
+| **Max pen bolus suggestion (MDI)** | **4 U** (0.5–15) | Pen-specific cap; raise toward 6–8 U only with experience |
+| **Min pen bolus suggestion (MDI)** | **0.5 U** | Suppresses smaller suggestions |
+| **Pen bolus suggestions (MDI)** | **on** | Master switch for the notifications |
+| **Smooth pen bolus suggestions (MDI)** + window | **off**, 15 min | Sizes from the median `insulinReq`; a one-cycle spike gives no suggestion |
+| **Max bolus** (Safety) | **3 U** | Also caps each suggestion — raise it together with the pen cap or the bigger pen cap does nothing |
+| **Max IOB** | start **~8 U**, walk down to 5–6 if nights stay flat | Must exceed your upfront meal dose; caps cumulative dosing |
+| TDD-based sensitivity ratio | **off** initially | MDI: adjusts glucose targets only, basal never scaled |
 
-Everything else (Enable SMB, SMB-with-X triggers, UAM, DynISF, target adjustments, carbs threshold) works fine at defaults.
+Everything else (Enable SMB, UAM, DynISF, target adjustments, carbs threshold) works at defaults.
 
-**TDD ratio in this MDI fork:** Start **OFF**. In MDI the ratio adjusts **glucose targets only** — the working basal is never scaled, since Lantus is fixed until your next injection (the option is renamed accordingly in MDI mode). Enabling it makes the algorithm raise targets when recent TDD is below the 7-day average (more aggressive corrections) and lower them when it is above (gentler corrections), which shifts pen suggestions. TDD is calculated from profile basal (assumed delivered) plus recorded boluses, so larger meals can look like resistance; carb compensation needs sufficient logs. Consider enabling only with an accurate Lantus-backed profile and reliable bolus/carb records, then review its effects with your diabetes team.
-
-### Honest limitations
-
-Even fully tuned, MDI suggestions are **slower** than a pump loop's corrections: at most one suggestion per 60 minutes, each capped by Max pen bolus suggestion *and* Max bolus (defaults 4 U and 3 U), and basal *reductions* are never suggested (can't be done with a pen). Expect a patient advisor, not a loop. If coverage during a big meal tail feels too slow, the levers are **Max pen bolus suggestion + Max bolus** (bigger single doses — raise both) and **Max IOB** (more total headroom).
+**Limitations:** at most one suggestion per 60 min, each capped by Max pen bolus suggestion *and* Max bolus, and basal reductions are never suggested. Expect a patient advisor, not a loop. Levers for slow meal tails: raise **both** caps and **Max IOB**.
 
 ## Building
 
-Standard AAPS build (Gradle 9, Java 21, flavors `full` / `pumpcontrol` / `aapsclient` / `aapsclient2`):
+Gradle 9, Java 21, flavors `full` / `pumpcontrol` / `aapsclient` / `aapsclient2`:
 
 ```
-./gradlew :app:assembleFullRelease   # or use Android Studio
+./gradlew :app:assembleFullRelease   # or Android Studio
 ```
 
-Module-level compile checks must name a flavor — plain `compileDebugKotlin` is ambiguous and fails:
+Module compile checks must name a flavor (`compileDebugKotlin` is ambiguous):
 
 ```
 ./gradlew :ui:compileFullDebugKotlin
 ```
 
-## Working on this repo
-
-`AGENTS.md` maps the modules, says where each MDI feature lives, and lists the build/test commands plus the gotchas that cost time to learn. Read it before changing code.
+`AGENTS.md` maps the modules, where each MDI feature lives, build/test commands and the gotchas. Read it before changing code.
