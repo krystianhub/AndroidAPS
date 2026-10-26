@@ -25,6 +25,7 @@ Site position 1–12 stored as a `pos x` note on the treatment (syncs to Nightsc
 - Insulin dialog checkbox **"Record basal insulin (MDI)"** records the dose as a Note (`Lantus 10.0U ...`) — no bolus, so TDD/IOB aren't inflated.
 - On any dose change the profile basal is rewritten to a flat `dose / 24` U/h and a profile switch is activated (compared on the quantized rate, so re-recording the same dose doesn't retrigger). Keeps TDD/DynISF honest.
 - Profile screen **"Sync basal"** button (MDI only) rewrites the profile without activating it; enabled only when out of sync.
+- **Missed Lantus reminder** (Overview settings, MDI only): urgent notification when no Lantus injection has been recorded for 24 h + grace period after the last one, repeating at the configured interval until a dose is recorded. Does nothing when no Lantus dose was recorded in the lookback window. Toggle: **Missed Lantus reminder (MDI)**; configurable **grace period** (default 120 min), **re-raise interval** (default 60 min) and **lookback** (default 5 days).
 
 ### Overview status lights
 
@@ -90,6 +91,8 @@ Pen suggestions are sized from `insulinReq`, never from a U/h rate, so the pump 
 | **Min pen bolus suggestion (MDI)** | **0.5 U** | Suppresses smaller suggestions |
 | **Pen bolus suggestions (MDI)** | **on** | Master switch for the notifications |
 | **Smooth pen bolus suggestions (MDI)** + window | **off**, 15 min | Sizes from the median `insulinReq`; a one-cycle spike gives no suggestion |
+| **Missed Lantus reminder (MDI)** | **on** | Urgent reminder when no Lantus dose is recorded 24 h + grace period after the last one; repeats at the configured interval (default 60 min) |
+| **Missed Lantus grace period / re-raise interval / lookback (MDI)** | **120 min / 60 min / 5 days** | Grace period added to 24 h, repeat interval, and how far back to look for a recorded dose |
 | **Max bolus** (Safety) | **3 U** | Also caps each suggestion — raise it together with the pen cap or the bigger pen cap does nothing |
 | **Max IOB** | start **~8 U**, walk down to 5–6 if nights stay flat | Must exceed your upfront meal dose; caps cumulative dosing |
 | TDD-based sensitivity ratio | **off** initially | MDI: adjusts glucose targets only, basal never scaled |

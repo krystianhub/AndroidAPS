@@ -65,7 +65,14 @@ class NotificationStore @Inject constructor(
             if (storeNotification.id == n.id) {
                 storeNotification.date = n.date
                 storeNotification.validTo = n.validTo
-                return false
+                storeNotification.text = n.text
+                storeNotification.level = n.level
+                if (n.reRaiseOnDuplicate && preferences.get(BooleanKey.AlertUrgentAsAndroidNotification) && n !is NotificationWithAction) {
+                    // Cancel first so the system re-alerts even for identical content
+                    (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(n.id)
+                    raiseSystemNotification(storeNotification)
+                }
+                return n.reRaiseOnDuplicate
             }
         }
         store.add(n)
@@ -78,6 +85,8 @@ class NotificationStore @Inject constructor(
 
     @Synchronized
     fun remove(id: Int): Boolean {
+        // System notification may outlive the in-app entry after a process restart.
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(id)
         for (i in store.indices) {
             if (store[i].id == id) {
                 if (store[i].soundId != null) uiInteraction.stopAlarm("Removed " + store[i].text)
@@ -91,20 +100,21 @@ class NotificationStore @Inject constructor(
 
     @Synchronized
     private fun removeExpired() {
+        val mgr = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         var i = 0
         while (i < store.size) {
             val n = store[i]
             if (n.validTo != 0L && n.validTo < System.currentTimeMillis()) {
-                if (store[i].soundId != null) uiInteraction.stopAlarm("Expired " + store[i].text)
-                aapsLogger.debug(LTag.NOTIFICATION, "Notification expired: " + store[i].text)
+                if (n.soundId != null) uiInteraction.stopAlarm("Expired " + n.text)
+                aapsLogger.debug(LTag.NOTIFICATION, "Notification expired: " + n.text)
+                mgr.cancel(n.id)
                 store.removeAt(i)
-                i--
+                continue
             }
-            if (n is NotificationWithAction) {
-                if (n.validityCheck?.invoke() == false) {
-                    store.removeAt(i)
-                    i--
-                }
+            if (n is NotificationWithAction && n.validityCheck?.invoke() == false) {
+                mgr.cancel(n.id)
+                store.removeAt(i)
+                continue
             }
             i++
         }
@@ -135,7 +145,10 @@ class NotificationStore @Inject constructor(
     }
 
     private fun deleteIntent(id: Int): PendingIntent {
-        val intent = Intent(DismissNotificationReceiver.ACTION).putExtra("alertID", id)
+        // Restrict the dismiss broadcast to this app's receivers
+        val intent = Intent(DismissNotificationReceiver.ACTION)
+            .setPackage(context.packageName)
+            .putExtra("alertID", id)
         return PendingIntent.getBroadcast(context, id, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 

@@ -134,6 +134,7 @@ class KeepAliveWorker(
         dstHelperPlugin.dstCheck()
         localAlertUtils.shortenSnoozeInterval()
         localAlertUtils.checkStaleBGAlert()
+        localAlertUtils.checkMissedLantusReminder()
         checkPump()
         checkAPS()
         maintenancePlugin.deleteLogs(30)

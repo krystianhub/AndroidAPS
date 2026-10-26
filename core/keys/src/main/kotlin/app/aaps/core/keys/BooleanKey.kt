@@ -79,6 +79,7 @@ enum class BooleanKey(
 
     MdiBolusSuggestionEnabled("mdi_bolus_suggestion_enabled", true),
     MdiBolusSuggestionSmoothing("mdi_bolus_suggestion_smoothing", false, dependency = MdiBolusSuggestionEnabled),
+    MdiMissedLantusReminderEnabled("mdi_missed_lantus_reminder_enabled", true),
 
     VirtualPumpStatusUpload("virtualpump_uploadstatus", false, showInNsClientMode = false),
     NsClientUploadData("ns_upload", true, showInNsClientMode = false, hideParentScreenIfHidden = true),

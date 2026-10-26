@@ -39,6 +39,7 @@
     <string name="confirm">Confirm</string>
     <string name="pump">Pump</string>
     <string name="missed_bg_readings">Missed BG readings</string>
+    <string name="missed_lantus_reminder">Lantus injection overdue: no dose recorded for over %1$d hours. Inject now.</string>
     <string name="treatments_iob_label_string">IOB:</string>
     <string name="mute5min">Mute for 5 minutes</string>
     <string name="mute">Mute</string>

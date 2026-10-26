@@ -13,6 +13,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.pump.BasalInjection
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventDismissNotification
@@ -29,6 +30,7 @@ import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.max
 import kotlin.math.min
 
 /**
@@ -158,4 +160,67 @@ class LocalAlertUtilsImpl @Inject constructor(
             rxBus.send(EventDismissNotification(Notification.BG_READINGS_MISSED))
         }
     }
+
+    /** MDI only: urgent reminder when no Lantus dose was recorded within 24 h + the configured grace period. */
+    override fun checkMissedLantusReminder() {
+        val now = dateUtil.now()
+        if (!activePlugin.activePump.isMDI() || !preferences.get(BooleanKey.MdiMissedLantusReminderEnabled)) {
+            dismissMissedLantusReminder()
+            return
+        }
+        val lastDose = lastLantusInjection(now)
+        if (lastDose == null) {
+            dismissMissedLantusReminder()
+            return
+        }
+        if (now - lastDose < lantusReminderDelay()) {
+            dismissMissedLantusReminder()
+            return
+        }
+        if (preferences.get(LocalAlertLongKey.NextMissedLantusReminderAlarm) > now) return
+        preferences.put(LocalAlertLongKey.NextMissedLantusReminderAlarm, now + lantusReminderInterval())
+        val hoursOverdue = max(((now - lastDose) / T.hours(1).msecs()).toInt(), 0)
+        aapsLogger.debug(LTag.CORE, "Generating missed Lantus reminder. lastDose: " + dateUtil.dateAndTimeString(lastDose) + " overdue: " + hoursOverdue + " h")
+        val notification = Notification(
+            Notification.MISSED_LANTUS_REMINDER,
+            rh.gs(R.string.missed_lantus_reminder, hoursOverdue),
+            Notification.URGENT,
+            validMinutes = 120
+        ).apply {
+            // Re-alert audibly on each interval.
+            reRaiseOnDuplicate = true
+            soundId = R.raw.alarm
+        }
+        rxBus.send(EventNewNotification(notification))
+    }
+
+    /** Latest NOTE therapy event recording a Lantus dose within the lookback window, or null. */
+    private fun lastLantusInjection(now: Long): Long? =
+        try {
+            persistenceLayer.getTherapyEventDataFromTime(now - lantusDoseLookback(), TE.Type.NOTE, false)
+                .mapNotNull { te -> BasalInjection.extractDose(te.note)?.let { te.timestamp } }
+                .maxOrNull()
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.CORE, "Failed to read Lantus injections for the missed-Lantus reminder", e)
+            null
+        }
+
+    /** Drops the reminder and resets its schedule so it can be raised fresh next time. */
+    private fun dismissMissedLantusReminder() {
+        if (preferences.get(LocalAlertLongKey.NextMissedLantusReminderAlarm) == 0L) return
+        preferences.put(LocalAlertLongKey.NextMissedLantusReminderAlarm, 0L)
+        rxBus.send(EventDismissNotification(Notification.MISSED_LANTUS_REMINDER))
+    }
+
+    /** Delay after the last Lantus injection before reminders start: 24 h + configurable grace period. */
+    private fun lantusReminderDelay(): Long =
+        T.hours(24).msecs() + T.mins(preferences.get(IntKey.MdiMissedLantusGracePeriodMinutes).toLong()).msecs()
+
+    /** Repeat the reminder at most once per configured interval until a dose is recorded. */
+    private fun lantusReminderInterval(): Long =
+        T.mins(preferences.get(IntKey.MdiMissedLantusReRaiseIntervalMinutes).toLong()).msecs()
+
+    /** Lookback for the last Lantus injection, configurable (default 5 days). */
+    private fun lantusDoseLookback(): Long =
+        T.days(preferences.get(IntKey.MdiMissedLantusLookbackDays).toLong()).msecs()
 }

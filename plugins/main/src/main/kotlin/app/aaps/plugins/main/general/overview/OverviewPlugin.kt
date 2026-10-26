@@ -421,6 +421,12 @@ class OverviewPlugin @Inject constructor(
             }
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusAdvisor, summary = R.string.enable_bolus_advisor_summary, title = R.string.enable_bolus_advisor))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))
+            if (activePlugin.activePump.isMDI()) {
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiMissedLantusReminderEnabled, summary = R.string.mdi_missed_lantus_reminder_summary, title = R.string.mdi_missed_lantus_reminder_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusGracePeriodMinutes, title = R.string.mdi_missed_lantus_grace_period))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusReRaiseIntervalMinutes, title = R.string.mdi_missed_lantus_re_raise_interval))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusLookbackDays, title = R.string.mdi_missed_lantus_lookback_days))
+            }
             if (!activePlugin.activePump.isMDI()) {
                 addPreference(preferenceManager.createPreferenceScreen(context).apply {
                     key = "overview_advanced_settings"

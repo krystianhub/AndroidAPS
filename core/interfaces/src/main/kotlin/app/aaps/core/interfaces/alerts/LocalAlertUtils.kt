@@ -32,4 +32,7 @@ interface LocalAlertUtils {
      * Overview notification with sound, Therapy event
      */
     fun checkStaleBGAlert()
+
+    /** MDI only: urgent reminder when no Lantus dose was recorded within 24 h + the configured grace period. */
+    fun checkMissedLantusReminder()
 }

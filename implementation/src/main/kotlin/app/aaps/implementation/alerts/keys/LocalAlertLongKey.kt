@@ -9,5 +9,6 @@ enum class LocalAlertLongKey(
 ) : LongNonPreferenceKey {
 
     NextPumpDisconnectedAlarm("nextPumpDisconnectedAlarm", 0L),
-    NextMissedReadingsAlarm("nextMissedReadingsAlarm", 0L)
+    NextMissedReadingsAlarm("nextMissedReadingsAlarm", 0L),
+    NextMissedLantusReminderAlarm("nextMissedLantusReminderAlarm", 0L)
 }

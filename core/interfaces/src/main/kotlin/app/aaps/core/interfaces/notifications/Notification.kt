@@ -17,6 +17,9 @@ open class Notification {
 
     var contextForAction: Context? = null
 
+    /** Re-raise the system notification when a notification with the same [id] is added again. */
+    var reRaiseOnDuplicate: Boolean = false
+
     constructor()
     constructor(id: Int, date: Long, text: String, level: Int, validTo: Long) {
         this.id = id
@@ -144,6 +147,7 @@ open class Notification {
         const val EQUIL_ALARM = 93
         const val EQUIL_ALARM_INSULIN = 94
         const val PEN_BOLUS_SUGGESTION = 95
+        const val MISSED_LANTUS_REMINDER = 96
 
         const val USER_MESSAGE = 1000
 

@@ -73,6 +73,9 @@ enum class IntKey(
     MaintenanceLogsAmount("maintenance_logs_amount", 2, 1, 10, defaultedBySM = true),
     AlertsStaleDataThreshold("missed_bg_readings_threshold", 30, 15, 10000, defaultedBySM = true, dependency = BooleanKey.AlertMissedBgReading),
     AlertsPumpUnreachableThreshold("pump_unreachable_threshold", 30, 30, 300, defaultedBySM = true, dependency = BooleanKey.AlertPumpUnreachable),
+    MdiMissedLantusGracePeriodMinutes("mdi_missed_lantus_grace_period_minutes", 120, 0, 240, dependency = BooleanKey.MdiMissedLantusReminderEnabled),
+    MdiMissedLantusReRaiseIntervalMinutes("mdi_missed_lantus_re_raise_interval_minutes", 60, 15, 240, dependency = BooleanKey.MdiMissedLantusReminderEnabled),
+    MdiMissedLantusLookbackDays("mdi_missed_lantus_lookback_days", 5, 1, 30, dependency = BooleanKey.MdiMissedLantusReminderEnabled),
     InsulinOrefPeak("insulin_oref_peak", 75, 35, 120, hideParentScreenIfHidden = true),
 
     AutotuneDefaultTuneDays("autotune_default_tune_days", 5, 1, 30),
