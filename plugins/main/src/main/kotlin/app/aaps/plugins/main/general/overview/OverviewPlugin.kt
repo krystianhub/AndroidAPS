@@ -350,6 +350,9 @@ class OverviewPlugin @Inject constructor(
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewBageWarning, title = R.string.statuslights_bage_warning))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewBageCritical, title = R.string.statuslights_bage_critical))
                 }
+                // MDI: the insulinReq light shows a median over this window
+                if (isMDI)
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewInsulinReqMedianMinutes, title = R.string.statuslights_insulin_req_median_minutes))
                 addPreference(
                     AdaptiveClickPreference(ctx = context, stringKey = StringKey.OverviewCopySettingsFromNs, title = R.string.statuslights_copy_ns,
                                             onPreferenceClickListener = {

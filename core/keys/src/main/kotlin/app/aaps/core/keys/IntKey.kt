@@ -41,6 +41,7 @@ enum class IntKey(
     OverviewResCritical("statuslights_res_critical", 10, 0, 300, defaultedBySM = true, dependency = BooleanKey.OverviewShowStatusLights),
     OverviewBattWarning("statuslights_bat_warning", 51, 0, 100, defaultedBySM = true, dependency = BooleanKey.OverviewShowStatusLights),
     OverviewBattCritical("statuslights_bat_critical", 26, 0, 100, defaultedBySM = true, dependency = BooleanKey.OverviewShowStatusLights),
+    OverviewInsulinReqMedianMinutes("statuslights_insulin_req_median_minutes", 15, 5, 60, defaultedBySM = true, dependency = BooleanKey.OverviewShowStatusLights),
     OverviewBolusPercentage("boluswizard_percentage", 100, 10, 100),
     OverviewResetBolusPercentageTime("key_reset_boluswizard_percentage_time", 16, 6, 120, defaultedBySM = true, engineeringModeOnly = true),
     MealProteinPercentage("meal_protein_percentage", 10, 0, 50),

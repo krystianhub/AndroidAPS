@@ -203,9 +203,11 @@ open class OpenAPSSMBPlugin @Inject constructor(
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsSensitivityRaisesTarget.key)?.isVisible = autoSensOrDynIsfSensEnabled
         preferenceFragment.findPreference<AdaptiveIntPreference>(IntKey.ApsUamMaxMinutesOfBasalToLimitSmb.key)?.isVisible = smbEnabled && uamEnabled
 
-        // MDI: SMB basal-minutes caps are meaningless for pen suggestions - show the dedicated cap instead
+        // MDI: the smoothing window depends on smoothing, which in turn depends on the master switch
         if (activePlugin.activePump.isMDI()) {
-            preferenceFragment.findPreference<AdaptiveDoublePreference>(DoubleKey.MdiMaxBolusSuggestion.key)?.isVisible = smbEnabled
+            val bolusSuggestionEnabled = preferences.get(BooleanKey.MdiBolusSuggestionEnabled)
+            preferenceFragment.findPreference<AdaptiveIntPreference>(IntKey.MdiBolusSuggestionMedianMinutes.key)?.isVisible =
+                bolusSuggestionEnabled && preferences.get(BooleanKey.MdiBolusSuggestionSmoothing)
         }
     }
 

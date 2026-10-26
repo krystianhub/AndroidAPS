@@ -230,14 +230,14 @@ class StatusLightHandler @Inject constructor(
         }
     }
 
-    /** Displays the latest APS insulinReq and a robust median of the previous 15 minutes, for information only. */
+    /** Displays the latest APS insulinReq and a robust median over the configured window, for information only. */
     fun updateInsulinReqLight(rawView: TextView?, medianView: TextView?) {
         if (rawView == null || medianView == null) return
         scope.launch {
             val now = dateUtil.now()
             val results = recentApsResults(now)
             val latestResult = results.maxByOrNull { it.first }
-            val median = latestResult?.let { ApsResults.medianInsulinReq(results, it.first, APS_INSULIN_REQ_WINDOW_MS) }
+            val median = latestResult?.let { ApsResults.medianInsulinReq(results, it.first, insulinReqWindowMs()) }
             val insulinUnit = rh.gs(app.aaps.core.ui.R.string.insulin_unit_shortname)
             val insulinReq = latestResult?.second?.insulinReq?.takeIf { it.isFinite() }
             val currentText = insulinReq?.let { decimalFormatter.to2Decimal(it, insulinUnit) }
@@ -308,14 +308,18 @@ class StatusLightHandler @Inject constructor(
     }
 
     private fun recentApsResults(now: Long): List<Pair<Long, APSResult>> {
-        val windowStart = now - APS_INSULIN_REQ_WINDOW_MS
+        val windowMs = insulinReqWindowMs()
+        val windowStart = now - windowMs
         val live = loop.lastRun
             ?.takeIf { it.lastAPSRun in windowStart..now }
             ?.let { run -> run.lastAPSRun to run.request }
             ?.takeIf { it.second != null }
             ?.let { it.first to it.second!! }
-        return ApsResults.recent(persistenceLayer, now, APS_INSULIN_REQ_WINDOW_MS, live)
+        return ApsResults.recent(persistenceLayer, now, windowMs, live)
     }
+
+    private fun insulinReqWindowMs(): Long =
+        T.mins(preferences.get(IntKey.OverviewInsulinReqMedianMinutes).toLong()).msecs()
 
     private fun setApsValueStaleness(views: List<TextView>, timestamp: Long?, now: Long, hasApsResult: Boolean) {
         val age = timestamp?.let { now - it }
@@ -330,7 +334,6 @@ class StatusLightHandler @Inject constructor(
 
     companion object {
 
-        private val APS_INSULIN_REQ_WINDOW_MS = T.mins(15).msecs()
         private val APS_STALE_THRESHOLD_MS = T.mins(5).msecs()
         private const val STALE_APS_VALUE_ALPHA = 0.45f
         private val STATS_RANGE_LOW_MGDL = Constants.STATS_RANGE_LOW_MMOL * GlucoseUnit.MMOLL_TO_MGDL

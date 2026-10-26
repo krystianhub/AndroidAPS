@@ -192,7 +192,7 @@
     <string name="statuslights_patch_pump_age">patch pump age</string>
     <string name="statuslights_last_bolus_age">last bolus ago</string>
     <string name="statuslights_last_basal_age">last basal insulin ago</string>
-    <string name="statuslights_insulin_req">APS insulinReq, current / 15-minute median (U)</string>
+    <string name="statuslights_insulin_req">APS insulinReq, current / median (U)</string>
     <string name="statuslights_eventual_bg">APS lowest predicted and eventual glucose, and target</string>
     <string name="last_basal_label">Last basal</string>
     <string name="patch_pump">Patch pump</string>
@@ -214,6 +214,7 @@
     <string name="statuslights_bat_warning">Threshold warning pump battery level [%]</string>
     <string name="statuslights_bat_critical">Threshold critical pump battery level [%]</string>
     <string name="statuslights_copy_ns">Copy settings from NS</string>
+    <string name="statuslights_insulin_req_median_minutes">InsulinReq median window [min]</string>
     <string name="ic_estimate_title">I:C estimate (today)</string>
     <string name="ic_estimate_from">Carbs / bolus today: %1$.0f g / %2$.1f U</string>
     <string name="ic_estimate_ratio">Estimated I:C: %1$s</string>

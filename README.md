@@ -29,7 +29,7 @@ Site position 1–12 stored as a `pos x` note on the treatment (syncs to Nightsc
 
 ### Overview status lights
 
-Pump lights (cannula, insulin, reservoir, battery) hidden; sensor age stays. New MDI lights: APS row with **insulinReq** (current / median) and **lowest predicted → eventual BG** (colored by the projected dip), **last bolus ago** (colored by the insulin curve) and **last basal insulin ago** (colored by the Lantus curve). Last bolus/basal ages also appear in the Actions stats.
+Pump lights (cannula, insulin, reservoir, battery) hidden; sensor age stays. New MDI lights: APS row with **insulinReq** (current / median over a configurable window) and **lowest predicted → eventual BG** (colored by the projected dip), **last bolus ago** (colored by the insulin curve) and **last basal insulin ago** (colored by the Lantus curve). Last bolus/basal ages also appear in the Actions stats.
 
 ### APS plugins
 

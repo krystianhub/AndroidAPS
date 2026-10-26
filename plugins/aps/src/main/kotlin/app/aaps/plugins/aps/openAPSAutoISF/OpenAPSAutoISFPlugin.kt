@@ -213,8 +213,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithCob.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbWithLowTt.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
         preferenceFragment.findPreference<SwitchPreference>(BooleanKey.ApsUseSmbAfterCarbs.key)?.isVisible = !smbAlwaysEnabled || !advancedFiltering
-        val smbEnabled = preferences.get(BooleanKey.ApsUseSmb)
-        preferenceFragment.findPreference<AdaptiveDoublePreference>(DoubleKey.MdiMaxBolusSuggestion.key)?.isVisible = smbEnabled
+        // MDI: the smoothing window depends on smoothing, which in turn depends on the master switch
+        preferenceFragment.findPreference<AdaptiveIntPreference>(IntKey.MdiBolusSuggestionMedianMinutes.key)?.isVisible =
+            preferences.get(BooleanKey.MdiBolusSuggestionEnabled) && preferences.get(BooleanKey.MdiBolusSuggestionSmoothing)
     }
 
     private val autoIsfCache = LongSparseArray<Double>()
