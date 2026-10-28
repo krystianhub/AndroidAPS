@@ -200,10 +200,11 @@ class WizardDialog : DaggerDialogFragment() {
         val maxCorrection = constraintChecker.getMaxBolusAllowed().value()
         bolusStep = activePlugin.activePump.pumpDescription.bolusStep
 
-        // Meal macro assistant (fat/protein -> eCarbs plan) is an MDI-only feature
+        // Meal macro assistant (fat/protein -> eCarbs plan) is an MDI-only feature, hidden behind a feature flag
         val isMdi = activePlugin.activePump.isMDI()
-        binding.fatInputRow.visibility = isMdi.toVisibility()
-        binding.proteinInputRow.visibility = isMdi.toVisibility()
+        val mealMacroEnabled = isMdi && preferences.get(BooleanKey.MdiMealMacroAssistantEnabled)
+        binding.fatInputRow.visibility = mealMacroEnabled.toVisibility()
+        binding.proteinInputRow.visibility = mealMacroEnabled.toVisibility()
 
         // Deferred carb logging: global feature toggle, selected in the wizard and mutually
         // exclusive with the carb-time timer.
@@ -536,7 +537,7 @@ class WizardDialog : DaggerDialogFragment() {
         // Meal macro plan: fat/protein split the meal into upfront carbs + eCarbs tails
         // and suggest an adaptive upfront percentage (user can always override it below).
         // MDI-only feature - for pump users everything stays upstream.
-        if (!activePlugin.activePump.isMDI()) {
+        if (!activePlugin.activePump.isMDI() || !preferences.get(BooleanKey.MdiMealMacroAssistantEnabled)) {
             mealMacroPlan = null
             binding.mealMacroPlan.visibility = View.GONE
         } else {

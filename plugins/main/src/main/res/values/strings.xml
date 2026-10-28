@@ -269,6 +269,8 @@
     <string name="hypo_treatment_carbs_message">Carbs added by the hypo treatment button in the carbs dialog (one tap = one hypo treatment unit). Set to 0 (or leave empty) to hide the button.</string>
     <string name="meal_macro_settings">Meal macro assistant</string>
     <string name="meal_macro_settings_summary">How fat and protein entered in the bolus wizard are converted into extended carbs and an adjusted upfront bolus</string>
+    <string name="meal_macro_enabled">Enable assistant</string>
+    <string name="meal_macro_enabled_summary">Experimental; off by default.</string>
     <string name="meal_protein_percentage">Protein to carbs equivalent [%]</string>
     <string name="meal_protein_percentage_message">Part of entered protein grams added to the extended-carbs tail (0 = don\'t cover protein). Default 10%%.</string>
     <string name="meal_protein_duration">Protein tail duration [h]</string>
@@ -319,6 +321,7 @@
     <string name="enablebolusreminder_summary">Use reminder to bolus later with wizard ("post-bolus")</string>
     <string name="mdi_missed_lantus_reminder_title">Missed Lantus reminder (MDI)</string>
     <string name="mdi_missed_lantus_reminder_summary">Notify when no Lantus injection has been recorded for 24 h + the grace period after the last one. Repeats at the configured interval until a dose is recorded.</string>
+    <string name="mdi_missed_lantus_enabled">Enable reminder</string>
     <string name="mdi_missed_lantus_grace_period">Missed Lantus grace period (minutes)</string>
     <string name="mdi_missed_lantus_re_raise_interval">Missed Lantus re-raise interval (minutes)</string>
     <string name="mdi_missed_lantus_lookback_days">Missed Lantus lookback (days)</string>

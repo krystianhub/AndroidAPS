@@ -35,7 +35,7 @@ enum class StringKey(
     ProtectionBolusPin("bolus_pin", "", isPin = true),
 
     OverviewCopySettingsFromNs(key = "statuslights_copy_ns", "", dependency = BooleanKey.OverviewShowStatusLights),
-    MealMacroApplyPreset("meal_macro_apply_preset", ""),
+    MealMacroApplyPreset("meal_macro_apply_preset", "", dependency = BooleanKey.MdiMealMacroAssistantEnabled),
 
     SafetyAge("age", "adult"),
     MaintenanceEmail("maintenance_logs_email", "logs@aaps.app", defaultedBySM = true),

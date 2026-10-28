@@ -250,7 +250,7 @@ class OverviewPlugin @Inject constructor(
     }
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        if (requiredKey != null && requiredKey != "overview_buttons_settings" && requiredKey != "default_temp_targets_settings" && requiredKey != "prime_fill_settings" && requiredKey != "range_settings" && requiredKey != "statuslights_overview_advanced" && requiredKey != "overview_advanced_settings" && requiredKey != "meal_macro_settings") return
+        if (requiredKey != null && requiredKey != "overview_buttons_settings" && requiredKey != "default_temp_targets_settings" && requiredKey != "prime_fill_settings" && requiredKey != "range_settings" && requiredKey != "statuslights_overview_advanced" && requiredKey != "overview_advanced_settings" && requiredKey != "meal_macro_settings" && requiredKey != "missed_lantus_settings") return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {
@@ -366,12 +366,13 @@ class OverviewPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewBolusPercentage, dialogMessage = R.string.deliverpartofboluswizard, title = app.aaps.core.ui.R.string.partialboluswizard))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.OverviewResetBolusPercentageTime, dialogMessage = R.string.deliver_part_of_boluswizard_reset_time, title = app.aaps.core.ui.R.string.partialboluswizard_reset_time))
             }
-            // Meal macro assistant is an MDI-only feature
+            // Meal macro assistant is an MDI-only feature, off by default
             if (activePlugin.activePump.isMDI()) {
                 addPreference(preferenceManager.createPreferenceScreen(context).apply {
                     key = "meal_macro_settings"
                     title = rh.gs(R.string.meal_macro_settings)
                     summary = rh.gs(R.string.meal_macro_settings_summary)
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiMealMacroAssistantEnabled, summary = R.string.meal_macro_enabled_summary, title = R.string.meal_macro_enabled))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealMinFatG, dialogMessage = R.string.meal_min_message, title = R.string.meal_min_fat))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealMinProteinG, dialogMessage = R.string.meal_min_message, title = R.string.meal_min_protein))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MealProteinPercentage, dialogMessage = R.string.meal_protein_percentage_message, title = R.string.meal_protein_percentage))
@@ -425,10 +426,15 @@ class OverviewPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusAdvisor, summary = R.string.enable_bolus_advisor_summary, title = R.string.enable_bolus_advisor))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))
             if (activePlugin.activePump.isMDI()) {
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiMissedLantusReminderEnabled, summary = R.string.mdi_missed_lantus_reminder_summary, title = R.string.mdi_missed_lantus_reminder_title))
-                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusGracePeriodMinutes, title = R.string.mdi_missed_lantus_grace_period))
-                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusReRaiseIntervalMinutes, title = R.string.mdi_missed_lantus_re_raise_interval))
-                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusLookbackDays, title = R.string.mdi_missed_lantus_lookback_days))
+                addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                    key = "missed_lantus_settings"
+                    title = rh.gs(R.string.mdi_missed_lantus_reminder_title)
+                    summary = rh.gs(R.string.mdi_missed_lantus_reminder_summary)
+                    addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiMissedLantusReminderEnabled, title = R.string.mdi_missed_lantus_enabled))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusGracePeriodMinutes, title = R.string.mdi_missed_lantus_grace_period))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusReRaiseIntervalMinutes, title = R.string.mdi_missed_lantus_re_raise_interval))
+                    addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusLookbackDays, title = R.string.mdi_missed_lantus_lookback_days))
+                })
             }
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.DeferredCarbLoggingEnabled, summary = R.string.deferred_carb_logging_summary, title = R.string.deferred_carb_logging_title))
             if (!activePlugin.activePump.isMDI()) {
