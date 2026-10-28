@@ -28,6 +28,45 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/pending_carbs_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/gray_material_button_margin_horizontal"
+        android:paddingEnd="@dimen/gray_material_button_margin_horizontal"
+        android:visibility="gone">
+
+        <app.aaps.core.ui.elements.SingleClickButton
+            android:id="@+id/eat_now_button"
+            style="@style/ButtonSmallFontStyle"
+            android:layout_width="0px"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="@dimen/gray_material_button_margin_horizontal"
+            android:layout_weight="0.5"
+            android:backgroundTint="@color/deferred_carbs_eat_now_background"
+            android:text="@string/eat_now"
+            android:textColor="@android:color/white"
+            app:icon="@drawable/ic_food"
+            app:iconGravity="textStart"
+            app:iconPadding="4dp"
+            app:iconTint="@android:color/white" />
+
+        <app.aaps.core.ui.elements.SingleClickButton
+            android:id="@+id/cancel_pending_carbs_button"
+            style="@style/ButtonSmallFontStyle"
+            android:layout_width="0px"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.5"
+            android:backgroundTint="@color/deferred_carbs_cancel_background"
+            android:text="@string/cancel_pending_carbs"
+            android:textColor="@android:color/white"
+            app:icon="@drawable/ic_close"
+            app:iconGravity="textStart"
+            app:iconPadding="4dp"
+            app:iconTint="@android:color/white" />
+    </LinearLayout>
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"

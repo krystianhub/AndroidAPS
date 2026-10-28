@@ -107,6 +107,8 @@
     <string name="a11y_current_bg">current blood glucose</string>
     <string name="carb_time_label">Carb time</string>
     <string name="a11y_set_carb_timer">set carb timer alarm</string>
+    <string name="defer_carbs_label">Defer carbs</string>
+    <string name="a11y_defer_carbs">defer carb logging</string>
     <string name="show_calculation">Show calcuation</string>
 
     <!-- Treatments -->

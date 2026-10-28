@@ -77,7 +77,8 @@ class BolusWizard @Inject constructor(
     private val uiInteraction: UiInteraction,
     private val persistenceLayer: PersistenceLayer,
     private val decimalFormatter: DecimalFormatter,
-    private val processedDeviceStatusData: ProcessedDeviceStatusData
+    private val processedDeviceStatusData: ProcessedDeviceStatusData,
+    private val pendingCarbStore: PendingCarbStore
 ) {
 
     var timeStamp = dateUtil.now()
@@ -147,6 +148,7 @@ class BolusWizard @Inject constructor(
     private var useAlarm = false
     var notes: String = ""
     private var carbTime: Int = 0
+    private var deferCarbs: Boolean = false
     private var quickWizard: Boolean = true
     var usePercentage: Boolean = false
     var positiveIOBOnly: Boolean = false
@@ -174,6 +176,7 @@ class BolusWizard @Inject constructor(
         useAlarm: Boolean,
         notes: String = "",
         carbTime: Int = 0,
+        deferCarbs: Boolean = false,
         usePercentage: Boolean = false,
         totalPercentage: Double = 100.0,
         quickWizard: Boolean = false,
@@ -199,6 +202,7 @@ class BolusWizard @Inject constructor(
         this.useAlarm = useAlarm
         this.notes = notes
         this.carbTime = carbTime
+        this.deferCarbs = deferCarbs
         this.quickWizard = quickWizard
         this.usePercentage = usePercentage
         this.totalPercentage = totalPercentage
@@ -346,9 +350,12 @@ class BolusWizard @Inject constructor(
             } else if (carbTime < 0) {
                 timeShift += " (" + rh.gs(app.aaps.core.ui.R.string.mins, carbTime) + ")"
             }
+            val deferredSuffix = if (preferences.get(BooleanKey.DeferredCarbLoggingEnabled) && deferCarbs)
+                " " + rh.gs(app.aaps.core.ui.R.string.deferred_carbs_suffix)
+            else ""
             actions.add(
                 rh.gs(app.aaps.core.ui.R.string.carbs) + ": " + rh.gs(app.aaps.core.ui.R.string.format_carbs, carbs)
-                    .formatColor(context, rh, app.aaps.core.ui.R.attr.carbsColor) + timeShift
+                    .formatColor(context, rh, app.aaps.core.ui.R.attr.carbsColor) + timeShift + deferredSuffix
             )
         }
         val position = if (!advisor && activePlugin.activePump.isMDI() && preferences.get(BooleanKey.OverviewShowPositionInDialogs))
@@ -423,6 +430,12 @@ class BolusWizard @Inject constructor(
         if (calculatedTotalInsulin > 0.0 || carbs > 0.0 || mealMacroPlan?.hasTails == true) {
             if (accepted) {
                 aapsLogger.debug(LTag.UI, "guarding: already accepted")
+                return
+            }
+            // A deferred carb entry from a previous wizard run is still waiting for "Eat now" on the
+            // overview screen. Block any wizard run with carbs so the same meal cannot be logged twice.
+            if (carbs > 0 && pendingCarbStore.isPending()) {
+                OKDialog.show(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), rh.gs(app.aaps.core.ui.R.string.deferred_carb_pending))
                 return
             }
             accepted = true
@@ -520,6 +533,13 @@ class BolusWizard @Inject constructor(
 
         val confirmMessage = confirmMessageAfterConstraints(ctx, advisor = false, quickWizardEntry)
         OKDialog.showConfirmation(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), confirmMessage, {
+            // Re-check: another wizard run may have created a deferred entry while this confirmation
+            // dialog was open. Re-reading the store here closes that race window.
+            if (carbs > 0 && pendingCarbStore.isPending()) {
+                OKDialog.show(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), rh.gs(app.aaps.core.ui.R.string.deferred_carb_pending))
+                return@showConfirmation
+            }
+            val deferred = preferences.get(BooleanKey.DeferredCarbLoggingEnabled) && deferCarbs && carbs > 0
             if (insulinAfterConstraints > 0 || carbs > 0) {
                 // superbolus is implemented as a zero TBR - meaningless without a pump (MDI)
                 if (useSuperBolus && !pump.isMDI()) {
@@ -562,61 +582,190 @@ class BolusWizard @Inject constructor(
                     carbsTimestamp = now + T.mins(this@BolusWizard.carbTime.toLong()).msecs()
                     bolusCalculatorResult = createBolusCalculatorResult()
                     notes = this@BolusWizard.notes
-                    if (insulin > 0 || carbs > 0) {
-                        val action = when {
-                            insulinAfterConstraints == 0.0 -> Action.CARBS
-                            carbs == 0.0                   -> Action.BOLUS
-                            else                           -> Action.TREATMENT
-                        }
-                        uel.log(
-                            action = action,
-                            source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
-                            note = notes,
-                            listValues = listOfNotNull(
-                                ValueWithUnit.TEType(eventType),
-                                ValueWithUnit.Insulin(insulinAfterConstraints).takeIf { insulinAfterConstraints != 0.0 },
-                                ValueWithUnit.Gram(this@BolusWizard.carbs).takeIf { this@BolusWizard.carbs != 0 },
-                                ValueWithUnit.Minute(carbTime).takeIf { carbTime != 0 }
+
+                    if (deferred) {
+                        // Log the injection immediately, but hold the carbs until "Eat now" on the overview.
+                        if (insulin > 0) {
+                            val injectionInfo = DetailedBolusInfo().apply {
+                                eventType = TE.Type.BOLUS_WIZARD
+                                insulin = insulinAfterConstraints
+                                carbs = 0.0
+                                context = ctx
+                                mgdlGlucose = profileUtil.convertToMgdl(bg, profile.units)
+                                glucoseType = TE.MeterType.MANUAL
+                                bolusCalculatorResult = createBolusCalculatorResult()
+                                notes = this@BolusWizard.notes
+                            }
+                            uel.log(
+                                action = Action.BOLUS,
+                                source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
+                                note = notes,
+                                listValues = listOfNotNull(
+                                    ValueWithUnit.TEType(eventType),
+                                    ValueWithUnit.Insulin(insulinAfterConstraints).takeIf { insulinAfterConstraints != 0.0 }
+                                )
                             )
-                        )
-                        if (pump.isMDI()) {
-                            // MDI: there is no pump to deliver insulin with - record the treatment directly,
-                            // bypassing the command queue (and the fake delivery progress of the virtual pump)
-                            val source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
-                            if (carbs > 0)
-                                persistenceLayer.insertOrUpdateCarbs(
-                                    carbs = createCarbs(),
-                                    action = action,
-                                    source = source
-                                ).subscribe()
-                            if (insulin > 0)
+                            if (pump.isMDI()) {
                                 persistenceLayer.insertOrUpdateBolus(
-                                    bolus = createBolus(),
-                                    action = action,
-                                    source = source
+                                    bolus = injectionInfo.createBolus(),
+                                    action = Action.BOLUS,
+                                    source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
                                 ).subscribe()
-                            if (useAlarm && carbs > 0 && carbTime > 0)
-                                automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
-                        } else {
-                            commandQueue.bolus(this, object : Callback() {
-                                override fun run() {
-                                    if (!result.success) {
-                                        uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                                    } else if (useAlarm && carbs > 0 && carbTime > 0) {
-                                        automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                            } else {
+                                commandQueue.bolus(injectionInfo, object : Callback() {
+                                    override fun run() {
+                                        if (!result.success) {
+                                            uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                                        }
                                     }
-                                }
-                            })
+                                })
+                            }
+                        }
+
+                        pendingCarbStore.setPending(buildPendingCarbs(profile, now, quickWizardEntry))
+
+                        rxBus.send(EventRefreshOverview("WizardDialog"))
+
+                        if (useAlarm && carbs > 0 && carbTime > 0)
+                            automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                    } else {
+                        if (insulin > 0 || carbs > 0) {
+                            val action = when {
+                                insulinAfterConstraints == 0.0 -> Action.CARBS
+                                carbs == 0.0                   -> Action.BOLUS
+                                else                           -> Action.TREATMENT
+                            }
+                            uel.log(
+                                action = action,
+                                source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
+                                note = notes,
+                                listValues = listOfNotNull(
+                                    ValueWithUnit.TEType(eventType),
+                                    ValueWithUnit.Insulin(insulinAfterConstraints).takeIf { insulinAfterConstraints != 0.0 },
+                                    ValueWithUnit.Gram(this@BolusWizard.carbs).takeIf { this@BolusWizard.carbs != 0 },
+                                    ValueWithUnit.Minute(carbTime).takeIf { carbTime != 0 }
+                                )
+                            )
+                            if (pump.isMDI()) {
+                                // MDI: there is no pump to deliver insulin with - record the treatment directly,
+                                // bypassing the command queue (and the fake delivery progress of the virtual pump)
+                                val source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
+                                if (carbs > 0)
+                                    persistenceLayer.insertOrUpdateCarbs(
+                                        carbs = createCarbs(),
+                                        action = action,
+                                        source = source
+                                    ).subscribe()
+                                if (insulin > 0)
+                                    persistenceLayer.insertOrUpdateBolus(
+                                        bolus = createBolus(),
+                                        action = action,
+                                        source = source
+                                    ).subscribe()
+                                if (useAlarm && carbs > 0 && carbTime > 0)
+                                    automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                            } else {
+                                commandQueue.bolus(this, object : Callback() {
+                                    override fun run() {
+                                        if (!result.success) {
+                                            uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                                        } else if (useAlarm && carbs > 0 && carbTime > 0) {
+                                            automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
+                                        }
+                                    }
+                                })
+                            }
                         }
                     }
                     bolusCalculatorResult?.let { persistenceLayer.insertOrUpdateBolusCalculatorResult(it).blockingGet() }
                 }
             }
-            mealMacroPlan?.let { scheduleECarbs(ctx, it, if (quickWizard) Sources.QuickWizard else Sources.WizardDialog) }
-            if (quickWizardEntry != null) {
-                scheduleECarbsFromQuickWizard(ctx, quickWizardEntry)
+            if (!deferred) {
+                mealMacroPlan?.let { scheduleECarbs(ctx, it, if (quickWizard) Sources.QuickWizard else Sources.WizardDialog) }
+                if (quickWizardEntry != null) {
+                    scheduleECarbsFromQuickWizard(ctx, quickWizardEntry)
+                }
             }
         })
+    }
+
+    /**
+     * Builds the pending entry for a deferred carb run. Kept separate from the persistence side
+     * effects so the data assembly is easy to reason about and test.
+     */
+    private fun buildPendingCarbs(profile: Profile, now: Long, quickWizardEntry: QuickWizardEntry?): PendingCarbs =
+        PendingCarbs(
+            mainCarbs = DetailedBolusInfo().apply {
+                eventType = TE.Type.BOLUS_WIZARD
+                carbs = this@BolusWizard.carbs.toDouble()
+                mgdlGlucose = profileUtil.convertToMgdl(bg, profile.units)
+                glucoseType = TE.MeterType.MANUAL
+                carbsTimestamp = now
+                notes = this@BolusWizard.notes
+            },
+            mealPlan = mealMacroPlan,
+            quickWizardECarbs = quickWizardEntry?.let { extractQuickWizardECarbs(it) },
+            source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
+        )
+
+    /**
+     * Extracts the quick-wizard eCarbs parameters into a plain data object so they can be
+     * committed later when the user presses "Eat now".
+     */
+    private fun extractQuickWizardECarbs(quickWizardEntry: QuickWizardEntry): QuickWizardECarbs? {
+        val eCarbsYesNo = JsonHelper.safeGetInt(quickWizardEntry.storage, "useEcarbs", QuickWizardEntry.NO)
+        if (eCarbsYesNo != QuickWizardEntry.YES) return null
+        val timeOffset = JsonHelper.safeGetInt(quickWizardEntry.storage, "time", 0)
+        val duration = JsonHelper.safeGetInt(quickWizardEntry.storage, "duration", 0)
+        val carbs2 = JsonHelper.safeGetInt(quickWizardEntry.storage, "carbs2", 0)
+        if (carbs2 <= 0) return null
+        return QuickWizardECarbs(
+            carbs2 = carbs2,
+            timeOffsetMin = timeOffset,
+            durationH = duration,
+            notes = quickWizardEntry.storage.get("buttonText")?.toString() ?: ""
+        )
+    }
+
+    /**
+     * Commits a deferred carb entry at "Eat now": logs the main carbs and schedules any
+     * meal-macro/quick-wizard eCarbs tails relative to the current time.
+     *
+     * @return false when there was nothing to commit (the entry expired or a commit is already
+     * running), so the caller can inform the user instead of failing silently.
+     */
+    fun commitPendingCarbs(ctx: Context): Boolean {
+        val pending = pendingCarbStore.beginCommit() ?: return false
+        val now = dateUtil.now()
+
+        pending.mainCarbs.carbsTimestamp = now
+        uel.log(
+            action = Action.CARBS,
+            source = pending.source,
+            note = pending.mainCarbs.notes,
+            listValues = listOf(ValueWithUnit.Gram(pending.mainCarbs.carbs.toInt()))
+        )
+        persistenceLayer.insertOrUpdateCarbs(
+            carbs = pending.mainCarbs.createCarbs(),
+            action = Action.CARBS,
+            source = pending.source
+        ).subscribe({
+            // Only drop the pending entry and schedule the tails once the main carbs are safely
+            // persisted; on failure the entry is kept so the user can retry "Eat now".
+            pending.mealPlan?.let { plan ->
+                scheduleECarbs(ctx, plan, pending.source, baseNotes = pending.mainCarbs.notes ?: "", mealOffsetMin = 0)
+            }
+            pending.quickWizardECarbs?.let { eCarbs ->
+                scheduleECarbs(ctx, eCarbs.carbs2, eCarbs.timeOffsetMin, eCarbs.durationH, eCarbs.notes, pending.source)
+            }
+            pendingCarbStore.commitSucceeded()
+            rxBus.send(EventRefreshOverview("EatNow"))
+        }, {
+            aapsLogger.error(LTag.DATABASE, "Failed to persist deferred carbs", it)
+            pendingCarbStore.commitFailed()
+            uiInteraction.runAlarm(it.message ?: it.toString(), rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+        })
+        return true
     }
 
     private fun scheduleECarbsFromQuickWizard(ctx: Context, quickWizardEntry: QuickWizardEntry) {
@@ -686,19 +835,18 @@ class BolusWizard @Inject constructor(
     }
 
     /** Schedules both tails of a meal macro plan as extended carbs */
-    private fun scheduleECarbs(ctx: Context, plan: MealMacroPlan, source: Sources) {
+    private fun scheduleECarbs(ctx: Context, plan: MealMacroPlan, source: Sources, baseNotes: String = notes, mealOffsetMin: Int = carbTime) {
         // tail shifts are relative to the meal start (carb time), not to "now" - e.g. with
         // "eat in 10 min" the +60 min protein tail must start at now + 70 min
-        val mealOffsetMin = carbTime
         if (plan.primaryTailCarbs > 0)
-            scheduleECarbs(ctx, plan.primaryTailCarbs, plan.primaryTailShiftMin + mealOffsetMin, plan.primaryTailDurationH, tailNotes("P"), source)
+            scheduleECarbs(ctx, plan.primaryTailCarbs, plan.primaryTailShiftMin + mealOffsetMin, plan.primaryTailDurationH, tailNotes(baseNotes, "P"), source)
         if (plan.fatTailCarbs > 0)
-            scheduleECarbs(ctx, plan.fatTailCarbs, plan.fatTailShiftMin + mealOffsetMin, plan.fatTailDurationH, tailNotes("F"), source)
+            scheduleECarbs(ctx, plan.fatTailCarbs, plan.fatTailShiftMin + mealOffsetMin, plan.fatTailDurationH, tailNotes(baseNotes, "F"), source)
     }
 
     /** Notes for a macro tail record: the wizard notes plus a marker so the tails can be told apart later */
-    private fun tailNotes(tag: String): String =
-        if (notes.isBlank()) "macro-$tag" else "$notes macro-$tag"
+    private fun tailNotes(base: String, tag: String): String =
+        if (base.isBlank()) "macro-$tag" else "$base macro-$tag"
 
     private fun calcPercentageWithConstraints() {
         calculatedPercentage = 100

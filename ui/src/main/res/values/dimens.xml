@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Width of the wizard number inputs. The defer-carbs row reuses it for its spacer so the
+         switch stays aligned with the carb-time column if this width changes. -->
+    <dimen name="wizard_input_width">130dp</dimen>
+</resources>

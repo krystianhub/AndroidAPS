@@ -102,7 +102,10 @@ import app.aaps.core.objects.extensions.directionToIcon
 import app.aaps.core.objects.extensions.displayText
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.profile.ProfileSealed
+import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.PendingCarbs
 import app.aaps.core.objects.wizard.QuickWizard
+import app.aaps.core.objects.wizard.PendingCarbStore
 import app.aaps.core.ui.UIRunnable
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.elements.SingleClickButton
@@ -127,6 +130,7 @@ import javax.inject.Inject
 import javax.inject.Provider
 import kotlin.math.abs
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickListener {
 
@@ -168,6 +172,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     @Inject lateinit var tddCalculator: TddCalculator
     @Inject lateinit var graphDataProvider: Provider<GraphData>
     @Inject lateinit var commandQueue: CommandQueue
+    @Inject lateinit var pendingCarbStore: PendingCarbStore
+    @Inject lateinit var bolusWizardProvider: Provider<BolusWizard>
 
     private val disposable = CompositeDisposable()
 
@@ -265,6 +271,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         binding.buttonsLayout.carbsButton.setOnClickListener(this)
         binding.buttonsLayout.quickWizardButton.setOnClickListener(this)
         binding.buttonsLayout.quickWizardButton.setOnLongClickListener(this)
+        binding.buttonsLayout.eatNowButton.setOnClickListener(this)
+        binding.buttonsLayout.cancelPendingCarbsButton.setOnClickListener(this)
         binding.infoLayout.apsMode.setOnClickListener(this)
         binding.infoLayout.apsMode.setOnLongClickListener(this)
     }
@@ -514,8 +522,79 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     // Check if there is a bolus in progress
                     popupBolusDialogIfRunning(onClick = true)
                 }
+
+                R.id.eat_now_button             -> {
+                    protectionCheck.queryProtection(activity, ProtectionCheck.Protection.BOLUS, UIRunnable {
+                        if (isAdded) handleEatNow()
+                    })
+                }
+
+                R.id.cancel_pending_carbs_button -> {
+                    protectionCheck.queryProtection(activity, ProtectionCheck.Protection.BOLUS, UIRunnable {
+                        if (isAdded) handleCancelPendingCarbs()
+                    })
+                }
             }
         }
+    }
+
+    private fun handleEatNow() {
+        val activity = activity ?: return
+        val pending = pendingCarbStore.getPending()
+        if (pending == null) {
+            // The entry expired while the button was still on screen. Tell the user instead of
+            // silently doing nothing.
+            refreshAll()
+            pendingCarbStore.consumeExpired()?.let { notifyExpiredPendingCarbs(it) }
+            return
+        }
+        val carbsText = rh.gs(app.aaps.core.ui.R.string.format_carbs, pending.mainCarbs.carbs.roundToInt())
+        OKDialog.showConfirmation(
+            activity,
+            rh.gs(R.string.eat_now),
+            rh.gs(R.string.eat_now_confirmation, carbsText),
+            {
+                if (!bolusWizardProvider.get().commitPendingCarbs(activity)) {
+                    // The entry expired while the confirmation dialog was open.
+                    refreshAll()
+                    pendingCarbStore.consumeExpired()?.let { notifyExpiredPendingCarbs(it) }
+                }
+            }
+        )
+    }
+
+    private fun handleCancelPendingCarbs() {
+        val activity = activity ?: return
+        if (pendingCarbStore.getPending() == null) {
+            // Nothing left to cancel; surface an expiry notice if that's what happened.
+            refreshAll()
+            pendingCarbStore.consumeExpired()?.let { notifyExpiredPendingCarbs(it) }
+            return
+        }
+        OKDialog.showConfirmation(
+            activity,
+            rh.gs(R.string.cancel_pending_carbs_title),
+            rh.gs(R.string.cancel_pending_carbs_confirmation),
+            {
+                pendingCarbStore.clearPending()
+                refreshAll()
+            }
+        )
+    }
+
+    /**
+     * Tells the user that a deferred carb entry expired without being logged. The bolus was already
+     * delivered at wizard time, so this is the only chance to point out the missing carb entry.
+     */
+    private fun notifyExpiredPendingCarbs(expired: PendingCarbs) {
+        val activity = activity ?: return
+        if (!isAdded || activity.isFinishing) return
+        val carbsText = rh.gs(app.aaps.core.ui.R.string.format_carbs, expired.mainCarbs.carbs.roundToInt())
+        OKDialog.show(
+            activity,
+            rh.gs(app.aaps.core.ui.R.string.deferred_carbs_expired_title),
+            rh.gs(app.aaps.core.ui.R.string.deferred_carbs_expired_message, carbsText)
+        )
     }
 
     private fun openCgmApp(packageName: String) {
@@ -700,6 +779,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         list += event.hashCode()
                     }
             binding.buttonsLayout.userButtonsLayout.visibility = events.isNotEmpty().toVisibility()
+            binding.buttonsLayout.pendingCarbsLayout.visibility = pendingCarbStore.isPending().toVisibility()
+            // If a deferred entry just expired, tell the user once instead of letting the buttons
+            // silently disappear. Guarded so it only fires while the Overview is actually visible.
+            if (isAdded && isResumed) {
+                pendingCarbStore.consumeExpired()?.let { notifyExpiredPendingCarbs(it) }
+            }
         }
         if (list != lastUserAction) {
             // Synchronize Watch Tiles with overview

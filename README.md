@@ -62,6 +62,12 @@ Now 70g @ 63% · Tail 66g @ +60min/4h · Fat-eq 3g @ +90min/8h
 
 > ⚠️ Community heuristics, **not** validated dosing rules. Start Conservative and compare the actual curve against the plan for a few meals before moving up.
 
+### Deferred carb logging
+
+Enable globally in *Overview → Deferred carb logging*, then tick **Defer carbs** in the Bolus Wizard when you want to delay the carb entry. The bolus is logged immediately; the carbs are held back and only recorded when you press **Eat now** on the Overview screen. **Cancel** discards them. Defer carbs and Carb time are mutually exclusive — pick one per wizard run.
+
+While a deferred entry is pending, the **Eat now** / **Cancel** buttons appear on the Overview screen. The entry expires after **1 hour**; if it expires without being confirmed, the Overview shows a notice so the missing carb entry isn't overlooked. Only one entry can be active at a time.
+
 ### MDI UI cleanup
 
 Gated on `Pump.isMDI()`:

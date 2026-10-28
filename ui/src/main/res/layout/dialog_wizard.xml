@@ -301,6 +301,7 @@
             </TableRow>
 
             <TableRow
+                android:id="@+id/carb_time_row"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent">
 
@@ -338,12 +339,63 @@
 
                 <app.aaps.core.ui.elements.NumberPicker
                     android:id="@+id/carb_time_input"
-                    android:layout_width="130dp"
+                    android:layout_width="@dimen/wizard_input_width"
                     android:layout_height="40dp"
                     android:layout_gravity="center_horizontal"
                     android:layout_marginBottom="2dp"
                     app:contentDescription="carb time" />
 
+
+                <TextView
+                    android:id="@+id/carb_time_unit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:gravity="start"
+                    android:padding="5dp"
+                    android:text="@string/unit_minute_short"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+            </TableRow>
+
+            <TableRow
+                android:id="@+id/defer_carbs_row"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/defer_carbs_label"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:padding="10dp"
+                        android:text="@string/defer_carbs_label"
+                        android:textAppearance="@style/TextAppearance.AppCompat.Small"
+                        android:textStyle="bold" />
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/defer_carbs"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center_vertical"
+                        android:checked="false"
+                        android:contentDescription="@string/a11y_defer_carbs"
+                        android:padding="2dp" />
+
+                </LinearLayout>
+
+                <Space
+                    android:layout_width="@dimen/wizard_input_width"
+                    android:layout_height="wrap_content" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -352,7 +404,8 @@
                     android:gravity="start"
                     android:padding="5dp"
                     android:text="@string/unit_minute_short"
-                    android:textAppearance="?android:attr/textAppearanceSmall" />
+                    android:textAppearance="?android:attr/textAppearanceSmall"
+                    android:visibility="invisible" />
 
             </TableRow>
 

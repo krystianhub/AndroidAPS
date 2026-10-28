@@ -1,5 +1,6 @@
 package app.aaps.implementation.wizard
 
+import app.aaps.core.data.model.CA
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.aps.IobTotal
@@ -12,12 +13,17 @@ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.queue.CommandQueue
+import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.PendingCarbStore
+import app.aaps.core.objects.wizard.PendingCarbs
 import app.aaps.plugins.aps.openAPSSMB.OpenAPSSMBPlugin
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
+import io.reactivex.rxjava3.core.Single
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
@@ -26,6 +32,8 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 class BolusWizardTest : TestBaseWithProfile() {
@@ -43,10 +51,13 @@ class BolusWizardTest : TestBaseWithProfile() {
     @Mock lateinit var glucoseStatusProvider: GlucoseStatusProvider
     @Mock lateinit var uiInteraction: UiInteraction
     @Mock lateinit var persistenceLayer: PersistenceLayer
+    @Mock lateinit var sp: SP
+    private lateinit var pendingCarbStore: PendingCarbStore
 
     @BeforeEach
     fun prepare() {
         whenever(activePlugin.activeAPS).thenReturn(openAPSSMBPlugin)
+        pendingCarbStore = PendingCarbStore(dateUtil, sp)
     }
 
     @Suppress("SameParameterValue")
@@ -78,7 +89,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, pendingCarbStore
             ).doCalc(
                 profile,
                 "",
@@ -102,7 +113,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, pendingCarbStore
             ).doCalc(
                 profile,
                 "",
@@ -132,7 +143,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, pendingCarbStore
             ).doCalc(
                 profile,
                 "",
@@ -156,7 +167,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, pendingCarbStore
             ).doCalc(
                 profile,
                 "",
@@ -186,7 +197,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, pendingCarbStore
             ).doCalc(
                 profile,
                 "",
@@ -210,7 +221,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, pendingCarbStore
             ).doCalc(
                 profile,
                 "",
@@ -231,5 +242,43 @@ class BolusWizardTest : TestBaseWithProfile() {
             )
         val bolusForBgInRange = bw.calculatedTotalInsulin
         assertThat(bolusForLowBg).isLessThan(bolusForBgInRange)
+    }
+
+    @Test
+    fun commitPendingCarbsLogsCarbsAndClearsPending() {
+        pendingCarbStore.setPending(
+            PendingCarbs(
+                mainCarbs = DetailedBolusInfo().apply {
+                    carbs = 45.0
+                    notes = "test meal"
+                }
+            )
+        )
+        whenever(persistenceLayer.insertOrUpdateCarbs(anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
+            .thenReturn(Single.just(PersistenceLayer.TransactionResult<CA>()))
+
+        val bw = BolusWizard(
+            aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
+            commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, glucoseStatusProvider, uiInteraction,
+            persistenceLayer, decimalFormatter, processedDeviceStatusData, pendingCarbStore
+        )
+
+        assertThat(bw.commitPendingCarbs(context)).isTrue()
+
+        verify(persistenceLayer).insertOrUpdateCarbs(anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
+        assertThat(pendingCarbStore.isPending()).isFalse()
+    }
+
+    @Test
+    fun commitPendingCarbsReturnsFalseWhenNothingIsPending() {
+        val bw = BolusWizard(
+            aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
+            commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, glucoseStatusProvider, uiInteraction,
+            persistenceLayer, decimalFormatter, processedDeviceStatusData, pendingCarbStore
+        )
+
+        assertThat(bw.commitPendingCarbs(context)).isFalse()
+
+        verify(persistenceLayer, never()).insertOrUpdateCarbs(anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
     }
 }

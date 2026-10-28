@@ -116,13 +116,34 @@ class WizardDialog : DaggerDialogFragment() {
     private val timeTextWatcher = object : TextWatcher {
         override fun afterTextChanged(s: Editable) {
             _binding?.let { binding ->
+                if (binding.carbTimeInput.value > 0) {
+                    binding.deferCarbs.isChecked = false
+                }
                 binding.alarm.isChecked = binding.carbTimeInput.value > 0
+                updateCarbTimingUi()
             }
         }
 
         override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
         override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {
             calculateInsulin()
+        }
+    }
+
+    private fun updateCarbTimingUi() {
+        _binding?.let { binding ->
+            val carbTimeSet = binding.carbTimeInput.value > 0
+            val deferSelected = binding.deferCarbs.isChecked
+
+            binding.carbTimeRow.alpha = if (deferSelected) 0.4f else 1.0f
+            binding.alarm.isEnabled = !deferSelected
+            binding.carbTimeInput.isEnabled = !deferSelected
+            binding.carbTimeInputLabel.isEnabled = !deferSelected
+            binding.carbTimeUnit.isEnabled = !deferSelected
+
+            binding.deferCarbsRow.alpha = if (carbTimeSet) 0.4f else 1.0f
+            binding.deferCarbs.isEnabled = !carbTimeSet
+            binding.deferCarbsLabel.isEnabled = !carbTimeSet
         }
     }
 
@@ -140,6 +161,7 @@ class WizardDialog : DaggerDialogFragment() {
         savedInstanceState.putDouble("carb_time_input", binding.carbTimeInput.value)
         savedInstanceState.putDouble("fat_input", binding.fatInput.value)
         savedInstanceState.putDouble("protein_input", binding.proteinInput.value)
+        savedInstanceState.putBoolean("defer_carbs", binding.deferCarbs.isChecked)
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -182,6 +204,22 @@ class WizardDialog : DaggerDialogFragment() {
         val isMdi = activePlugin.activePump.isMDI()
         binding.fatInputRow.visibility = isMdi.toVisibility()
         binding.proteinInputRow.visibility = isMdi.toVisibility()
+
+        // Deferred carb logging: global feature toggle, selected in the wizard and mutually
+        // exclusive with the carb-time timer.
+        val deferredCarbsEnabled = preferences.get(BooleanKey.DeferredCarbLoggingEnabled)
+        binding.deferCarbsRow.visibility = deferredCarbsEnabled.toVisibility()
+        if (deferredCarbsEnabled) {
+            binding.deferCarbs.setOnCheckedChangeListener { _, isChecked ->
+                if (isChecked) {
+                    binding.alarm.isChecked = false
+                    binding.carbTimeInput.value = 0.0
+                }
+                updateCarbTimingUi()
+            }
+        } else {
+            binding.deferCarbs.isChecked = false
+        }
 
         if (profileFunction.getUnits() == GlucoseUnit.MGDL) {
             binding.bgInput.setParams(
@@ -242,6 +280,12 @@ class WizardDialog : DaggerDialogFragment() {
             savedInstanceState?.getDouble("carb_time_input")
                 ?: 0.0, -60.0, 60.0, 5.0, DecimalFormat("0"), false, binding.okcancel.ok, timeTextWatcher
         )
+        // Restore the defer-carbs selection after the carb-time input, so a restored carb time is not
+        // silently discarded by the mutual-exclusion listener when both happened to be saved.
+        if (deferredCarbsEnabled && savedInstanceState?.getBoolean("defer_carbs", false) == true) {
+            binding.deferCarbs.isChecked = true
+        }
+        updateCarbTimingUi()
         handler.post { initDialog() }
         calculatedPercentage = preferences.get(IntKey.OverviewBolusPercentage)
         binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, calculatedPercentage)
@@ -584,7 +628,8 @@ class WizardDialog : DaggerDialogFragment() {
             carbTime,
             usePercentage = usePercentage,
             totalPercentage = percentageCorrection.toDouble(),
-            mealMacroPlan = mealMacroPlan
+            mealMacroPlan = mealMacroPlan,
+            deferCarbs = binding.deferCarbs.isChecked
         )
 
         wizard?.let { wizard ->

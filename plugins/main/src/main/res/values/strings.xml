@@ -322,6 +322,13 @@
     <string name="mdi_missed_lantus_grace_period">Missed Lantus grace period (minutes)</string>
     <string name="mdi_missed_lantus_re_raise_interval">Missed Lantus re-raise interval (minutes)</string>
     <string name="mdi_missed_lantus_lookback_days">Missed Lantus lookback (days)</string>
+    <string name="deferred_carb_logging_title">Deferred carb logging</string>
+    <string name="deferred_carb_logging_summary">Log the bolus now and record the carbs only when you start eating. Select Defer carbs in the Bolus Wizard for each run.</string>
+    <string name="eat_now">Eat now</string>
+    <string name="eat_now_confirmation">Log %1$s of carbs now</string>
+    <string name="cancel_pending_carbs">Cancel</string>
+    <string name="cancel_pending_carbs_title">Discard carb entry</string>
+    <string name="cancel_pending_carbs_confirmation">The carb entry will be discarded and not logged.</string>
     <string name="run_question">Run %s?</string>
 
     <!--    OverviewMenu-->

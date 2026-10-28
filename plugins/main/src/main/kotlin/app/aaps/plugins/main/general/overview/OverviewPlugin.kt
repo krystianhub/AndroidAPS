@@ -430,6 +430,7 @@ class OverviewPlugin @Inject constructor(
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusReRaiseIntervalMinutes, title = R.string.mdi_missed_lantus_re_raise_interval))
                 addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusLookbackDays, title = R.string.mdi_missed_lantus_lookback_days))
             }
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.DeferredCarbLoggingEnabled, summary = R.string.deferred_carb_logging_summary, title = R.string.deferred_carb_logging_title))
             if (!activePlugin.activePump.isMDI()) {
                 addPreference(preferenceManager.createPreferenceScreen(context).apply {
                     key = "overview_advanced_settings"
