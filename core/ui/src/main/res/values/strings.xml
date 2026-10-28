@@ -599,7 +599,7 @@
     <string name="deferred_carb_pending">A deferred carb entry is already pending. Use Eat now or Cancel on the Overview screen first.</string>
     <string name="deferred_carbs_suffix">(deferred)</string>
     <string name="deferred_carbs_expired_title">Deferred carbs expired</string>
-    <string name="deferred_carbs_expired_message">The deferred carb entry (%1$s) expired after 1 hour and was not logged. If you already ate, log the carbs now.</string>
+    <string name="deferred_carbs_expired_message">The deferred carb entry (%1$s) expired and was not logged. If you already ate, log the carbs now.</string>
     <string name="dismiss">DISMISS</string>
     <string name="yes">Yes</string>
     <string name="no">No</string>

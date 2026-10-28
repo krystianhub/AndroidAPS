@@ -78,12 +78,6 @@ class PendingCarbStoreTest {
             fat = 20,
             protein = 25
         ),
-        quickWizardECarbs = QuickWizardECarbs(
-            carbs2 = 12,
-            timeOffsetMin = 30,
-            durationH = 2,
-            notes = "qw note"
-        ),
         source = Sources.QuickWizard
     )
 
@@ -192,17 +186,6 @@ class PendingCarbStoreTest {
     }
 
     @Test
-    fun `round trip preserves the quick wizard eCarbs`() {
-        store.setPending(fullPending())
-        val qw = PendingCarbStore(dateUtil, sp).getPending()!!.quickWizardECarbs!!
-
-        assertThat(qw.carbs2).isEqualTo(12)
-        assertThat(qw.timeOffsetMin).isEqualTo(30)
-        assertThat(qw.durationH).isEqualTo(2)
-        assertThat(qw.notes).isEqualTo("qw note")
-    }
-
-    @Test
     fun `round trip preserves null optional fields`() {
         val minimal = PendingCarbs(
             mainCarbs = DetailedBolusInfo().apply {
@@ -219,7 +202,6 @@ class PendingCarbStoreTest {
         assertThat(restored.mainCarbs.mgdlGlucose).isNull()
         assertThat(restored.mainCarbs.glucoseType).isNull()
         assertThat(restored.mealPlan).isNull()
-        assertThat(restored.quickWizardECarbs).isNull()
         assertThat(restored.source).isEqualTo(Sources.WizardDialog)
     }
 

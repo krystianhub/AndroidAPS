@@ -102,10 +102,10 @@ import app.aaps.core.objects.extensions.directionToIcon
 import app.aaps.core.objects.extensions.displayText
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.profile.ProfileSealed
-import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.PendingCarbCommitter
 import app.aaps.core.objects.wizard.PendingCarbs
-import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.objects.wizard.PendingCarbStore
+import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.ui.UIRunnable
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.elements.SingleClickButton
@@ -173,7 +173,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     @Inject lateinit var graphDataProvider: Provider<GraphData>
     @Inject lateinit var commandQueue: CommandQueue
     @Inject lateinit var pendingCarbStore: PendingCarbStore
-    @Inject lateinit var bolusWizardProvider: Provider<BolusWizard>
+    @Inject lateinit var pendingCarbCommitter: PendingCarbCommitter
 
     private val disposable = CompositeDisposable()
 
@@ -542,10 +542,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val activity = activity ?: return
         val pending = pendingCarbStore.getPending()
         if (pending == null) {
-            // The entry expired while the button was still on screen. Tell the user instead of
-            // silently doing nothing.
-            refreshAll()
+            // The entry expired between the last refresh and this tap. Report it before the refresh
+            // clears the buttons, so the tap does not silently do nothing.
             pendingCarbStore.consumeExpired()?.let { notifyExpiredPendingCarbs(it) }
+            refreshAll()
             return
         }
         val carbsText = rh.gs(app.aaps.core.ui.R.string.format_carbs, pending.mainCarbs.carbs.roundToInt())
@@ -554,11 +554,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             rh.gs(R.string.eat_now),
             rh.gs(R.string.eat_now_confirmation, carbsText),
             {
-                if (!bolusWizardProvider.get().commitPendingCarbs(activity)) {
-                    // The entry expired while the confirmation dialog was open.
-                    refreshAll()
-                    pendingCarbStore.consumeExpired()?.let { notifyExpiredPendingCarbs(it) }
-                }
+                // false: nothing was committed - the entry expired while the dialog was open, or a
+                // commit of the same entry is still running. Refreshing hides stale buttons.
+                if (!pendingCarbCommitter.commit(activity)) refreshAll()
             }
         )
     }
@@ -566,9 +564,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private fun handleCancelPendingCarbs() {
         val activity = activity ?: return
         if (pendingCarbStore.getPending() == null) {
-            // Nothing left to cancel; surface an expiry notice if that's what happened.
-            refreshAll()
+            // Nothing left to cancel; surface the expiry notice if that's what happened.
             pendingCarbStore.consumeExpired()?.let { notifyExpiredPendingCarbs(it) }
+            refreshAll()
             return
         }
         OKDialog.showConfirmation(

@@ -134,17 +134,9 @@ class PendingCarbStore @Inject constructor(
 data class PendingCarbs(
     val mainCarbs: DetailedBolusInfo,
     val mealPlan: MealMacroPlan? = null,
-    val quickWizardECarbs: QuickWizardECarbs? = null,
     val source: Sources = Sources.WizardDialog,
     /** Stamped by [PendingCarbStore.setPending]; a value passed here is ignored. */
     val createdAt: Long = 0L
-)
-
-data class QuickWizardECarbs(
-    val carbs2: Int,
-    val timeOffsetMin: Int,
-    val durationH: Int,
-    val notes: String
 )
 
 private fun PendingCarbs.toJson(): JSONObject = JSONObject().apply {
@@ -170,14 +162,6 @@ private fun PendingCarbs.toJson(): JSONObject = JSONObject().apply {
             put("intensity", plan.intensity)
             put("fat", plan.fat)
             put("protein", plan.protein)
-        })
-    }
-    quickWizardECarbs?.let { e ->
-        put("qw", JSONObject().apply {
-            put("carbs2", e.carbs2)
-            put("timeOffsetMin", e.timeOffsetMin)
-            put("durationH", e.durationH)
-            put("notes", e.notes)
         })
     }
 }
@@ -209,18 +193,9 @@ private fun JSONObject.toPendingCarbs(): PendingCarbs? {
             protein = plan.optInt("protein")
         )
     }
-    val quickWizardECarbs = optJSONObject("qw")?.let { e ->
-        QuickWizardECarbs(
-            carbs2 = e.optInt("carbs2"),
-            timeOffsetMin = e.optInt("timeOffsetMin"),
-            durationH = e.optInt("durationH"),
-            notes = e.optString("notes", "")
-        )
-    }
     return PendingCarbs(
         mainCarbs = mainCarbs,
         mealPlan = mealPlan,
-        quickWizardECarbs = quickWizardECarbs,
         source = Sources.valueOf(optString("source", Sources.WizardDialog.name)),
         createdAt = optLong("createdAt", 0L)
     )

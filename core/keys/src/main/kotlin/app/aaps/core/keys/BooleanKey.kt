@@ -81,7 +81,7 @@ enum class BooleanKey(
     MdiBolusSuggestionSmoothing("mdi_bolus_suggestion_smoothing", false, dependency = MdiBolusSuggestionEnabled),
     MdiMealMacroAssistantEnabled("mdi_meal_macro_assistant_enabled", false),
     MdiMissedLantusReminderEnabled("mdi_missed_lantus_reminder_enabled", true),
-    DeferredCarbLoggingEnabled("deferred_carb_logging_enabled", true),
+    DeferredCarbLoggingEnabled("deferred_carb_logging_enabled", false),
 
     VirtualPumpStatusUpload("virtualpump_uploadstatus", false, showInNsClientMode = false),
     NsClientUploadData("ns_upload", true, showInNsClientMode = false, hideParentScreenIfHidden = true),

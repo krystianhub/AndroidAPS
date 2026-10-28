@@ -3,6 +3,7 @@ package app.aaps.core.objects.wizard
 import android.annotation.SuppressLint
 import android.content.Context
 import android.text.Spanned
+import androidx.annotation.VisibleForTesting
 import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
@@ -78,7 +79,8 @@ class BolusWizard @Inject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val decimalFormatter: DecimalFormatter,
     private val processedDeviceStatusData: ProcessedDeviceStatusData,
-    private val pendingCarbStore: PendingCarbStore
+    private val pendingCarbStore: PendingCarbStore,
+    private val eCarbsScheduler: ECarbsScheduler
 ) {
 
     var timeStamp = dateUtil.now()
@@ -426,6 +428,13 @@ class BolusWizard @Inject constructor(
         return HtmlHelper.fromHtml(actions.joinToString("<br/>"))
     }
 
+    /**
+     * True when a deferred entry is waiting for "Eat now", so a wizard run with carbs must not log
+     * the same meal a second time.
+     */
+    @VisibleForTesting
+    fun isBlockedByPendingCarbs(): Boolean = carbs > 0 && pendingCarbStore.isPending()
+
     fun confirmAndExecute(ctx: Context, quickWizardEntry: QuickWizardEntry? = null) {
         if (calculatedTotalInsulin > 0.0 || carbs > 0.0 || mealMacroPlan?.hasTails == true) {
             if (accepted) {
@@ -434,7 +443,7 @@ class BolusWizard @Inject constructor(
             }
             // A deferred carb entry from a previous wizard run is still waiting for "Eat now" on the
             // overview screen. Block any wizard run with carbs so the same meal cannot be logged twice.
-            if (carbs > 0 && pendingCarbStore.isPending()) {
+            if (isBlockedByPendingCarbs()) {
                 OKDialog.show(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), rh.gs(app.aaps.core.ui.R.string.deferred_carb_pending))
                 return
             }
@@ -535,7 +544,7 @@ class BolusWizard @Inject constructor(
         OKDialog.showConfirmation(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), confirmMessage, {
             // Re-check: another wizard run may have created a deferred entry while this confirmation
             // dialog was open. Re-reading the store here closes that race window.
-            if (carbs > 0 && pendingCarbStore.isPending()) {
+            if (isBlockedByPendingCarbs()) {
                 OKDialog.show(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), rh.gs(app.aaps.core.ui.R.string.deferred_carb_pending))
                 return@showConfirmation
             }
@@ -584,8 +593,15 @@ class BolusWizard @Inject constructor(
                     notes = this@BolusWizard.notes
 
                     if (deferred) {
-                        // Log the injection immediately, but hold the carbs until "Eat now" on the overview.
-                        if (insulin > 0) {
+                        // Log the injection immediately, but hold the carbs until "Eat now" on the
+                        // overview. The entry is only created once the injection was logged, so a
+                        // failed delivery does not offer "Eat now" for a bolus that never happened.
+                        val holding = buildPendingCarbs(profile, now)
+                        fun holdCarbs() {
+                            pendingCarbStore.setPending(holding)
+                            rxBus.send(EventRefreshOverview("WizardDialog"))
+                        }
+                        if (insulinAfterConstraints > 0) {
                             val injectionInfo = DetailedBolusInfo().apply {
                                 eventType = TE.Type.BOLUS_WIZARD
                                 insulin = insulinAfterConstraints
@@ -596,9 +612,10 @@ class BolusWizard @Inject constructor(
                                 bolusCalculatorResult = createBolusCalculatorResult()
                                 notes = this@BolusWizard.notes
                             }
+                            val source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
                             uel.log(
                                 action = Action.BOLUS,
-                                source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
+                                source = source,
                                 note = notes,
                                 listValues = listOfNotNull(
                                     ValueWithUnit.TEType(eventType),
@@ -609,25 +626,24 @@ class BolusWizard @Inject constructor(
                                 persistenceLayer.insertOrUpdateBolus(
                                     bolus = injectionInfo.createBolus(),
                                     action = Action.BOLUS,
-                                    source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
-                                ).subscribe()
+                                    source = source
+                                ).subscribe({ holdCarbs() }, {
+                                    aapsLogger.error(LTag.DATABASE, "Failed to persist deferred bolus", it)
+                                    uiInteraction.runAlarm(it.message ?: it.toString(), rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                                })
                             } else {
                                 commandQueue.bolus(injectionInfo, object : Callback() {
                                     override fun run() {
                                         if (!result.success) {
                                             uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                                        }
+                                        } else
+                                            holdCarbs()
                                     }
                                 })
                             }
+                        } else {
+                            holdCarbs()
                         }
-
-                        pendingCarbStore.setPending(buildPendingCarbs(profile, now, quickWizardEntry))
-
-                        rxBus.send(EventRefreshOverview("WizardDialog"))
-
-                        if (useAlarm && carbs > 0 && carbTime > 0)
-                            automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
                     } else {
                         if (insulin > 0 || carbs > 0) {
                             val action = when {
@@ -681,7 +697,7 @@ class BolusWizard @Inject constructor(
                 }
             }
             if (!deferred) {
-                mealMacroPlan?.let { scheduleECarbs(ctx, it, if (quickWizard) Sources.QuickWizard else Sources.WizardDialog) }
+                mealMacroPlan?.let { eCarbsScheduler.schedule(ctx, it, if (quickWizard) Sources.QuickWizard else Sources.WizardDialog, baseNotes = notes, mealOffsetMin = carbTime) }
                 if (quickWizardEntry != null) {
                     scheduleECarbsFromQuickWizard(ctx, quickWizardEntry)
                 }
@@ -693,7 +709,7 @@ class BolusWizard @Inject constructor(
      * Builds the pending entry for a deferred carb run. Kept separate from the persistence side
      * effects so the data assembly is easy to reason about and test.
      */
-    private fun buildPendingCarbs(profile: Profile, now: Long, quickWizardEntry: QuickWizardEntry?): PendingCarbs =
+    private fun buildPendingCarbs(profile: Profile, now: Long): PendingCarbs =
         PendingCarbs(
             mainCarbs = DetailedBolusInfo().apply {
                 eventType = TE.Type.BOLUS_WIZARD
@@ -704,69 +720,8 @@ class BolusWizard @Inject constructor(
                 notes = this@BolusWizard.notes
             },
             mealPlan = mealMacroPlan,
-            quickWizardECarbs = quickWizardEntry?.let { extractQuickWizardECarbs(it) },
             source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
         )
-
-    /**
-     * Extracts the quick-wizard eCarbs parameters into a plain data object so they can be
-     * committed later when the user presses "Eat now".
-     */
-    private fun extractQuickWizardECarbs(quickWizardEntry: QuickWizardEntry): QuickWizardECarbs? {
-        val eCarbsYesNo = JsonHelper.safeGetInt(quickWizardEntry.storage, "useEcarbs", QuickWizardEntry.NO)
-        if (eCarbsYesNo != QuickWizardEntry.YES) return null
-        val timeOffset = JsonHelper.safeGetInt(quickWizardEntry.storage, "time", 0)
-        val duration = JsonHelper.safeGetInt(quickWizardEntry.storage, "duration", 0)
-        val carbs2 = JsonHelper.safeGetInt(quickWizardEntry.storage, "carbs2", 0)
-        if (carbs2 <= 0) return null
-        return QuickWizardECarbs(
-            carbs2 = carbs2,
-            timeOffsetMin = timeOffset,
-            durationH = duration,
-            notes = quickWizardEntry.storage.get("buttonText")?.toString() ?: ""
-        )
-    }
-
-    /**
-     * Commits a deferred carb entry at "Eat now": logs the main carbs and schedules any
-     * meal-macro/quick-wizard eCarbs tails relative to the current time.
-     *
-     * @return false when there was nothing to commit (the entry expired or a commit is already
-     * running), so the caller can inform the user instead of failing silently.
-     */
-    fun commitPendingCarbs(ctx: Context): Boolean {
-        val pending = pendingCarbStore.beginCommit() ?: return false
-        val now = dateUtil.now()
-
-        pending.mainCarbs.carbsTimestamp = now
-        uel.log(
-            action = Action.CARBS,
-            source = pending.source,
-            note = pending.mainCarbs.notes,
-            listValues = listOf(ValueWithUnit.Gram(pending.mainCarbs.carbs.toInt()))
-        )
-        persistenceLayer.insertOrUpdateCarbs(
-            carbs = pending.mainCarbs.createCarbs(),
-            action = Action.CARBS,
-            source = pending.source
-        ).subscribe({
-            // Only drop the pending entry and schedule the tails once the main carbs are safely
-            // persisted; on failure the entry is kept so the user can retry "Eat now".
-            pending.mealPlan?.let { plan ->
-                scheduleECarbs(ctx, plan, pending.source, baseNotes = pending.mainCarbs.notes ?: "", mealOffsetMin = 0)
-            }
-            pending.quickWizardECarbs?.let { eCarbs ->
-                scheduleECarbs(ctx, eCarbs.carbs2, eCarbs.timeOffsetMin, eCarbs.durationH, eCarbs.notes, pending.source)
-            }
-            pendingCarbStore.commitSucceeded()
-            rxBus.send(EventRefreshOverview("EatNow"))
-        }, {
-            aapsLogger.error(LTag.DATABASE, "Failed to persist deferred carbs", it)
-            pendingCarbStore.commitFailed()
-            uiInteraction.runAlarm(it.message ?: it.toString(), rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-        })
-        return true
-    }
 
     private fun scheduleECarbsFromQuickWizard(ctx: Context, quickWizardEntry: QuickWizardEntry) {
         val eCarbsYesNo = JsonHelper.safeGetInt(quickWizardEntry.storage, "useEcarbs", QuickWizardEntry.NO)
@@ -776,7 +731,7 @@ class BolusWizard @Inject constructor(
             val carbs2 = JsonHelper.safeGetInt(quickWizardEntry.storage, "carbs2", 0)
 
             if (carbs2 > 0) {
-                scheduleECarbs(
+                eCarbsScheduler.schedule(
                     ctx = ctx,
                     carbs = carbs2,
                     timeOffsetMin = timeOffset,
@@ -788,65 +743,6 @@ class BolusWizard @Inject constructor(
 
         }
     }
-
-    /**
-     * Schedules one extended carbs record (carbs spread over duration, starting after timeOffset).
-     * In MDI mode the record is persisted directly (no pump to deliver with), same as wizard treatments.
-     */
-    private fun scheduleECarbs(ctx: Context, carbs: Int, timeOffsetMin: Int, durationH: Int, notes: String, source: Sources) {
-        val currentTime = dateUtil.now()
-        val eventTime: Long = currentTime + (timeOffsetMin * 60000L)
-        val duration = durationH.coerceAtLeast(0)
-
-        val detailedBolusInfo = DetailedBolusInfo()
-        detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
-        detailedBolusInfo.carbs = carbs.toDouble()
-        detailedBolusInfo.context = ctx
-        detailedBolusInfo.notes = notes
-        detailedBolusInfo.carbsDuration = T.hours(duration.toLong()).msecs()
-        detailedBolusInfo.carbsTimestamp = eventTime
-        uel.log(
-            action = Action.EXTENDED_CARBS,
-            source = source,
-            note = notes,
-            listValues = listOfNotNull(
-                ValueWithUnit.Timestamp(eventTime),
-                ValueWithUnit.Gram(carbs),
-                ValueWithUnit.Minute(timeOffsetMin).takeIf { timeOffsetMin != 0 },
-                ValueWithUnit.Hour(duration).takeIf { duration != 0 }
-            )
-        )
-        if (activePlugin.activePump.isMDI()) {
-            // MDI: no pump to deliver with - record the carbs directly
-            persistenceLayer.insertOrUpdateCarbs(
-                carbs = detailedBolusInfo.createCarbs(),
-                action = Action.EXTENDED_CARBS,
-                source = source
-            ).subscribe()
-        } else {
-            commandQueue.bolus(detailedBolusInfo, object : Callback() {
-                override fun run() {
-                    if (!result.success) {
-                        uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-                    }
-                }
-            })
-        }
-    }
-
-    /** Schedules both tails of a meal macro plan as extended carbs */
-    private fun scheduleECarbs(ctx: Context, plan: MealMacroPlan, source: Sources, baseNotes: String = notes, mealOffsetMin: Int = carbTime) {
-        // tail shifts are relative to the meal start (carb time), not to "now" - e.g. with
-        // "eat in 10 min" the +60 min protein tail must start at now + 70 min
-        if (plan.primaryTailCarbs > 0)
-            scheduleECarbs(ctx, plan.primaryTailCarbs, plan.primaryTailShiftMin + mealOffsetMin, plan.primaryTailDurationH, tailNotes(baseNotes, "P"), source)
-        if (plan.fatTailCarbs > 0)
-            scheduleECarbs(ctx, plan.fatTailCarbs, plan.fatTailShiftMin + mealOffsetMin, plan.fatTailDurationH, tailNotes(baseNotes, "F"), source)
-    }
-
-    /** Notes for a macro tail record: the wizard notes plus a marker so the tails can be told apart later */
-    private fun tailNotes(base: String, tag: String): String =
-        if (base.isBlank()) "macro-$tag" else "$base macro-$tag"
 
     private fun calcPercentageWithConstraints() {
         calculatedPercentage = 100
