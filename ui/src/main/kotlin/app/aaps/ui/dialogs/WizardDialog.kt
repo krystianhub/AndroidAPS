@@ -248,7 +248,7 @@ class WizardDialog : DaggerDialogFragment() {
 
         // If there is no BG using % lower that 100% leads to high BGs
         // because loop doesn't add missing insulin
-        var percentage = preferences.get(IntKey.OverviewBolusPercentage)
+        var percentage = defaultBolusPercentage()
         val time = preferences.get(IntKey.OverviewResetBolusPercentageTime).toLong()
         persistenceLayer.getLastGlucoseValue().let {
             // if last value is older or there is no bg
@@ -288,7 +288,7 @@ class WizardDialog : DaggerDialogFragment() {
         }
         updateCarbTimingUi()
         handler.post { initDialog() }
-        calculatedPercentage = if (usePercentage) preferences.get(IntKey.OverviewBolusPercentage) else defaultBolusPercentage()
+        calculatedPercentage = if (usePercentage) percentage else defaultBolusPercentage()
         binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, calculatedPercentage)
         binding.percentUsed.visibility = (calculatedPercentage != 100 || usePercentage).toVisibility()
         // ok button
@@ -356,6 +356,8 @@ class WizardDialog : DaggerDialogFragment() {
                 }
                 binding.correctionInput.updateA11yDescription()
                 binding.correctionInput.value = if (usePercentage) calculatedPercentage.toDouble() else Round.roundTo(calculatedCorrection, bolusStep)
+                // the field now means something else - recalculate, or the result row stays stale
+                calculateInsulin()
             }
         }
         // profile
@@ -557,13 +559,8 @@ class WizardDialog : DaggerDialogFragment() {
                 SafeParse.stringToDouble(binding.correctionInput.text)
         } else
             0.0
-        val percentageCorrection = if (usePercentage) {
-            if (calculatedPercentage == SafeParse.stringToInt(binding.correctionInput.text))
-                calculatedPercentage
-            else
-                SafeParse.stringToInt(binding.correctionInput.text)
-        } else
-            defaultBolusPercentage()
+        val percentageCorrection = if (usePercentage) SafeParse.stringToInt(binding.correctionInput.text)
+        else defaultBolusPercentage()
         val carbsAfterConstraint = constraintChecker.applyCarbsConstraints(ConstraintObject(carbs, aapsLogger)).value()
         if (abs(carbs - carbsAfterConstraint) > 0.01) {
             binding.carbsInput.value = 0.0
@@ -670,8 +667,8 @@ class WizardDialog : DaggerDialogFragment() {
                 binding.okcancel.ok.visibility = View.INVISIBLE
             }
             binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, wizard.percentageCorrection)
-            // no hidden partial-bolus percentage in MDI: never carry a stale value into the next run
-            calculatedPercentage = if (activePlugin.activePump.isMDI() && !usePercentage) 100 else wizard.calculatedPercentage
+            binding.percentUsed.visibility = (wizard.percentageCorrection != 100 || usePercentage).toVisibility()
+            calculatedPercentage = wizard.calculatedPercentage
             calculatedCorrection = wizard.calculatedCorrection
 
             mealMacroPlan?.let { plan ->

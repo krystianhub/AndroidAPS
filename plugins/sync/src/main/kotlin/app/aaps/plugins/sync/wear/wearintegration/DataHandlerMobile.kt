@@ -1257,7 +1257,8 @@ class DataHandlerMobile @Inject constructor(
                     timeStamp = System.currentTimeMillis(),
                     wearControl = preferences.get(BooleanKey.WearControl),
                     unitsMgdl = profileFunction.getUnits() == GlucoseUnit.MGDL,
-                    bolusPercentage = preferences.get(IntKey.OverviewBolusPercentage),
+                    // the partial-bolus pref is a pump feature and hidden for MDI
+                    bolusPercentage = if (activePlugin.activePump.isMDI()) 100 else preferences.get(IntKey.OverviewBolusPercentage),
                     maxCarbs = preferences.get(IntKey.SafetyMaxCarbs),
                     maxBolus = preferences.get(DoubleKey.SafetyMaxBolus),
                     insulinButtonIncrement1 = preferences.get(DoubleKey.OverviewInsulinButtonIncrement1),

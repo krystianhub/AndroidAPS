@@ -79,7 +79,7 @@ Gated on `Pump.isMDI()`:
 - **Actions**: card hidden when no action applies.
 - **Insulin dialog**: eating-soon TT hidden, last Lantus dose prefilled, "record only" checkbox hidden.
 - **Carbs dialog**: TT checkboxes hidden; 🍬 **hypo treatment** button (configurable carbs + note), disabled until an amount is set.
-- **Preferences**: BT watchdog, pump-unreachable alert, prime/fill, pump status-light thresholds, partial bolus wizard, superbolus, LGS threshold and pump basal caps hidden. SMB/DynISF settings kept.
+- **Preferences**: BT watchdog, pump-unreachable alert, prime/fill, pump status-light thresholds, partial bolus wizard, superbolus, LGS threshold and pump basal caps hidden. SMB/DynISF settings kept. The hidden partial-bolus pref never scales a pen dose — the wizard's own **%** checkbox (and a QuickWizard per-button `%` or the watch wizard's percentage) still works as an explicit per-run choice.
 - **Loop mode icon** visible — the only way into the Loop dialog.
 
 ### Other

@@ -19,6 +19,7 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.ECarbsScheduler
 import app.aaps.core.objects.wizard.MealMacroPlan
@@ -360,15 +361,16 @@ class BolusWizardTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun mdiIgnoresTheHiddenPartialBolusPercentage() {
-        // 20 g at I:C 12 = 1.67 U. The pref is hidden in MDI, so a stale 80 % must not derate it.
+    fun appliesThePercentageItIsGivenInMdiToo() {
+        // 20 g at I:C 12 = 1.67 U. MDI callers pass 100 for the hidden partial-bolus pref, but an
+        // explicit percentage (wizard % checkbox, QuickWizard entry, watch wizard) must still apply.
         val bw = newWizard(mdiPump()).doCalc(
             profile, "", null, 20, 0.0, 0.0, 0.0, 80,
             useBg = false, useCob = false, includeBolusIOB = false, includeBasalIOB = false,
             useSuperBolus = false, useTT = false, useTrend = false, useAlarm = false
         )
 
-        assertThat(bw.calculatedTotalInsulin).isWithin(0.01).of(1.7)
+        assertThat(bw.calculatedTotalInsulin).isWithin(0.01).of(1.3)
     }
 
     @Test
@@ -380,6 +382,23 @@ class BolusWizardTest : TestBaseWithProfile() {
         )
 
         assertThat(bw.calculatedTotalInsulin).isWithin(0.01).of(1.3)
+    }
+
+    @Test
+    fun percentageModeReportsTheAppliedPercentage() {
+        // the wizard % field is re-seeded from calculatedPercentage - it must be the value that was
+        // applied, not the class default, or toggling the control changes the dose
+        whenever(constraintChecker.getMaxBolusAllowed()).thenReturn(ConstraintObject(10.0, aapsLogger))
+        val bw = newWizard().doCalc(
+            profile, "", null, 20, 0.0, 0.0, 0.0, 100,
+            useBg = false, useCob = false, includeBolusIOB = false, includeBasalIOB = false,
+            useSuperBolus = false, useTT = false, useTrend = false, useAlarm = false,
+            usePercentage = true, totalPercentage = 80.0
+        )
+
+        assertThat(bw.calculatedPercentage).isEqualTo(80)
+        assertThat(bw.percentageCorrection).isEqualTo(80)
+        assertThat(bw.insulinAfterConstraints).isWithin(0.01).of(1.3)
     }
 
     private fun macroPlan() = MealMacroPlan(

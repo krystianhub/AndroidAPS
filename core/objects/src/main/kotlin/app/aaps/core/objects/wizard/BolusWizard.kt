@@ -271,22 +271,22 @@ class BolusWizard @Inject constructor(
         // Total
         calculatedTotalInsulin = insulinFromBG + insulinFromTrend + insulinFromCarbs + calculatedTotalIOB + insulinFromCorrection + insulinFromSuperBolus + insulinFromCOB
 
-        // MDI hides the partial-bolus pref (a pump/SMB feature) - a stale value must not scale a
-        // pen dose invisibly.
-        val percentage = if (usePercentage) totalPercentage
-        else if (activePlugin.activePump.isMDI()) 100.0
-        else percentageCorrection.toDouble()
+        // the caller decides what is passed here: an explicit percentage from the wizard/watch, or
+        // the configured partial-bolus default. MDI callers pass 100 because that pref is hidden there.
+        val percentage = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
 
         // Percentage adjustment
         totalBeforePercentageAdjustment = calculatedTotalInsulin
         if (calculatedTotalInsulin >= 0) {
             calculatedTotalInsulin = calculatedTotalInsulin * percentage / 100.0
-            if (usePercentage)
+            if (usePercentage) {
                 calcCorrectionWithConstraints()
-            else
-                calcPercentageWithConstraints()
-            if (usePercentage)  //Should be updated after calcCorrectionWithConstraints and calcPercentageWithConstraints to have correct synthesis in WizardInfo
+                // report the applied percentage (the class default would stay 100), so the wizard can
+                // re-seed its % field with it - toggling the control must not change the dose
                 this.percentageCorrection = Round.roundTo(totalPercentage, 1.0).toInt()
+                calculatedPercentage = this.percentageCorrection
+            } else
+                calcPercentageWithConstraints()
         } else {
             carbsEquivalent = (-calculatedTotalInsulin) * ic
             calculatedTotalInsulin = 0.0

@@ -8,6 +8,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.utils.DateUtil
@@ -27,6 +28,7 @@ import javax.inject.Provider
 class QuickWizardEntry @Inject constructor(
     aapsLogger: AAPSLogger,
     private val preferences: Preferences,
+    private val activePlugin: ActivePlugin,
     private val profileFunction: ProfileFunction,
     private val loop: Loop,
     private val iobCobCalculator: IobCobCalculator,
@@ -146,7 +148,7 @@ class QuickWizardEntry @Inject constructor(
         } else if (useTrend() == NEGATIVE_ONLY && glucoseStatus != null && glucoseStatus.shortAvgDelta < 0) {
             trend = true
         }
-        val percentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()
+        val percentage = if (usePercentage() == DEFAULT) defaultBolusPercentage() else percentage()
         return bolusWizardProvider.get().doCalc(
             profile,
             profileName,
@@ -170,6 +172,10 @@ class QuickWizardEntry @Inject constructor(
             positiveIOBOnly = uPositiveIOBOnly
         ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard
     }
+
+    /** Partial-bolus default; the pref is a pump feature and hidden for MDI, which must not be scaled. */
+    internal fun defaultBolusPercentage(): Int =
+        if (activePlugin.activePump.isMDI()) 100 else preferences.get(IntKey.OverviewBolusPercentage)
 
     fun guid(): String = safeGetString(storage, "guid", "")
 
