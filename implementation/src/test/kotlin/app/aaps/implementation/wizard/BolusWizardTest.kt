@@ -1,5 +1,6 @@
 package app.aaps.implementation.wizard
 
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.aps.IobTotal
@@ -13,11 +14,14 @@ import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.Pump
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.ECarbsScheduler
+import app.aaps.core.objects.wizard.MealMacroPlan
 import app.aaps.core.objects.wizard.PendingCarbStore
 import app.aaps.core.objects.wizard.PendingCarbs
 import app.aaps.plugins.aps.openAPSSMB.OpenAPSSMBPlugin
@@ -30,6 +34,7 @@ import org.mockito.invocation.InvocationOnMock
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doAnswer
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
@@ -51,11 +56,12 @@ class BolusWizardTest : TestBaseWithProfile() {
     @Mock lateinit var sp: SP
     private lateinit var pendingCarbStore: PendingCarbStore
     private lateinit var eCarbsScheduler: ECarbsScheduler
+    private lateinit var profile: Profile
 
     @BeforeEach
     fun prepare() {
         whenever(activePlugin.activeAPS).thenReturn(openAPSSMBPlugin)
-        pendingCarbStore = PendingCarbStore(dateUtil, sp)
+        pendingCarbStore = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus)
         eCarbsScheduler = mock()
     }
 
@@ -272,5 +278,160 @@ class BolusWizardTest : TestBaseWithProfile() {
         ).apply { carbs = 50 }
 
         assertThat(bw.isBlockedByPendingCarbs()).isFalse()
+    }
+
+    @Test
+    fun wizardWithOnlyMacroTailsIsBlockedWhileADeferredEntryIsPending() {
+        pendingCarbStore.setPending(PendingCarbs(mainCarbs = DetailedBolusInfo().apply { carbs = 45.0 }))
+        val bw = newWizard().doCalc(
+            profile, "", null, 0, 0.0, 5.4, 0.0, 100,
+            useBg = false, useCob = false, includeBolusIOB = false, includeBasalIOB = false,
+            useSuperBolus = false, useTT = false, useTrend = false, useAlarm = false,
+            mealMacroPlan = macroPlan()
+        )
+
+        assertThat(bw.hasCarbsToLog).isTrue()
+        assertThat(bw.isBlockedByPendingCarbs()).isTrue()
+    }
+
+    @Test
+    fun advisorIsOfferedForAPlainHighBgMeal() {
+        val bw = newWizard().doCalc(
+            profile, "", null, 50, 0.0, 220.0, 0.0, 100,
+            useBg = true, useCob = false, includeBolusIOB = false, includeBasalIOB = false,
+            useSuperBolus = false, useTT = false, useTrend = false, useAlarm = false
+        )
+
+        assertThat(bw.isBolusAdvisorAvailable()).isTrue()
+    }
+
+    @Test
+    fun advisorIsNotOfferedWhenAMealMacroPlanIsActive() {
+        // The advisor logs a bolus only - it would drop the carbs and the eCarbs tails
+        val bw = newWizard().doCalc(
+            profile, "", null, 50, 0.0, 220.0, 0.0, 100,
+            useBg = true, useCob = false, includeBolusIOB = false, includeBasalIOB = false,
+            useSuperBolus = false, useTT = false, useTrend = false, useAlarm = false,
+            mealMacroPlan = macroPlan()
+        )
+
+        assertThat(bw.isBolusAdvisorAvailable()).isFalse()
+    }
+
+    @Test
+    fun advisorIsNotOfferedWhenCarbsAreDeferred() {
+        val bw = newWizard().doCalc(
+            profile, "", null, 50, 0.0, 220.0, 0.0, 100,
+            useBg = true, useCob = false, includeBolusIOB = false, includeBasalIOB = false,
+            useSuperBolus = false, useTT = false, useTrend = false, useAlarm = false,
+            deferCarbs = true
+        )
+
+        assertThat(bw.isBolusAdvisorAvailable()).isFalse()
+    }
+
+    @Test
+    fun advisorIsNotOfferedForCarbsInThePast() {
+        val bw = newWizard().doCalc(
+            profile, "", null, 50, 0.0, 220.0, 0.0, 100,
+            useBg = true, useCob = false, includeBolusIOB = false, includeBasalIOB = false,
+            useSuperBolus = false, useTT = false, useTrend = false, useAlarm = false,
+            carbTime = -30
+        )
+
+        assertThat(bw.isBolusAdvisorAvailable()).isFalse()
+    }
+
+    private fun newWizard(pump: Pump? = null): BolusWizard {
+        profile = setupProfile(4.0, 8.0, 20.0, 12.0)
+        whenever(profile.units).thenReturn(GlucoseUnit.MGDL)
+        whenever(preferences.get(BooleanKey.OverviewUseBolusAdvisor)).thenReturn(true)
+        pump?.let { whenever(activePlugin.activePump).thenReturn(it) }
+        return BolusWizard(
+            aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
+            commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, glucoseStatusProvider, uiInteraction,
+            persistenceLayer, decimalFormatter, processedDeviceStatusData, pendingCarbStore, eCarbsScheduler
+        )
+    }
+
+    private fun mdiPump(): Pump = mock<Pump>().also {
+        whenever(it.isMDI()).thenReturn(true)
+        whenever(it.pumpDescription).thenReturn(PumpDescription().also { desc -> desc.bolusStep = pumpBolusStep })
+    }
+
+    @Test
+    fun mdiIgnoresTheHiddenPartialBolusPercentage() {
+        // 20 g at I:C 12 = 1.67 U. The pref is hidden in MDI, so a stale 80 % must not derate it.
+        val bw = newWizard(mdiPump()).doCalc(
+            profile, "", null, 20, 0.0, 0.0, 0.0, 80,
+            useBg = false, useCob = false, includeBolusIOB = false, includeBasalIOB = false,
+            useSuperBolus = false, useTT = false, useTrend = false, useAlarm = false
+        )
+
+        assertThat(bw.calculatedTotalInsulin).isWithin(0.01).of(1.7)
+    }
+
+    @Test
+    fun pumpWizardStillAppliesThePartialBolusPercentage() {
+        val bw = newWizard().doCalc(
+            profile, "", null, 20, 0.0, 0.0, 0.0, 80,
+            useBg = false, useCob = false, includeBolusIOB = false, includeBasalIOB = false,
+            useSuperBolus = false, useTT = false, useTrend = false, useAlarm = false
+        )
+
+        assertThat(bw.calculatedTotalInsulin).isWithin(0.01).of(1.3)
+    }
+
+    private fun macroPlan() = MealMacroPlan(
+        upfrontCarbs = 0,
+        primaryTailCarbs = 40,
+        fatTailCarbs = 6,
+        suggestedUpfrontPercentage = 60,
+        primaryTailShiftMin = 60,
+        primaryTailDurationH = 4,
+        fatTailShiftMin = 90,
+        fatTailDurationH = 8,
+        intensity = 1.0,
+        fat = 40,
+        protein = 80
+    )
+
+    @Test
+    fun mealMacroPreviewShowsTheDosedInsulinAndShiftedTailTimes() {
+        val plan = macroPlan().copy(upfrontCarbs = 70, primaryTailCarbs = 66)
+        // doReturn: the base class already stubs gs(id, arg) with a formatting answer that needs a
+        // stubbed template, so a plain whenever() would run it and fail on the unstubbed string
+        doReturn("Now 70g").whenever(rh).gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_now, 70)
+        doReturn("plan 60%").whenever(rh).gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_plan, 60)
+        doReturn("2.4U").whenever(rh).gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_insulin, 2.4)
+        doReturn("Tail 66g @ +70min/4h").whenever(rh).gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_tail, 66, 70, 4)
+        doReturn("Fat-eq 6g @ +100min/8h").whenever(rh).gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_fat_tail, 6, 100, 8)
+
+        // carb time +10 min shifts both tails by 10 min, exactly like ECarbsScheduler will
+        assertThat(BolusWizard.mealMacroPreview(rh, plan, 2.4, 10))
+            .isEqualTo("Now 70g · plan 60% · 2.4U · Tail 66g @ +70min/4h · Fat-eq 6g @ +100min/8h")
+    }
+
+    @Test
+    fun mealMacroPreviewOmitsEmptyParts() {
+        val plan = macroPlan().copy(upfrontCarbs = 0, fatTailCarbs = 0, suggestedUpfrontPercentage = 100)
+        doReturn("Tail 40g @ +60min/4h").whenever(rh).gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_tail, 40, 60, 4)
+
+        // no upfront carbs, nothing dosed now, no fat tail, the plan does not derate -> just the tail
+        assertThat(BolusWizard.mealMacroPreview(rh, plan, 0.0, 0)).isEqualTo("Tail 40g @ +60min/4h")
+    }
+
+    @Test
+    fun mealMacroPreviewAppliesAnExplicitWizardPercentage() {
+        val plan = macroPlan().copy(upfrontCarbs = 70)
+        doReturn("Now 70g").whenever(rh).gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_now, 70)
+        doReturn("2.0U").whenever(rh).gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_insulin, 2.0)
+        doReturn("Tail 40g @ +60min/4h").whenever(rh).gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_tail, 40, 60, 4)
+        doReturn("Fat-eq 6g @ +90min/8h").whenever(rh).gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_fat_tail, 6, 90, 8)
+
+        // insulinFromCarbs is pre-percentage: an explicit 80 % is what actually gets dosed, and the
+        // plan's derate was skipped by the override, so its suggestion must not be advertised
+        assertThat(BolusWizard.mealMacroPreview(rh, plan, 2.5, 0, percentage = 80.0, percentageOverride = true))
+            .isEqualTo("Now 70g · 2.0U · Tail 40g @ +60min/4h · Fat-eq 6g @ +90min/8h")
     }
 }

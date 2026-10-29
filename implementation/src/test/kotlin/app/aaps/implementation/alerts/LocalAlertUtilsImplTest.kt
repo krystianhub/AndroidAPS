@@ -467,7 +467,26 @@ class LocalAlertUtilsImplTest : TestBase() {
     }
 
     @Test
-    fun `checkMissedLantusReminder dismisses a stale reminder when the last dose is older than the lookback window`() {
+    fun `checkMissedLantusReminder keeps nagging when the last dose aged out of the lookback window`() {
+        whenever(pump.isMDI()).thenReturn(true)
+        stubReminderEnabled(true)
+        // an active reminder cycle: a dose was recorded before, it just fell out of the window
+        stubNextReminder(now - T.mins(1).msecs())
+        stubTherapyEvents(emptyList())
+        whenever(rh.gs(eq(app.aaps.core.ui.R.string.missed_lantus_reminder), any())).thenReturn("Lantus injection overdue")
+        whenever(dateUtil.dateAndTimeString(any())).thenReturn("2024-01-01 12:00:00")
+
+        val (newEvents, dismissEvents) = captureNotifications { localAlertUtils.checkMissedLantusReminder() }
+
+        assertThat(dismissEvents).isEmpty()
+        assertThat(newEvents).hasSize(1)
+        assertThat(newEvents.first().notification.id).isEqualTo(Notification.MISSED_LANTUS_REMINDER)
+        // report the lookback window as the minimum overdue time
+        verify(preferences).put(LocalAlertLongKey.NextMissedLantusReminderAlarm, now + T.hours(1).msecs())
+    }
+
+    @Test
+    fun `checkMissedLantusReminder does not re-alert when the dose aged out but the interval is not due`() {
         whenever(pump.isMDI()).thenReturn(true)
         stubReminderEnabled(true)
         stubNextReminder(now + T.mins(30).msecs())
@@ -476,23 +495,24 @@ class LocalAlertUtilsImplTest : TestBase() {
         val (newEvents, dismissEvents) = captureNotifications { localAlertUtils.checkMissedLantusReminder() }
 
         assertThat(newEvents).isEmpty()
-        assertThat(dismissEvents).hasSize(1)
-        assertThat(dismissEvents.first().id).isEqualTo(Notification.MISSED_LANTUS_REMINDER)
-        verify(preferences).put(LocalAlertLongKey.NextMissedLantusReminderAlarm, 0L)
+        assertThat(dismissEvents).isEmpty()
+        verify(preferences, never()).put(eq(LocalAlertLongKey.NextMissedLantusReminderAlarm), any())
     }
 
     @Test
     fun `checkMissedLantusReminder ignores Lantus notes without a recorded dose`() {
         whenever(pump.isMDI()).thenReturn(true)
         stubReminderEnabled(true)
+        // an active cycle that is not due yet: a *parsed* recent dose would dismiss it, an
+        // unparseable note must not - so "no dismiss / no put" proves the note was not a dose
         stubNextReminder(now + T.mins(30).msecs())
         stubTherapyEvents(listOf(lantusNote(now - T.hours(2).msecs(), note = "Lantus")))
 
         val (newEvents, dismissEvents) = captureNotifications { localAlertUtils.checkMissedLantusReminder() }
 
         assertThat(newEvents).isEmpty()
-        assertThat(dismissEvents).hasSize(1)
-        verify(preferences).put(LocalAlertLongKey.NextMissedLantusReminderAlarm, 0L)
+        assertThat(dismissEvents).isEmpty()
+        verify(preferences, never()).put(eq(LocalAlertLongKey.NextMissedLantusReminderAlarm), any())
     }
 
     @Test

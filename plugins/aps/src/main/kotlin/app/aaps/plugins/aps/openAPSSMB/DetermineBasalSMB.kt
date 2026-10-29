@@ -192,6 +192,8 @@ class DetermineBasalSMB @Inject constructor(
             rT.reason.append("Error: CGM data is unchanged for the past ~45m")
         }
         if (bg <= 10 || bg == 38.0 || noise >= 3 || minAgo > 12 || minAgo < -5 || (bg > 60 && flatBGsDetected)) {
+            // no fresh prediction -> never suggest insulin
+            rT.predictedLow = true
             if (currenttemp.rate > basal) { // high temp is running
                 rT.reason.append(". Replacing high temp basal of ${currenttemp.rate} with neutral temp of $basal")
                 rT.deliverAt = deliverAt

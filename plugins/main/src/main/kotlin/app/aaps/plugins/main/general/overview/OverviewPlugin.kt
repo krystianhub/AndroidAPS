@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.graphics.Typeface
 import android.os.Build
 import android.widget.TextView
+import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
@@ -369,6 +370,7 @@ class OverviewPlugin @Inject constructor(
             // Meal macro assistant is an MDI-only feature, off by default
             if (activePlugin.activePump.isMDI()) {
                 addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                    val mealScreen = this
                     key = "meal_macro_settings"
                     title = rh.gs(R.string.meal_macro_settings)
                     summary = rh.gs(R.string.meal_macro_settings_summary)
@@ -392,7 +394,7 @@ class OverviewPlugin @Inject constructor(
                             title = R.string.meal_macro_apply_conservative,
                             summary = R.string.meal_macro_apply_summary,
                             onPreferenceClickListener = {
-                                applyMealMacroPreset(MealMacroPreset.CONSERVATIVE)
+                                applyMealMacroPreset(mealScreen, MealMacroPreset.CONSERVATIVE)
                                 ToastUtils.infoToast(context, R.string.meal_macro_applied_toast)
                                 true
                             })
@@ -400,11 +402,11 @@ class OverviewPlugin @Inject constructor(
                     addPreference(
                         AdaptiveClickPreference(
                             ctx = context,
-                            stringKey = StringKey.MealMacroApplyPreset,
+                            stringKey = StringKey.MealMacroApplyPresetWarsaw,
                             title = R.string.meal_macro_apply_warsaw,
                             summary = R.string.meal_macro_apply_summary,
                             onPreferenceClickListener = {
-                                applyMealMacroPreset(MealMacroPreset.WARSAW)
+                                applyMealMacroPreset(mealScreen, MealMacroPreset.WARSAW)
                                 ToastUtils.infoToast(context, R.string.meal_macro_applied_toast)
                                 true
                             })
@@ -412,11 +414,11 @@ class OverviewPlugin @Inject constructor(
                     addPreference(
                         AdaptiveClickPreference(
                             ctx = context,
-                            stringKey = StringKey.MealMacroApplyPreset,
+                            stringKey = StringKey.MealMacroApplyPresetWarsawModified,
                             title = R.string.meal_macro_apply_warsaw_modified,
                             summary = R.string.meal_macro_apply_summary,
                             onPreferenceClickListener = {
-                                applyMealMacroPreset(MealMacroPreset.WARSAW_MODIFIED)
+                                applyMealMacroPreset(mealScreen, MealMacroPreset.WARSAW_MODIFIED)
                                 ToastUtils.infoToast(context, R.string.meal_macro_applied_toast)
                                 true
                             })
@@ -428,8 +430,9 @@ class OverviewPlugin @Inject constructor(
             if (activePlugin.activePump.isMDI()) {
                 addPreference(preferenceManager.createPreferenceScreen(context).apply {
                     key = "missed_lantus_settings"
-                    title = rh.gs(R.string.mdi_missed_lantus_reminder_title)
-                    summary = rh.gs(R.string.mdi_missed_lantus_reminder_summary)
+                    title = rh.gs(R.string.mdi_lantus_settings_title)
+                    summary = rh.gs(R.string.mdi_lantus_settings_summary)
+                    addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.MdiMaxBasalInjection, dialogMessage = R.string.mdi_max_basal_injection_summary, title = R.string.mdi_max_basal_injection))
                     addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiMissedLantusReminderEnabled, title = R.string.mdi_missed_lantus_enabled))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusGracePeriodMinutes, title = R.string.mdi_missed_lantus_grace_period))
                     addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiMissedLantusReRaiseIntervalMinutes, title = R.string.mdi_missed_lantus_re_raise_interval))
@@ -447,17 +450,26 @@ class OverviewPlugin @Inject constructor(
         }
     }
 
-    private fun applyMealMacroPreset(preset: MealMacroPreset) {
-        preferences.put(IntKey.MealProteinPercentage, preset.proteinPct)
-        preferences.put(IntKey.MealProteinShiftMin, preset.proteinShiftMin)
-        preferences.put(IntKey.MealProteinDurationH, preset.proteinDurationH)
-        preferences.put(IntKey.MealFatPercentageTenths, preset.fatPctTenths)
-        preferences.put(IntKey.MealFatShiftMin, preset.fatShiftMin)
-        preferences.put(IntKey.MealFatDurationH, preset.fatDurationH)
-        preferences.put(IntKey.MealUpfrontPercentageLean, preset.upfrontPctLean)
-        preferences.put(IntKey.MealUpfrontPercentageHeavy, preset.upfrontPctHeavy)
-        preferences.put(IntKey.MealFatIntensityRefG, preset.fatIntensityRefG)
-        preferences.put(IntKey.MealProteinIntensityRefG, preset.proteinIntensityRefG)
+    /**
+     * Writes through the attached preferences so the visible rows update immediately - writing only
+     * the SharedPreferences leaves them stale, and the next edit of a stale row reverts the value.
+     */
+    private fun applyMealMacroPreset(screen: PreferenceScreen, preset: MealMacroPreset) {
+        fun write(intKey: IntKey, value: Int) {
+            screen.findPreference<EditTextPreference>(intKey.key)
+                ?.also { it.text = value.toString() }
+                ?: preferences.put(intKey, value)
+        }
+        write(IntKey.MealProteinPercentage, preset.proteinPct)
+        write(IntKey.MealProteinShiftMin, preset.proteinShiftMin)
+        write(IntKey.MealProteinDurationH, preset.proteinDurationH)
+        write(IntKey.MealFatPercentageTenths, preset.fatPctTenths)
+        write(IntKey.MealFatShiftMin, preset.fatShiftMin)
+        write(IntKey.MealFatDurationH, preset.fatDurationH)
+        write(IntKey.MealUpfrontPercentageLean, preset.upfrontPctLean)
+        write(IntKey.MealUpfrontPercentageHeavy, preset.upfrontPctHeavy)
+        write(IntKey.MealFatIntensityRefG, preset.fatIntensityRefG)
+        write(IntKey.MealProteinIntensityRefG, preset.proteinIntensityRefG)
     }
 
     private val dismissReceiver = DismissNotificationReceiver()

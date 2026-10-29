@@ -168,6 +168,7 @@ open class APSResultObject(protected val injector: HasAndroidInjector) : APSResu
         newResult.hasPredictions = hasPredictions
         newResult.smb = smb
         newResult.insulinReq = insulinReq
+        newResult.predictedLow = predictedLow
         newResult.deliverAt = deliverAt
         newResult.rateConstraint = rateConstraint
         newResult.smbConstraint = smbConstraint

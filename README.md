@@ -22,10 +22,11 @@ Site position 1–12 stored as a `pos x` note on the treatment (syncs to Nightsc
 
 ### Lantus recording
 
-- Insulin dialog checkbox **"Record basal insulin (MDI)"** records the dose as a Note (`Lantus 10.0U ...`) — no bolus, so TDD/IOB aren't inflated.
-- On any dose change the profile basal is rewritten to a flat `dose / 24` U/h and a profile switch is activated (compared on the quantized rate, so re-recording the same dose doesn't retrigger). Keeps TDD/DynISF honest.
-- Profile screen **"Sync basal"** button (MDI only) rewrites the profile without activating it; enabled only when out of sync.
-- **Missed Lantus reminder** (*Overview → Missed Lantus reminder*, MDI only): urgent notification when no Lantus injection has been recorded for 24 h + grace period after the last one, repeating at the configured interval until a dose is recorded. Does nothing when no Lantus dose was recorded in the lookback window. Toggle: **Enable reminder**; configurable **grace period** (default 120 min), **re-raise interval** (default 60 min) and **lookback** (default 5 days).
+- Insulin dialog checkbox **"Record basal insulin (MDI)"** records the dose as a Note (`Lantus 10.0U ...`) — no bolus, so TDD/IOB aren't inflated. The dose field is prefilled with the last recorded dose.
+- A recorded dose above **Max Lantus dose (MDI)** (default 30 U) is rejected instead of being recorded — protection against typos like `200` instead of `20`, which would also rewrite the profile basal.
+- On any dose change the profile basal is rewritten to a flat `dose / 24` U/h and a profile switch is activated (compared on the quantized rate, so re-recording the same dose doesn't retrigger). An active profile switch (percentage / time shift / remaining duration) is preserved. Keeps TDD/DynISF honest.
+- Profile screen **"Sync basal"** button (MDI only) rewrites **and saves** the profile without activating it — switching remains your decision, so tap *Activate profile* if you want the loop to use the new basal. Enabled only when out of sync.
+- **Missed Lantus reminder** (*Overview → Lantus (MDI)*): urgent notification when no Lantus injection has been recorded for 24 h + grace period after the last one, repeating at the configured interval until a dose is recorded. Once a reminder cycle has started it keeps reminding even after the last dose falls out of the lookback window (the message then reports the window as the minimum overdue time); a user who never recorded a Lantus dose is not nagged. Toggle: **Enable reminder**; configurable **grace period** (default 120 min), **re-raise interval** (default 60 min) and **lookback** (default 5 days, min 2).
 
 ### Overview status lights
 
@@ -46,12 +47,15 @@ Always available (no flag file), automation action usable without engineering mo
 Wizard gains **Fat** and **Protein** fields (grams). Filling either shows a plan preview:
 
 ```
-Now 70g @ 63% · Tail 66g @ +60min/4h · Fat-eq 3g @ +90min/8h
+Now 70g · plan 63% · 2.4U · Tail 66g @ +60min/4h · Fat-eq 3g @ +90min/8h
 ```
 
-- **Upfront**: a heaviness score splits carbs into fast/slow and derates **only the fast-carb insulin** between the lean/heavy preferences (defaults 100 % ↔ 60 %). The withheld part is deliberately not dosed; an explicit wizard % overrides it.
+The preview shows the **resulting upfront insulin** next to the plan's suggested percentage (the percentage applies to the upfront carb insulin only), and the tail start times are relative to the meal (a "Carb time" offset shifts them). If you set an explicit `%` in the wizard, that percentage is applied to the shown units (and the plan's suggestion is hidden, because the override replaces the plan's derate).
+
+- **Upfront**: a heaviness score splits carbs into fast/slow and derates **only the fast-carb insulin** between the lean/heavy preferences (defaults 100 % ↔ 60 %). The withheld part is deliberately not dosed; an explicit wizard % overrides it (the wizard preview always shows the units that will actually be dosed now).
+- **Bolus advisor**: the advisor is skipped when a meal plan is active (or **Defer carbs** is ticked) — it logs a bolus without carbs, which would leave the plan's insulin without COB and drop the tails.
 - **Tails**: slow carbs + protein equivalents (default 10 % of protein) as eCarbs from +60 min over 4 h; fat equivalents (default 8 % of fat) as a second eCarbs record from +90 min over 8 h. Both feed COB/predictions.
-- Meals under 5 g fat *and* 10 g protein skip the assistant (plain wizard).
+- Meals with **less than 30 g fat and less than 40 g protein** skip the assistant (plain wizard). Either macro reaching its threshold activates the plan; both minimums are configurable in the same settings screen.
 - Settings in *Overview → Meal macro assistant* — the **Enable assistant** switch (off by default) hides the rest of the screen and the wizard fat/protein fields until enabled. Presets:
 
 | Preset | Protein | Fat | Heavy-meal upfront |
@@ -66,7 +70,7 @@ Now 70g @ 63% · Tail 66g @ +60min/4h · Fat-eq 3g @ +90min/8h
 
 Enable globally in *Overview → Deferred carb logging*, then tick **Defer carbs** in the Bolus Wizard when you want to delay the carb entry. The bolus is logged immediately; the carbs are held back and only recorded when you press **Eat now** on the Overview screen. **Cancel** discards them. Defer carbs and Carb time are mutually exclusive — pick one per wizard run.
 
-While a deferred entry is pending, the **Eat now** / **Cancel** buttons appear on the Overview screen. The entry expires after **1 hour**; if it expires without being confirmed, the Overview shows a notice so the missing carb entry isn't overlooked. Only one entry can be active at a time.
+While a deferred entry is pending, the **Eat now** / **Cancel** buttons appear on the Overview screen. The entry expires after **1 hour**; if it expires without being confirmed, the Overview shows a notice so the missing carb entry isn't overlooked (a deferred entry that cannot be read is also reported instead of vanishing). Only one entry can be active at a time. Cancelling or letting it expire also drops the planned fat/protein tails — the bolus given at wizard time is not undone, so log the carbs manually if you already ate.
 
 ### MDI UI cleanup
 

@@ -29,6 +29,7 @@ import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.BasalInjection
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileStore
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -56,7 +57,9 @@ import app.aaps.plugins.aps.autotune.data.LocalInsulin
 import app.aaps.plugins.aps.autotune.events.EventAutotuneUpdateGui
 import app.aaps.plugins.aps.databinding.AutotuneFragmentBinding
 import dagger.android.support.DaggerFragment
+import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.CompositeDisposable
+import io.reactivex.rxjava3.disposables.Disposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import org.json.JSONObject
 import java.text.DecimalFormat
@@ -86,6 +89,7 @@ class AutotuneFragment : DaggerFragment() {
     @Inject lateinit var atProfileProvider: Provider<ATProfile>
 
     private var disposable: CompositeDisposable = CompositeDisposable()
+    private var resultsDisposable: Disposable? = null
     private var handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
 
     private var _binding: AutotuneFragmentBinding? = null
@@ -331,6 +335,8 @@ class AutotuneFragment : DaggerFragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        resultsDisposable?.dispose()
+        resultsDisposable = null
         _binding = null
     }
 
@@ -454,104 +460,112 @@ class AutotuneFragment : DaggerFragment() {
     }
 
     private fun showResults() {
-        context?.let { context ->
-            runOnUiThread {
-                _binding?.let {
-                    binding.autotuneResults.removeAllViews()
-                    if (autotunePlugin.result.isNotBlank()) {
-                        var toMgDl = 1.0
-                        if (profileFunction.getUnits() == GlucoseUnit.MMOL) toMgDl = Constants.MMOLL_TO_MGDL
-                        val isfFormat = if (profileFunction.getUnits() == GlucoseUnit.MMOL) "%.2f" else "%.1f"
-                        binding.autotuneResults.addView(
-                            TableLayout(context).also { layout ->
+        val context = context ?: return
+        // the MDI row needs the last Lantus dose - a DB query, so fetch it off the UI thread
+        // (updateGui() runs on main). fromCallable does not accept null: 0/1-element list.
+        resultsDisposable?.dispose()
+        resultsDisposable = Single.fromCallable {
+            if (activePlugin.activePump.isMDI()) listOfNotNull(lastBasalInjectionDose()) else emptyList()
+        }
+            .subscribeOn(aapsSchedulers.io)
+            .observeOn(aapsSchedulers.main)
+            .subscribe({ dose -> buildResultsView(context, dose.firstOrNull()) }, fabricPrivacy::logException)
+    }
+
+    private fun buildResultsView(context: Context, lastBasalDose: Double?) {
+        runOnUiThread {
+            _binding?.let {
+                binding.autotuneResults.removeAllViews()
+                if (autotunePlugin.result.isNotBlank()) {
+                    var toMgDl = 1.0
+                    if (profileFunction.getUnits() == GlucoseUnit.MMOL) toMgDl = Constants.MMOLL_TO_MGDL
+                    val isfFormat = if (profileFunction.getUnits() == GlucoseUnit.MMOL) "%.2f" else "%.1f"
+                    binding.autotuneResults.addView(
+                        TableLayout(context).also { layout ->
+                            layout.addView(
+                                TextView(context).apply {
+                                    text = autotunePlugin.result
+                                    setTypeface(typeface, Typeface.BOLD)
+                                    gravity = Gravity.CENTER_HORIZONTAL
+                                    setTextAppearance(android.R.style.TextAppearance_Material_Medium)
+                                })
+                            autotunePlugin.tunedProfile?.let { tuned ->
+                                layout.addView(toTableRowHeader(context))
+                                val tuneInsulin = preferences.get(BooleanKey.AutotuneTuneInsulinCurve)
+                                if (tuneInsulin) {
+                                    layout.addView(
+                                        toTableRowValue(
+                                            context,
+                                            rh.gs(R.string.insulin_peak),
+                                            autotunePlugin.pumpProfile.localInsulin.peak.toDouble(),
+                                            tuned.localInsulin.peak.toDouble(),
+                                            "%.0f"
+                                        )
+                                    )
+                                    layout.addView(
+                                        toTableRowValue(
+                                            context,
+                                            rh.gs(app.aaps.core.ui.R.string.dia),
+                                            Round.roundTo(autotunePlugin.pumpProfile.localInsulin.dia, 0.1),
+                                            Round.roundTo(tuned.localInsulin.dia, 0.1),
+                                            "%.1f"
+                                        )
+                                    )
+                                }
+                                layout.addView(
+                                    toTableRowValue(
+                                        context,
+                                        rh.gs(app.aaps.core.ui.R.string.isf_short),
+                                        Round.roundTo(autotunePlugin.pumpProfile.isf / toMgDl, 0.001),
+                                        Round.roundTo(tuned.isf / toMgDl, 0.001),
+                                        isfFormat
+                                    )
+                                )
+                                layout.addView(
+                                    toTableRowValue(
+                                        context,
+                                        rh.gs(app.aaps.core.ui.R.string.ic_short),
+                                        Round.roundTo(autotunePlugin.pumpProfile.ic, 0.001),
+                                        Round.roundTo(tuned.ic, 0.001),
+                                        "%.2f"
+                                    )
+                                )
                                 layout.addView(
                                     TextView(context).apply {
-                                        text = autotunePlugin.result
+                                        text = rh.gs(app.aaps.core.ui.R.string.basal)
                                         setTypeface(typeface, Typeface.BOLD)
                                         gravity = Gravity.CENTER_HORIZONTAL
                                         setTextAppearance(android.R.style.TextAppearance_Material_Medium)
-                                    })
-                                autotunePlugin.tunedProfile?.let { tuned ->
-                                    layout.addView(toTableRowHeader(context))
-                                    val tuneInsulin = preferences.get(BooleanKey.AutotuneTuneInsulinCurve)
-                                    if (tuneInsulin) {
-                                        layout.addView(
-                                            toTableRowValue(
-                                                context,
-                                                rh.gs(R.string.insulin_peak),
-                                                autotunePlugin.pumpProfile.localInsulin.peak.toDouble(),
-                                                tuned.localInsulin.peak.toDouble(),
-                                                "%.0f"
-                                            )
-                                        )
-                                        layout.addView(
-                                            toTableRowValue(
-                                                context,
-                                                rh.gs(app.aaps.core.ui.R.string.dia),
-                                                Round.roundTo(autotunePlugin.pumpProfile.localInsulin.dia, 0.1),
-                                                Round.roundTo(tuned.localInsulin.dia, 0.1),
-                                                "%.1f"
-                                            )
-                                        )
                                     }
-                                    layout.addView(
-                                        toTableRowValue(
-                                            context,
-                                            rh.gs(app.aaps.core.ui.R.string.isf_short),
-                                            Round.roundTo(autotunePlugin.pumpProfile.isf / toMgDl, 0.001),
-                                            Round.roundTo(tuned.isf / toMgDl, 0.001),
-                                            isfFormat
-                                        )
-                                    )
-                                    layout.addView(
-                                        toTableRowValue(
-                                            context,
-                                            rh.gs(app.aaps.core.ui.R.string.ic_short),
-                                            Round.roundTo(autotunePlugin.pumpProfile.ic, 0.001),
-                                            Round.roundTo(tuned.ic, 0.001),
-                                            "%.2f"
-                                        )
-                                    )
-                                    layout.addView(
-                                        TextView(context).apply {
-                                            text = rh.gs(app.aaps.core.ui.R.string.basal)
-                                            setTypeface(typeface, Typeface.BOLD)
-                                            gravity = Gravity.CENTER_HORIZONTAL
-                                            setTextAppearance(android.R.style.TextAppearance_Material_Medium)
-                                        }
-                                    )
-                                    layout.addView(toTableRowHeader(context, true))
-                                    var totalPump = 0.0
-                                    var totalTuned = 0.0
-                                    for (h in 0 until tuned.basal.size) {
-                                        val df = DecimalFormat("00")
-                                        val time = df.format(h.toLong()) + ":00"
-                                        totalPump += autotunePlugin.pumpProfile.basal[h]
-                                        totalTuned += tuned.basal[h]
-                                        layout.addView(toTableRowValue(context, time, autotunePlugin.pumpProfile.basal[h], tuned.basal[h], "%.3f", tuned.basalUnTuned[h].toString()))
-                                    }
-                                    layout.addView(toTableRowValue(context, "∑", totalPump, totalTuned, "%.3f", " "))
-                                    // MDI fork: basal is a once-daily long-acting injection (Lantus) here, not a
-                                    // pump rate, and pens deliver whole units only. Current dose = last recorded
-                                    // Lantus injection (falls back to the 24h profile basal sum), tuned dose =
-                                    // tuned 24h basal sum - both rounded to whole units (the % column follows
-                                    // the rounded values). Informational only - nothing is applied to the profile.
-                                    if (activePlugin.activePump.isMDI())
-                                        layout.addView(
-                                            toTableRowValue(
-                                                context,
-                                                rh.gs(R.string.autotune_mdi_basal_dose),
-                                                (lastBasalInjectionDose() ?: totalPump).roundToInt().toDouble(),
-                                                totalTuned.roundToInt().toDouble(),
-                                                "%.0f"
-                                            )
-                                        )
+                                )
+                                layout.addView(toTableRowHeader(context, true))
+                                var totalPump = 0.0
+                                var totalTuned = 0.0
+                                for (h in 0 until tuned.basal.size) {
+                                    val df = DecimalFormat("00")
+                                    val time = df.format(h.toLong()) + ":00"
+                                    totalPump += autotunePlugin.pumpProfile.basal[h]
+                                    totalTuned += tuned.basal[h]
+                                    layout.addView(toTableRowValue(context, time, autotunePlugin.pumpProfile.basal[h], tuned.basal[h], "%.3f", tuned.basalUnTuned[h].toString()))
                                 }
+                                layout.addView(toTableRowValue(context, "∑", totalPump, totalTuned, "%.3f", " "))
+                                // MDI: basal is a once-daily injection and pens deliver whole units, so both
+                                // doses are rounded (the % column follows). Informational only.
+                                if (activePlugin.activePump.isMDI())
+                                    layout.addView(
+                                        toTableRowValue(
+                                            context,
+                                            rh.gs(R.string.autotune_mdi_basal_dose),
+                                            (lastBasalDose ?: totalPump).roundToInt().toDouble(),
+                                            totalTuned.roundToInt().toDouble(),
+                                            "%.0f"
+                                        )
+                                    )
                             }
-                        )
-                    }
-                    binding.autotuneResultsCard.visibility = if (autotunePlugin.calculationRunning && autotunePlugin.result.isEmpty()) View.GONE else View.VISIBLE
+                        }
+                    )
                 }
+                binding.autotuneResultsCard.visibility = if (autotunePlugin.calculationRunning && autotunePlugin.result.isEmpty()) View.GONE else View.VISIBLE
             }
         }
     }
@@ -626,18 +640,12 @@ class AutotuneFragment : DaggerFragment() {
      */
     private fun lastBasalInjectionDose(): Double? =
         try {
-            persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), false)
-                .blockingGet()
+            persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), TE.Type.NOTE, false)
                 .sortedByDescending(TE::timestamp)
-                .firstNotNullOfOrNull { extractBasalDose(it.note) }
+                .firstNotNullOfOrNull { BasalInjection.extractDose(it.note) }
         } catch (e: Exception) {
             null
         }
-
-    private val basalDoseRegex = Regex("(?i)\\bLantus\\s*[:#]?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*U\\b")
-
-    private fun extractBasalDose(note: String?): Double? =
-        note?.let { basalDoseRegex.find(it)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull() }
 
     private fun log(message: String) {
         autotuneFS.atLog("[Fragment] $message")

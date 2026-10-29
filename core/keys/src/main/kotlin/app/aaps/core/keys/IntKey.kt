@@ -54,8 +54,8 @@ enum class IntKey(
     MealUpfrontPercentageHeavy("meal_upfront_percentage_heavy", 60, 10, 100, dependency = BooleanKey.MdiMealMacroAssistantEnabled),
     MealFatIntensityRefG("meal_fat_intensity_ref_g", 40, 10, 200, dependency = BooleanKey.MdiMealMacroAssistantEnabled),
     MealProteinIntensityRefG("meal_protein_intensity_ref_g", 80, 20, 400, dependency = BooleanKey.MdiMealMacroAssistantEnabled),
-    MealMinFatG("meal_min_fat_g", 5, 0, 50, dependency = BooleanKey.MdiMealMacroAssistantEnabled),
-    MealMinProteinG("meal_min_protein_g", 10, 0, 100, dependency = BooleanKey.MdiMealMacroAssistantEnabled),
+    MealMinFatG("meal_min_fat_g", 30, 0, 100, dependency = BooleanKey.MdiMealMacroAssistantEnabled),
+    MealMinProteinG("meal_min_protein_g", 40, 0, 200, dependency = BooleanKey.MdiMealMacroAssistantEnabled),
     ProtectionTimeout("protection_timeout", 1, 1, 180, defaultedBySM = true),
     ProtectionTypeSettings("settings_protection", 0, 0, 5),
     ProtectionTypeApplication("application_protection", 0, 0, 5),
@@ -76,7 +76,8 @@ enum class IntKey(
     AlertsPumpUnreachableThreshold("pump_unreachable_threshold", 30, 30, 300, defaultedBySM = true, dependency = BooleanKey.AlertPumpUnreachable),
     MdiMissedLantusGracePeriodMinutes("mdi_missed_lantus_grace_period_minutes", 120, 0, 240, dependency = BooleanKey.MdiMissedLantusReminderEnabled),
     MdiMissedLantusReRaiseIntervalMinutes("mdi_missed_lantus_re_raise_interval_minutes", 60, 15, 240, dependency = BooleanKey.MdiMissedLantusReminderEnabled),
-    MdiMissedLantusLookbackDays("mdi_missed_lantus_lookback_days", 5, 1, 30, dependency = BooleanKey.MdiMissedLantusReminderEnabled),
+    // min 2 days: the reminder delay is 24 h + grace, a 1-day window could never contain an overdue dose
+    MdiMissedLantusLookbackDays("mdi_missed_lantus_lookback_days", 5, 2, 30, dependency = BooleanKey.MdiMissedLantusReminderEnabled),
     InsulinOrefPeak("insulin_oref_peak", 75, 35, 120, hideParentScreenIfHidden = true),
 
     AutotuneDefaultTuneDays("autotune_default_tune_days", 5, 1, 30),

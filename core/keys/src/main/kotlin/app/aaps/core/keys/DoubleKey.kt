@@ -53,5 +53,7 @@ enum class DoubleKey(
     ApsAutoIsfSmbMaxRangeExtension("openapsama_smb_max_range_extension", 1.0, 1.0, 5.0, defaultedBySM = true),
     MdiMinBolusSuggestion("mdi_min_bolus_suggestion", 0.5, 0.5, 15.0, dependency = BooleanKey.MdiBolusSuggestionEnabled),
     MdiMaxBolusSuggestion("mdi_max_bolus_suggestion", 4.0, 0.5, 15.0, dependency = BooleanKey.MdiBolusSuggestionEnabled),
+    // MDI: sanity bound for a recorded long-acting (Lantus) injection - catches typos like 200 for 20
+    MdiMaxBasalInjection("mdi_max_basal_injection", 30.0, 1.0, 200.0),
 
 }

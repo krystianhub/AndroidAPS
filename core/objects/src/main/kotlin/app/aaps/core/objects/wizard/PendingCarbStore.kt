@@ -2,7 +2,13 @@ package app.aaps.core.objects.wizard
 
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
 import org.json.JSONObject
@@ -20,7 +26,10 @@ import javax.inject.Singleton
 @Singleton
 class PendingCarbStore @Inject constructor(
     private val dateUtil: DateUtil,
-    private val sp: SP
+    private val sp: SP,
+    private val aapsLogger: AAPSLogger,
+    private val rh: ResourceHelper,
+    private val rxBus: RxBus
 ) {
 
     // In-memory cache. Loaded lazily from SP on first access so the UI refresh path does not
@@ -32,6 +41,10 @@ class PendingCarbStore @Inject constructor(
     private var expired: PendingCarbs? = null
     // Set while a commit is in flight so two "Eat now" taps cannot insert the same carbs twice.
     private var committing = false
+    // A claim older than [CLAIM_TIMEOUT_MS] can be taken over, so a lost Rx callback cannot block
+    // "Eat now" forever. The token makes the superseded claim's late callback a no-op.
+    private var commitStartedAt = 0L
+    private var claimToken = 0L
 
     @Synchronized
     fun setPending(carbs: PendingCarbs) {
@@ -40,7 +53,9 @@ class PendingCarbStore @Inject constructor(
         loaded = true
         expired = null
         committing = false
-        sp.putString(KEY, stamped.toJson().toString())
+        commitStartedAt = 0L
+        claimToken++
+        writePending(stamped.toJson().toString())
     }
 
     @Synchronized
@@ -49,7 +64,9 @@ class PendingCarbStore @Inject constructor(
         loaded = true
         expired = null
         committing = false
-        sp.remove(KEY)
+        commitStartedAt = 0L
+        claimToken++
+        removePending()
     }
 
     /** Returns true if a deferred carb entry exists and has not exceeded its timeout. */
@@ -60,28 +77,41 @@ class PendingCarbStore @Inject constructor(
     fun getPending(): PendingCarbs? = pendingOrNull()
 
     /**
-     * Atomically claims the pending entry for a commit. Returns null when nothing is pending or a
-     * commit is already in progress. The entry stays in SP until [commitSucceeded], so a failed
-     * write or a process death cannot lose it.
+     * Atomically claims the pending entry for a commit, null when nothing is pending or a commit is
+     * already running.
+     *
+     * The persisted copy is removed when the claim is taken (at-least-once): a process death after
+     * the DB write cannot insert the same carbs twice - dying in the short window between claim and
+     * write loses them instead, which is the safer failure. Pass the [PendingCarbClaim.token] back
+     * to [commitSucceeded]/[commitFailed]; a superseded claim is ignored.
      */
     @Synchronized
-    fun beginCommit(): PendingCarbs? {
-        if (committing) return null
+    fun beginCommit(): PendingCarbClaim? {
+        if (committing && !claimExpired()) return null
         val pending = pendingOrNull() ?: return null
         committing = true
-        return pending
+        commitStartedAt = dateUtil.now()
+        cached = pending
+        claimToken++
+        removePending()
+        return PendingCarbClaim(pending, claimToken)
     }
 
-    /** Drops the claimed entry after a successful commit. */
+    /** Drops the claimed entry; false when the claim was superseded - the caller must then skip the tails. */
     @Synchronized
-    fun commitSucceeded() {
+    fun commitSucceeded(token: Long): Boolean {
+        if (token != claimToken) return false
         clearPending()
+        return true
     }
 
-    /** Releases the claim after a failed commit so the user can retry "Eat now". */
+    /** Releases the claim after a failed commit and restores the persisted copy for a retry. */
     @Synchronized
-    fun commitFailed() {
+    fun commitFailed(token: Long) {
+        if (token != claimToken) return
         committing = false
+        commitStartedAt = 0L
+        cached?.let { writePending(it.toJson().toString()) }
     }
 
     /**
@@ -93,7 +123,8 @@ class PendingCarbStore @Inject constructor(
     fun consumeExpired(): PendingCarbs? {
         val e = expired ?: return null
         expired = null
-        sp.remove(KEY)
+        // a stale expiry marker must not wipe an entry set in the meantime
+        if (cached == null) removePending()
         return e
     }
 
@@ -116,18 +147,49 @@ class PendingCarbStore @Inject constructor(
         return pending
     }
 
+    private fun claimExpired(): Boolean = dateUtil.now() - commitStartedAt > CLAIM_TIMEOUT_MS
+
+    /**
+     * `commit = true`: the stored entry is the record of an already-injected bolus, so it must not
+     * sit in the async apply() queue - a process kill would resurrect a consumed entry.
+     */
+    private fun writePending(json: String) {
+        sp.edit(commit = true) { putString(KEY, json) }
+    }
+
+    private fun removePending() {
+        sp.edit(commit = true) { remove(KEY) }
+    }
+
     private fun load(): PendingCarbs? {
         val json = sp.getStringOrNull(KEY, null) ?: return null
         return try {
-            JSONObject(json).toPendingCarbs()
-        } catch (_: Exception) {
+            JSONObject(json).toPendingCarbs() ?: run {
+                reportUnreadable(null)
+                null
+            }
+        } catch (e: Exception) {
+            reportUnreadable(e)
             null
         }
+    }
+
+    /** A silently dropped entry leaves the logged bolus without carbs - report it. */
+    private fun reportUnreadable(cause: Throwable?) {
+        if (cause == null) aapsLogger.error(LTag.DATABASE, "Discarding unreadable deferred carb entry")
+        else aapsLogger.error(LTag.DATABASE, "Discarding unreadable deferred carb entry", cause)
+        removePending()
+        rxBus.send(
+            EventNewNotification(
+                Notification(Notification.USER_MESSAGE, rh.gs(app.aaps.core.ui.R.string.deferred_carbs_unreadable), Notification.NORMAL)
+            )
+        )
     }
 
     companion object {
         private const val KEY = "pending_carbs_entry"
         private const val TIMEOUT_MS = 60 * 60 * 1000L // 1 hour
+        private const val CLAIM_TIMEOUT_MS = 60 * 1000L // 1 minute
     }
 }
 
@@ -138,6 +200,9 @@ data class PendingCarbs(
     /** Stamped by [PendingCarbStore.setPending]; a value passed here is ignored. */
     val createdAt: Long = 0L
 )
+
+/** A claimed deferred entry; [token] identifies the claim for [PendingCarbStore.commitSucceeded]/`commitFailed`. */
+data class PendingCarbClaim(val pending: PendingCarbs, val token: Long)
 
 private fun PendingCarbs.toJson(): JSONObject = JSONObject().apply {
     put("carbs", mainCarbs.carbs)
@@ -168,7 +233,9 @@ private fun PendingCarbs.toJson(): JSONObject = JSONObject().apply {
 
 private fun JSONObject.toPendingCarbs(): PendingCarbs? {
     val carbs = optDouble("carbs", 0.0)
-    if (carbs <= 0.0) return null
+    val planJson = optJSONObject("plan")
+    // a tails-only plan is valid with 0 main carbs
+    if (carbs <= 0.0 && planJson == null) return null
     val mainCarbs = DetailedBolusInfo().apply {
         this.carbs = carbs
         carbsTimestamp = optLong("carbsTimestamp", 0L)
@@ -178,7 +245,7 @@ private fun JSONObject.toPendingCarbs(): PendingCarbs? {
         mgdlGlucose = if (isNull("mgdlGlucose")) null else optDouble("mgdlGlucose")
         glucoseType = if (isNull("glucoseType")) null else TE.MeterType.valueOf(optString("glucoseType"))
     }
-    val mealPlan = optJSONObject("plan")?.let { plan ->
+    val mealPlan = planJson?.let { plan ->
         MealMacroPlan(
             upfrontCarbs = plan.optInt("upfrontCarbs"),
             primaryTailCarbs = plan.optInt("primaryTailCarbs"),

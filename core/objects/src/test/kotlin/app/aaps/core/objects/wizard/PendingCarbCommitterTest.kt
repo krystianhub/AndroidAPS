@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito.clearInvocations
+import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doAnswer
@@ -48,6 +49,23 @@ class PendingCarbCommitterTest {
             prefs.remove(it.arguments[0] as String)
             Unit
         }.whenever(it).remove(anyString())
+        // the store writes/removes the pending entry through edit(commit = true)
+        doAnswer { invocation ->
+            val block = invocation.getArgument<(SP.Editor) -> Unit>(1)
+            block(newEditor())
+            Unit
+        }.whenever(it).edit(any(), any())
+    }
+
+    private fun newEditor(): SP.Editor = mock<SP.Editor>().also { e ->
+        doAnswer { invocation ->
+            prefs[invocation.arguments[0] as String] = invocation.arguments[1] as String
+            Unit
+        }.whenever(e).putString(anyString(), anyString())
+        doAnswer { invocation ->
+            prefs.remove(invocation.arguments[0] as String)
+            Unit
+        }.whenever(e).remove(anyString())
     }
 
     private val aapsLogger = mock<AAPSLogger>()
@@ -66,7 +84,7 @@ class PendingCarbCommitterTest {
         prefs.clear()
         now = 1_000_000L
         clearInvocations(sp)
-        store = PendingCarbStore(dateUtil, sp)
+        store = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus)
         committer = PendingCarbCommitter(aapsLogger, rh, rxBus, uel, persistenceLayer, eCarbsScheduler, uiInteraction, dateUtil, store)
         whenever(persistenceLayer.insertOrUpdateCarbs(anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
             .thenReturn(Single.just(PersistenceLayer.TransactionResult<CA>()))
@@ -188,6 +206,30 @@ class PendingCarbCommitterTest {
         assertThat(committer.commit(context)).isTrue()
 
         // The main carbs are persisted, so the entry is gone and a retry would not duplicate them
+        assertThat(store.isPending()).isFalse()
+    }
+
+    @Test
+    fun `failing eCarbs scheduling raises an alarm`() {
+        store.setPending(pending(plan = mealPlan()))
+        whenever(eCarbsScheduler.schedule(anyOrNull(), anyOrNull<MealMacroPlan>(), anyOrNull(), anyOrNull(), anyOrNull()))
+            .thenThrow(RuntimeException("scheduler failure"))
+
+        committer.commit(context)
+
+        verify(uiInteraction).runAlarm(anyOrNull(), anyOrNull(), any())
+    }
+
+    @Test
+    fun `tails only entry schedules the tails without inserting main carbs`() {
+        val plan = mealPlan()
+        store.setPending(pending(carbs = 0.0, plan = plan))
+
+        assertThat(committer.commit(context)).isTrue()
+
+        // createCarbs() rejects an empty record, so the main carbs must not be written at all
+        verify(persistenceLayer, never()).insertOrUpdateCarbs(anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull())
+        verify(eCarbsScheduler).schedule(same(context), same(plan), eq(Sources.WizardDialog), eq("test meal"), eq(0))
         assertThat(store.isPending()).isFalse()
     }
 }

@@ -14,14 +14,15 @@ class MealMacroPlanTest {
     }
 
     @Test
-    fun `trace macros below activation thresholds fall back to upstream logic`() {
-        // splash of oil in the pan: 1 g fat, no protein -> no plan, plain wizard
+    fun `macros below the 30 g fat or 40 g protein thresholds fall back to upstream logic`() {
+        // splash of oil in the pan / small yogurt -> no plan, plain wizard
         assertThat(MealMacroPlan.compute(carbs = 50, fat = 1, protein = 0, params = params)).isNull()
-        // small yogurt: 2 g fat, 6 g protein -> no plan
         assertThat(MealMacroPlan.compute(carbs = 15, fat = 2, protein = 6, params = params)).isNull()
+        // just below either threshold -> still plain wizard
+        assertThat(MealMacroPlan.compute(carbs = 50, fat = 29, protein = 39, params = params)).isNull()
         // either macro reaching its threshold activates the plan
-        assertThat(MealMacroPlan.compute(carbs = 50, fat = 5, protein = 0, params = params)).isNotNull()
-        assertThat(MealMacroPlan.compute(carbs = 50, fat = 0, protein = 10, params = params)).isNotNull()
+        assertThat(MealMacroPlan.compute(carbs = 50, fat = 30, protein = 0, params = params)).isNotNull()
+        assertThat(MealMacroPlan.compute(carbs = 50, fat = 0, protein = 40, params = params)).isNotNull()
     }
 
     @Test
@@ -40,11 +41,11 @@ class MealMacroPlanTest {
     }
 
     @Test
-    fun `degenerate fat-only plan with zero gram tails falls back to plain wizard`() {
-        // 10 g fat at 8% = 0.8 g -> truncates to 0 -> no measurable tail -> no plan
-        assertThat(MealMacroPlan.compute(carbs = 0, fat = 10, protein = 0, params = params)).isNull()
-        // 20 g fat = 1.6 -> 1 g tail -> plan exists
-        assertThat(MealMacroPlan.compute(carbs = 0, fat = 20, protein = 0, params = params)).isNotNull()
+    fun `degenerate plan with zero gram tails falls back to plain wizard`() {
+        // fat coverage disabled -> the equivalent truncates to 0 g -> no measurable tail -> no plan
+        assertThat(MealMacroPlan.compute(carbs = 0, fat = 30, protein = 0, params = params.copy(fatPct = 0.0))).isNull()
+        // 30 g fat at 8% = 2.4 -> 2 g tail -> plan exists
+        assertThat(MealMacroPlan.compute(carbs = 0, fat = 30, protein = 0, params = params)).isNotNull()
     }
 
     @Test
@@ -90,16 +91,17 @@ class MealMacroPlanTest {
     }
 
     @Test
-    fun `lean meal gets gentle plan`() {
-        val plan = MealMacroPlan.compute(carbs = 60, fat = 5, protein = 10, params = params)!!
+    fun `leanest activating meal gets gentle plan`() {
+        // protein at its activation minimum, no fat -> the leanest meal that still plans
+        val plan = MealMacroPlan.compute(carbs = 60, fat = 0, protein = 40, params = params)!!
 
-        // intensity = (5/40 + 10/80) / 2 = 0.125
-        assertThat(plan.intensity).isWithin(0.001).of(0.125)
+        // intensity = (0/40 + 40/80) / 2 = 0.25
+        assertThat(plan.intensity).isWithin(0.001).of(0.25)
 
-        // almost all carbs up front, pct near lean
-        assertThat(plan.upfrontCarbs).isEqualTo(56)
-        assertThat(plan.suggestedUpfrontPercentage).isEqualTo(95)
-        assertThat(plan.primaryTailCarbs).isEqualTo(5) // 4 slow + int(10*0.1) = 1
+        // most carbs up front, pct near lean
+        assertThat(plan.upfrontCarbs).isEqualTo(52)
+        assertThat(plan.suggestedUpfrontPercentage).isEqualTo(90)
+        assertThat(plan.primaryTailCarbs).isEqualTo(12) // 8 slow + int(40*0.1) = 4
     }
 
     @Test

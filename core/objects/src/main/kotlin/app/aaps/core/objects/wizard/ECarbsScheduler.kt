@@ -7,6 +7,8 @@ import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
@@ -26,6 +28,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class ECarbsScheduler @Inject constructor(
+    private val aapsLogger: AAPSLogger,
     private val rh: ResourceHelper,
     private val activePlugin: ActivePlugin,
     private val commandQueue: CommandQueue,
@@ -70,12 +73,16 @@ class ECarbsScheduler @Inject constructor(
             )
         )
         if (activePlugin.activePump.isMDI()) {
-            // MDI: no pump to deliver with - record the carbs directly
+            // MDI: no pump to deliver with - record the carbs directly. A silent failure would
+            // leave the tail without COB.
             persistenceLayer.insertOrUpdateCarbs(
                 carbs = detailedBolusInfo.createCarbs(),
                 action = Action.EXTENDED_CARBS,
                 source = source
-            ).subscribe()
+            ).subscribe({}, {
+                aapsLogger.error(LTag.DATABASE, "Failed to persist extended carbs", it)
+                uiInteraction.runAlarm(it.message ?: it.toString(), rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+            })
         } else {
             commandQueue.bolus(detailedBolusInfo, object : Callback() {
                 override fun run() {

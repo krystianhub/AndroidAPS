@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSSMB
 
+import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatusSMB
@@ -210,6 +211,50 @@ class DetermineBasalSmbMdiTest : TestBaseWithProfile() {
             currentTime = dateUtil.now(),
             flatBGsDetected = false,
             dynIsfMode = false
+        )
+        assertThat(mdi.predictedLow).isTrue()
+    }
+
+    @Test
+    fun `predictedLow is set when the BG data is stale`() {
+        // no fresh prediction -> never suggest insulin: LoopPlugin still asks for a pen suggestion
+        // for this result, and with smoothing on a stale high insulinReq would size it
+        val stale = GlucoseStatusSMB(
+            glucose = 250.0,
+            noise = 0.0,
+            delta = 1.0,
+            shortAvgDelta = 1.0,
+            longAvgDelta = 1.0,
+            date = dateUtil.now() - T.mins(30).msecs(),
+        )
+        val mdi = determineBasalSMB.determine_basal(
+            glucose_status = stale,
+            currenttemp = CurrentTemp(duration = 0, rate = 0.0, minutesrunning = null),
+            iob_data_array = iobArray(),
+            profile = profile(basalAdjustmentAllowed = false),
+            autosens_data = AutosensResult(ratio = 1.0),
+            meal_data = MealData(),
+            microBolusAllowed = false,
+            currentTime = dateUtil.now(),
+            flatBGsDetected = false,
+            dynIsfMode = false,
+        )
+        assertThat(mdi.predictedLow).isTrue()
+    }
+
+    @Test
+    fun `predictedLow is set when the CGM data is flat`() {
+        val mdi = determineBasalSMB.determine_basal(
+            glucose_status = GlucoseStatusSMB(glucose = 140.0, noise = 0.0, delta = 0.0, shortAvgDelta = 0.0, longAvgDelta = 0.0, date = dateUtil.now()),
+            currenttemp = CurrentTemp(duration = 0, rate = 0.0, minutesrunning = null),
+            iob_data_array = iobArray(),
+            profile = profile(basalAdjustmentAllowed = false),
+            autosens_data = AutosensResult(ratio = 1.0),
+            meal_data = MealData(),
+            microBolusAllowed = false,
+            currentTime = dateUtil.now(),
+            flatBGsDetected = true,
+            dynIsfMode = false,
         )
         assertThat(mdi.predictedLow).isTrue()
     }

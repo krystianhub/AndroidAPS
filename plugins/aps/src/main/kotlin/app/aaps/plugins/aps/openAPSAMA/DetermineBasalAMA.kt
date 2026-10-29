@@ -124,6 +124,8 @@ class DetermineBasalAMA @Inject constructor(
         // TODO: figure out how to use raw isig data to estimate BG
         if (bg < 39) {  //Dexcom is in ??? mode or calibrating
             rT.reason.append("CGM is calibrating or in ??? state")
+            // no fresh prediction -> never suggest insulin
+            rT.predictedLow = true
             if (basal <= currenttemp.rate * 1.2) { // high temp is running
                 rT.reason.append("; setting current basal of ${round(basal, 2)} as temp")
                 return setTempBasal(basal, 30, profile, rT, currenttemp)
@@ -213,6 +215,7 @@ class DetermineBasalAMA @Inject constructor(
             eventualBG = eventualBG,
             snoozeBG = snoozeBG,
             targetBG = target_bg,
+            insulinReq = 0.0,
             consoleLog = consoleLog,
             consoleError = consoleError
         )
@@ -316,7 +319,10 @@ class DetermineBasalAMA @Inject constructor(
         // Projected-low guard for the MDI pen suggestion (AMA has no minGuardBG/enableSMB gate -
         // its own low handling is the bg < threshold branch below, which returns before any
         // insulin is requested). Exposed so presentPenBolusSuggestion can bail out on it.
-        rT.predictedLow = minPredBG < threshold
+        // minPredBG only samples the COB curve after 45 min, so take the minimum over every curve
+        // from index 0 - this is the conservative quantity the SMB/AutoISF minGuardBG is.
+        val minPredictedBG = listOf(COBpredBGs, IOBpredBGs, aCOBpredBGs).flatten().minOrNull() ?: minPredBG
+        rT.predictedLow = minPredictedBG < threshold
         if (bg < threshold) { // low glucose suspend mode: BG is < ~80
             rT.reason.append("BG ${convert_bg(bg)}<${convert_bg(threshold)}")
             if ((glucose_status.delta <= 0 && minDelta <= 0) || (glucose_status.delta < expectedDelta && minDelta < expectedDelta) || bg < 60) {

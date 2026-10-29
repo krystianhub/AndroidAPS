@@ -37,7 +37,6 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DecimalFormatter
-import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.SafeParse
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
@@ -46,6 +45,7 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.interfaces.pump.InjectionPosition
 import app.aaps.core.objects.extensions.formatColor
+import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.toast.ToastUtils
@@ -81,7 +81,6 @@ class InsulinDialog : DialogFragmentWithDate() {
     @Inject lateinit var uiInteraction: UiInteraction
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var decimalFormatter: DecimalFormatter
-    @Inject lateinit var hardLimits: HardLimits
     @Inject lateinit var rxBus: RxBus
     @Inject lateinit var loop: Loop
 
@@ -89,6 +88,10 @@ class InsulinDialog : DialogFragmentWithDate() {
     private var lastPosition: Int? = null
     private var showPosition = false
     private var isMDI = false
+    private var restoringViewState = false
+
+    private val recordOnlyForced: Boolean
+        get() = config.AAPSCLIENT || loop.runningMode.isPumpSuspended() || !activePlugin.activePump.isInitialized()
 
     private val disposable = CompositeDisposable()
     private var _binding: DialogInsulinBinding? = null
@@ -108,7 +111,7 @@ class InsulinDialog : DialogFragmentWithDate() {
     }
 
     private fun validateInputs() {
-        val maxInsulin = if (binding.recordBasalInsulin.isChecked) hardLimits.maxBolus() else constraintChecker.getMaxBolusAllowed().value()
+        val maxInsulin = if (binding.recordBasalInsulin.isChecked) preferences.get(DoubleKey.MdiMaxBasalInjection) else constraintChecker.getMaxBolusAllowed().value()
         if (abs(binding.time.value.toInt()) > 12 * 60) {
             binding.time.value = 0.0
             ToastUtils.warnToast(context, app.aaps.core.ui.R.string.constraint_applied)
@@ -123,6 +126,8 @@ class InsulinDialog : DialogFragmentWithDate() {
         super.onSaveInstanceState(savedInstanceState)
         savedInstanceState.putDouble("time", binding.time.value)
         savedInstanceState.putDouble("amount", binding.amount.value)
+        // the basal picker limit must survive recreation too (the checkbox state is restored later)
+        savedInstanceState.putBoolean("record_basal_insulin", binding.recordBasalInsulin.isChecked)
     }
 
     override fun onCreateView(
@@ -139,8 +144,11 @@ class InsulinDialog : DialogFragmentWithDate() {
 
         val pump = activePlugin.activePump
         isMDI = pump.isMDI()
-        val recordOnlyForced = config.AAPSCLIENT || loop.runningMode.isPumpSuspended() || !pump.isInitialized()
         val maxInsulin = constraintChecker.getMaxBolusAllowed().value()
+        // view state (incl. the basal checkbox) is restored after onViewCreated - don't prefill over it
+        restoringViewState = savedInstanceState != null
+        // the saved dose must be restored under the same picker limit it was saved with
+        val basalRestored = savedInstanceState?.getBoolean("record_basal_insulin", false) == true
 
         if (recordOnlyForced) {
             binding.recordOnly.isChecked = true
@@ -163,9 +171,11 @@ class InsulinDialog : DialogFragmentWithDate() {
             savedInstanceState?.getDouble("time")
                 ?: 0.0, -12 * 60.0, 12 * 60.0, 5.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
+        val bolusStep = activePlugin.activePump.pumpDescription.bolusStep
+        val initialMax = amountMax(basalRestored, maxInsulin, preferences.get(DoubleKey.MdiMaxBasalInjection))
         binding.amount.setParams(
-            savedInstanceState?.getDouble("amount")
-                ?: 0.0, 0.0, maxInsulin, activePlugin.activePump.pumpDescription.bolusStep, decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep),
+            savedInstanceState?.getDouble("amount") ?: 0.0,
+            0.0, initialMax, bolusStep, decimalFormatter.pumpSupportedBolusFormat(bolusStep),
             false, binding.okcancel.ok, textWatcher
         )
 
@@ -224,31 +234,43 @@ class InsulinDialog : DialogFragmentWithDate() {
         // MDI: eating-soon TT from the insulin dialog is useless (no pump to enact anything with)
         binding.startEatingSoonTt.visibility = (!activePlugin.activePump.isMDI()).toVisibility()
         if (activePlugin.activePump.isMDI()) binding.startEatingSoonTt.isChecked = false
-        binding.recordBasalInsulin.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                binding.recordOnly.isChecked = true
-                binding.recordOnly.isEnabled = false
-                binding.startEatingSoonTt.isChecked = false
-                binding.startEatingSoonTt.isEnabled = false
-                // prefill with the last recorded basal (Lantus) dose
-                val lastBasalDose = findLastBasalDose()
-                binding.amount.setParams(
-                    lastBasalDose ?: binding.amount.value, 0.0, hardLimits.maxBolus(),
-                    activePlugin.activePump.pumpDescription.bolusStep,
-                    decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep),
-                    false, binding.okcancel.ok, textWatcher
-                )
-                if (lastBasalDose != null) binding.amount.value = lastBasalDose
-            } else {
-                binding.recordOnly.isEnabled = !recordOnlyForced
-                binding.startEatingSoonTt.isEnabled = true
-                binding.amount.setParams(
-                    binding.amount.value, 0.0, maxInsulin,
-                    activePlugin.activePump.pumpDescription.bolusStep,
-                    decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep),
-                    false, binding.okcancel.ok, textWatcher
-                )
-            }
+        // a restored checkbox must not prefill over the restored amount
+        binding.recordBasalInsulin.setOnCheckedChangeListener { _, _ ->
+            applyBasalUiState(prefillAmount = !restoringViewState)
+        }
+    }
+
+    override fun onViewStateRestored(savedInstanceState: Bundle?) {
+        super.onViewStateRestored(savedInstanceState)
+        restoringViewState = false
+        // restored checkbox state must still apply the basal picker limits
+        if (savedInstanceState != null && _binding != null && binding.recordBasalInsulin.isChecked) applyBasalUiState(prefillAmount = false)
+    }
+
+    /** Applies the bolus/basal UI state. Idempotent so it can run again after a view-state restore. */
+    private fun applyBasalUiState(prefillAmount: Boolean) {
+        val pumpDescription = activePlugin.activePump.pumpDescription
+        val formatter = decimalFormatter.pumpSupportedBolusFormat(pumpDescription.bolusStep)
+        val currentAmount = binding.amount.value
+        if (binding.recordBasalInsulin.isChecked) {
+            binding.recordOnly.isChecked = true
+            binding.recordOnly.isEnabled = false
+            binding.startEatingSoonTt.isChecked = false
+            binding.startEatingSoonTt.isEnabled = false
+            // never overwrite an amount the user already typed with the previous dose
+            val lastBasalDose = if (prefillAmount && currentAmount == 0.0) findLastBasalDose() else null
+            binding.amount.setParams(
+                lastBasalDose ?: currentAmount, 0.0, preferences.get(DoubleKey.MdiMaxBasalInjection),
+                pumpDescription.bolusStep, formatter, false, binding.okcancel.ok, textWatcher
+            )
+            if (lastBasalDose != null) binding.amount.value = lastBasalDose
+        } else {
+            binding.recordOnly.isEnabled = !recordOnlyForced
+            binding.startEatingSoonTt.isEnabled = true
+            binding.amount.setParams(
+                currentAmount, 0.0, constraintChecker.getMaxBolusAllowed().value(),
+                pumpDescription.bolusStep, formatter, false, binding.okcancel.ok, textWatcher
+            )
         }
     }
 
@@ -263,6 +285,12 @@ class InsulinDialog : DialogFragmentWithDate() {
         val pumpDescription = activePlugin.activePump.pumpDescription
         val insulin = SafeParse.stringToDouble(binding.amount.text)
         val recordBasalChecked = binding.recordBasalInsulin.isChecked
+        val maxBasalInjection = preferences.get(DoubleKey.MdiMaxBasalInjection)
+        // a basal (Lantus) dose is record-only and rewrites the profile, so it must not bypass the configured cap
+        if (recordBasalChecked && insulin > maxBasalInjection) {
+            ToastUtils.warnToast(context, rh.gs(R.string.basal_insulin_above_max, maxBasalInjection))
+            return false
+        }
         // basal insulin is record-only, bolus delivery constraints do not apply
         val insulinAfterConstraints =
             if (recordBasalChecked) insulin
@@ -271,10 +299,11 @@ class InsulinDialog : DialogFragmentWithDate() {
         val units = profileFunction.getUnits()
         val unitLabel = if (units == GlucoseUnit.MMOL) rh.gs(app.aaps.core.ui.R.string.mmol) else rh.gs(app.aaps.core.ui.R.string.mgdl)
         val recordOnlyChecked = binding.recordOnly.isChecked
-        val eatingSoonChecked = binding.startEatingSoonTt.isChecked
+        // MDI hides the eating-soon TT control - a restored/checked state must not create a TT
+        val eatingSoonChecked = binding.startEatingSoonTt.isChecked && !isMDI
         val lastRecordedDose = if (recordBasalChecked) findLastBasalDose() else null
-        // no notes -> fall back to the profile's 24 h basal total (already rate-quantized by past rewrites)
-        val previousBasalDose = lastRecordedDose ?: profileFunction.getProfile()?.baseBasalSum()
+        // the stored profile, not getProfile(): that EPS has the active % already baked in, flatRateTotal() not
+        val previousBasalDose = lastRecordedDose ?: storedProfileBasalSum()
         val previousDoseFromProfile = lastRecordedDose == null && previousBasalDose != null
 
         if (insulinAfterConstraints > 0) {
@@ -412,6 +441,13 @@ class InsulinDialog : DialogFragmentWithDate() {
             null
         }
 
+    /** 24 h basal total of the stored (unscaled) profile a rewrite edits; falls back to the effective one. */
+    private fun storedProfileBasalSum(): Double? =
+        activePlugin.activeProfileSource.profile
+            ?.getSpecificProfile(profileFunction.getOriginalProfileName())
+            ?.let { ProfileSealed.Pure(it, activePlugin).baseBasalSum() }
+            ?: profileFunction.getProfile()?.baseBasalSum()
+
     private fun recordBasalInsulin(amount: Double, notes: String, time: Long, previousDose: Double?, previousDoseFromProfile: Boolean) {
         val doseText = decimalFormatter.toPumpSupportedBolus(amount, activePlugin.activePump.pumpDescription.bolusStep)
         val basalNotes = "Lantus " + doseText + "U" + if (notes.isNotEmpty()) " $notes" else ""
@@ -461,13 +497,19 @@ class InsulinDialog : DialogFragmentWithDate() {
         singleProfile.basal = JSONArray().put(JSONObject().put("time", "00:00").put("timeAsSeconds", 0).put("value", newFlatRate))
         profileSource.storeSettings(timestamp = dateUtil.now())
         val newStore = profileSource.profile ?: return
+        // keep a running profile switch (percentage / time shift / remaining duration) alive across the rewrite
+        val now = dateUtil.now()
+        // never carry over an expired limited switch: it stays the newest EPS until KeepAliveWorker
+        // re-applies, and re-creating it with duration 0 would freeze it permanently
+        val activeSwitch = persistenceLayer.getEffectiveProfileSwitchActiveAt(now)
+            ?.takeIf { isProfileSwitchCarryable(it.originalDuration, it.originalEnd, it.timestamp, now) }
         if (profileFunction.createProfileSwitch(
                 profileStore = newStore,
                 profileName = singleProfile.name,
-                durationInMinutes = 0,
-                percentage = 100,
-                timeShiftInHours = 0,
-                timestamp = dateUtil.now(),
+                durationInMinutes = activeSwitch?.let { remainingProfileSwitchMinutes(it.originalDuration, it.originalEnd, it.timestamp, now) } ?: 0,
+                percentage = activeSwitch?.originalPercentage ?: 100,
+                timeShiftInHours = activeSwitch?.let { T.msecs(it.originalTimeshift).hours().toInt() } ?: 0,
+                timestamp = now,
                 action = Action.PROFILE_SWITCH,
                 source = Sources.InsulinDialog,
                 note = rh.gs(R.string.record_basal_insulin),
@@ -515,5 +557,21 @@ class InsulinDialog : DialogFragmentWithDate() {
 
         internal fun flatRateTotal(amount: Double): Double =
             BasalInjection.flatRateTotal(amount)
+
+        /** Picker limit for the amount field - a basal (Lantus) dose has its own cap. */
+        internal fun amountMax(recordBasal: Boolean, bolusMax: Double, basalMax: Double): Double =
+            if (recordBasal) basalMax else bolusMax
+
+        /** Remaining duration of a running switch in minutes; 0 for a permanent switch (must stay permanent). */
+        internal fun remainingProfileSwitchMinutes(duration: Long, end: Long, timestamp: Long, now: Long): Int {
+            if (duration == 0L) return 0
+            // originalEnd is not always filled in - it is timestamp + duration
+            val endTime = if (end > 0) end else timestamp + duration
+            return max(0L, (endTime - now) / T.mins(1).msecs()).toInt()
+        }
+
+        /** A permanent switch, or a limited one that has not ended yet - anything worth carrying over. */
+        internal fun isProfileSwitchCarryable(duration: Long, end: Long, timestamp: Long, now: Long): Boolean =
+            duration == 0L || remainingProfileSwitchMinutes(duration, end, timestamp, now) > 0
     }
 }

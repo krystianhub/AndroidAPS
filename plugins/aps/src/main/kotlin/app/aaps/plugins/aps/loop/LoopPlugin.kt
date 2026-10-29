@@ -182,11 +182,15 @@ class LoopPlugin @Inject constructor(
     }
 
     override fun specialEnableCondition(): Boolean {
-        // Allow the loop plugin in MDI mode (virtual pump): open-loop APS recommendations,
-        // predictions and dynISF work without temp basals. Closed-loop enactment is
-        // disabled by SafetyPlugin.isClosedLoopAllowed() and by allowedNextModes(),
-        // because the pump cannot accept temp basals.
-        return true
+        // MDI may run open loop (no temp basals needed); closed-loop enactment is refused by
+        // SafetyPlugin.isClosedLoopAllowed() and allowedNextModes().
+        return try {
+            val pump = activePlugin.activePump
+            pump.isMDI() || pump.pumpDescription.isTempBasalCapable
+        } catch (_: Exception) {
+            // may fail during initialization
+            true
+        }
     }
 
     override fun minutesToEndOfSuspend(): Int =
@@ -786,19 +790,23 @@ class LoopPlugin @Inject constructor(
                 // the APS expresses basal corrections as a 30m temp: extra units = (rate - basal) * 0.5h
                 (result.rate - profile.getBasal()) * T.mins(30).msecs() / T.hours(1).msecs()
             else 0.0
+        // floor to the pen step BEFORE the constraints: applyBolusConstraints rounds to the
+        // nearest step (0.80 U -> 1.0 U), which would contradict round-down sizing
+        fun floorToStep(value: Double): Double = if (bolusStep > 0) floor(value / bolusStep) * bolusStep else value
+
         // full insulinReq replaces the halved micro-bolus. Deliberately NOT gated on smb > 0:
         // isClosedLoopAllowed() refuses MDI, so smb is always 0 and that gate would discard
         // insulinReq entirely (before the MDI refusal, smb fed the suggestions instead).
         val fullInsulinReq =
             result.insulinReq
                 ?.takeIf { it > 0 }
-                ?.let { constraintChecker.applyBolusConstraints(ConstraintObject(it, aapsLogger)).value() }
+                ?.let { constraintChecker.applyBolusConstraints(ConstraintObject(floorToStep(it), aapsLogger)).value() }
         // the median governs completely - 0.0 suppresses instead of falling back to the raw
         // value; only an empty window falls back to it
         val smoothedInsulinReq =
             if (preferences.get(BooleanKey.MdiBolusSuggestionSmoothing))
                 medianInsulinReq(result)?.let { median ->
-                    if (median > 0) constraintChecker.applyBolusConstraints(ConstraintObject(median, aapsLogger)).value() else 0.0
+                    if (median > 0) constraintChecker.applyBolusConstraints(ConstraintObject(floorToStep(median), aapsLogger)).value() else 0.0
                 }
             else null
         val effectiveInsulinReq = smoothedInsulinReq ?: fullInsulinReq

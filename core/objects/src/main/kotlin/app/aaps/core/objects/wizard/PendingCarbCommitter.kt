@@ -40,42 +40,58 @@ class PendingCarbCommitter @Inject constructor(
      * Overview instead of leaving stale buttons on screen.
      */
     fun commit(ctx: Context): Boolean {
-        val pending = pendingCarbStore.beginCommit() ?: return false
+        // the claim token makes a superseded callback a no-op, so the tails cannot be scheduled twice
+        val claim = pendingCarbStore.beginCommit() ?: return false
+        val pending = claim.pending
         pending.mainCarbs.carbsTimestamp = dateUtil.now()
         return try {
-            uel.log(
-                action = Action.CARBS,
-                source = pending.source,
-                note = pending.mainCarbs.notes,
-                listValues = listOf(ValueWithUnit.Gram(pending.mainCarbs.carbs.toInt()))
-            )
-            persistenceLayer.insertOrUpdateCarbs(
-                carbs = pending.mainCarbs.createCarbs(),
-                action = Action.CARBS,
-                source = pending.source
-            ).subscribe({
-                // Drop the claim as soon as the main carbs are persisted: the tails are best effort
-                // and must not leave the store stuck in "committing", which would block "Eat now".
-                pendingCarbStore.commitSucceeded()
-                pending.mealPlan?.let { plan ->
-                    try {
-                        eCarbsScheduler.schedule(ctx, plan, pending.source, baseNotes = pending.mainCarbs.notes ?: "", mealOffsetMin = 0)
-                    } catch (e: Exception) {
-                        aapsLogger.error(LTag.DATABASE, "Failed to schedule deferred eCarbs", e)
-                    }
-                }
-                rxBus.send(EventRefreshOverview("EatNow"))
-            }, {
-                aapsLogger.error(LTag.DATABASE, "Failed to persist deferred carbs", it)
-                pendingCarbStore.commitFailed()
-                uiInteraction.runAlarm(it.message ?: it.toString(), rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
-            })
+            // tails-only plan: createCarbs() rejects an empty record
+            if (pending.mainCarbs.carbs > 0) {
+                uel.log(
+                    action = Action.CARBS,
+                    source = pending.source,
+                    note = pending.mainCarbs.notes,
+                    listValues = listOf(ValueWithUnit.Gram(pending.mainCarbs.carbs.toInt()))
+                )
+                persistenceLayer.insertOrUpdateCarbs(
+                    carbs = pending.mainCarbs.createCarbs(),
+                    action = Action.CARBS,
+                    source = pending.source
+                ).subscribe({
+                    onPersisted(ctx, pending, claim.token)
+                }, {
+                    aapsLogger.error(LTag.DATABASE, "Failed to persist deferred carbs", it)
+                    pendingCarbStore.commitFailed(claim.token)
+                    uiInteraction.runAlarm(it.message ?: it.toString(), rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                })
+            } else {
+                onPersisted(ctx, pending, claim.token)
+            }
             true
         } catch (e: Exception) {
             // Nothing reached the persistence layer, so release the claim and let the user retry
             aapsLogger.error(LTag.DATABASE, "Failed to start deferred carb commit", e)
-            pendingCarbStore.commitFailed()
+            pendingCarbStore.commitFailed(claim.token)
             false
         }
+    }
+
+    /**
+     * Releases the claim before scheduling the tails - a tail failure must not leave the store stuck
+     * in "committing", which would block "Eat now".
+     */
+    private fun onPersisted(ctx: Context, pending: PendingCarbs, token: Long) {
+        // superseded: the entry was already committed elsewhere
+        if (!pendingCarbStore.commitSucceeded(token)) return
+        pending.mealPlan?.let { plan ->
+            try {
+                eCarbsScheduler.schedule(ctx, plan, pending.source, baseNotes = pending.mainCarbs.notes ?: "", mealOffsetMin = 0)
+            } catch (e: Exception) {
+                // The committed carbs alone under-cover the meal - tell the user, a log line is not enough
+                aapsLogger.error(LTag.DATABASE, "Failed to schedule deferred eCarbs", e)
+                uiInteraction.runAlarm(rh.gs(app.aaps.core.ui.R.string.deferred_carbs_tail_failed), rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+            }
+        }
+        rxBus.send(EventRefreshOverview("EatNow"))
     }
 }

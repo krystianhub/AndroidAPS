@@ -59,17 +59,33 @@ class InjectionPositionTest {
         assertThat(InjectionPosition.findLastPosition(boluses)).isEqualTo(7)
     }
 
+    // position-less records (careportal notes, boluses into an uncovered limb) must not
+    // consume the lookback budget
     @Test
-    fun skipsBolusesWithoutPositionInLookbackWindow() {
+    fun lookbackIgnoresRecordsWithoutPosition() {
         val boluses = listOf(
-            bolus(1_000, "pos 7"),   // oldest - outside a 3-bolus lookback
+            bolus(1_000, "pos 7"),   // oldest, but the only record carrying a position
             bolus(2_000, null),
             bolus(3_000, null),
             bolus(4_000, null)
         )
-        assertThat(InjectionPosition.findLastPosition(boluses, maxLookback = 3)).isNull()
-        // ...but found with a larger window
-        assertThat(InjectionPosition.findLastPosition(boluses, maxLookback = 4)).isEqualTo(7)
+        assertThat(InjectionPosition.findLastPosition(boluses, maxLookback = 1)).isEqualTo(7)
+        assertThat(InjectionPosition.findLastPosition(boluses, maxLookback = 3)).isEqualTo(7)
+    }
+
+    @Test
+    fun positionlessNotesDoNotStopLookback() {
+        assertThat(
+            InjectionPosition.findLastPosition(
+                listOf(bolus(1_000, "pos 5")),
+                listOf(note(2_000, "site change"), note(3_000, "Lantus 10.0U"), note(4_000, "stress"))
+            )
+        ).isEqualTo(5)
+    }
+
+    @Test
+    fun zeroLookbackFindsNothing() {
+        assertThat(InjectionPosition.findLastPosition(listOf(bolus(1_000, "pos 7")), maxLookback = 0)).isNull()
     }
 
     @Test

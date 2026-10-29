@@ -235,7 +235,7 @@ class CarbsDialog : DialogFragmentWithDate() {
                     }
                 }
 
-                if (shouldAutoCheckHypo) {
+                if (shouldAutoCheckHypo && !isMDI) {
                     binding.hypoTt.isChecked = true
                 }
             }
@@ -284,7 +284,7 @@ class CarbsDialog : DialogFragmentWithDate() {
         val useAlarm = binding.alarmCheckBox.isChecked
         val remindBolus = binding.bolusReminderCheckBox.isChecked
 
-        val activitySelected = binding.activityTt.isChecked
+        val activitySelected = binding.activityTt.isChecked && !activePlugin.activePump.isMDI()
         if (activitySelected)
             actions.add(
                 rh.gs(R.string.temp_target_short) + ": " + (decimalFormatter.to1Decimal(activityTT) + " " + unitLabel + " (" + rh.gs(
@@ -296,7 +296,7 @@ class CarbsDialog : DialogFragmentWithDate() {
                     app.aaps.core.ui.R.attr.tempTargetConfirmation
                 )
             )
-        val eatingSoonSelected = binding.eatingSoonTt.isChecked
+        val eatingSoonSelected = binding.eatingSoonTt.isChecked && !activePlugin.activePump.isMDI()
         if (eatingSoonSelected)
             actions.add(
                 rh.gs(R.string.temp_target_short) + ": " + (decimalFormatter.to1Decimal(eatingSoonTT) + " " + unitLabel + " (" + rh.gs(
@@ -304,7 +304,7 @@ class CarbsDialog : DialogFragmentWithDate() {
                     eatingSoonTTDuration
                 ) + ")").formatColor(context, rh, app.aaps.core.ui.R.attr.tempTargetConfirmation)
             )
-        val hypoSelected = binding.hypoTt.isChecked
+        val hypoSelected = binding.hypoTt.isChecked && !activePlugin.activePump.isMDI()
         if (hypoSelected)
             actions.add(
                 rh.gs(R.string.temp_target_short) + ": " + (decimalFormatter.to1Decimal(hypoTT) + " " + unitLabel + " (" + rh.gs(

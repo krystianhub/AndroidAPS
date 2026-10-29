@@ -3,6 +3,7 @@ package app.aaps.core.interfaces.utils
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.db.PersistenceLayer
+import kotlin.math.abs
 
 /**
  * Recent APS results (persisted + run in progress) and statistics over them.
@@ -15,7 +16,8 @@ object ApsResults {
 
     /**
      * Persisted results within [windowMs] before [now], merged with the live run
-     * (`timestamp to result`, null when none). A persisted twin of the live run is dropped.
+     * (`timestamp to result`, null when none). A persisted twin of the live run is dropped,
+     * whichever of the two timestamps is the older one.
      */
     fun recent(persistenceLayer: PersistenceLayer, now: Long, windowMs: Long, live: Pair<Long, APSResult>? = null): List<Pair<Long, APSResult>> {
         val windowStart = now - windowMs
@@ -28,7 +30,7 @@ object ApsResults {
         }
         val combined = (persisted + listOfNotNull(live)).associateBy { it.first }.toMutableMap()
         live?.let { (timestamp, result) ->
-            persisted.firstOrNull { timestamp - it.first in 0..PERSIST_DELAY_MS }
+            persisted.firstOrNull { abs(timestamp - it.first) <= PERSIST_DELAY_MS }
                 ?.let { combined.remove(it.first) }
             combined[timestamp] = timestamp to result
         }

@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.BasalInjection
 import app.aaps.core.interfaces.pump.WarnColors
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.stats.TddCalculator
@@ -31,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.max
 import java.util.concurrent.TimeUnit
 import java.util.Locale
 import javax.inject.Inject
@@ -135,19 +137,31 @@ class StatusLightHandler @Inject constructor(
      */
     fun updateLastBolusLight(view: TextView?, valueView: TextView? = null) {
         view ?: return
-        val lastBolus = persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)
-        if (lastBolus != null && lastBolus.amount > 0) {
-            val diff = dateUtil.computeDiff(lastBolus.timestamp, System.currentTimeMillis())
-            // include DAYS - computeDiff decomposes, so 24h+1m would otherwise show as "0h 01m"
-            val hours = (diff[TimeUnit.DAYS] ?: 0L) * 24 + (diff[TimeUnit.HOURS] ?: 0L)
-            val minutes = diff[TimeUnit.MINUTES] ?: 0L
-            view.text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
-            valueView?.text = formatDose(lastBolus.amount)
-            view.setTextColor(rh.gac(view.context, bolusColorAttr(lastBolus, System.currentTimeMillis())))
-        } else {
-            view.text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
-            view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
-            valueView?.text = rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        // DB access off the main thread - this runs on every Overview refresh
+        scope.launch {
+            val lastBolus = persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)
+            val now = System.currentTimeMillis()
+            val text: String
+            val dose: String?
+            val colorAttr: Int
+            if (lastBolus != null && lastBolus.amount > 0) {
+                val diff = dateUtil.computeDiff(lastBolus.timestamp, now)
+                // include DAYS - computeDiff decomposes, so 24h+1m would otherwise show as "0h 01m"
+                val hours = (diff[TimeUnit.DAYS] ?: 0L) * 24 + (diff[TimeUnit.HOURS] ?: 0L)
+                val minutes = diff[TimeUnit.MINUTES] ?: 0L
+                text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
+                dose = formatDose(lastBolus.amount)
+                colorAttr = bolusColorAttr(lastBolus, now)
+            } else {
+                text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+                dose = rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+                colorAttr = app.aaps.core.ui.R.attr.defaultTextColor
+            }
+            withContext(Dispatchers.Main) {
+                view.text = text
+                view.setTextColor(rh.gac(view.context, colorAttr))
+                valueView?.text = dose
+            }
         }
     }
 
@@ -195,40 +209,51 @@ class StatusLightHandler @Inject constructor(
      */
     fun updateLastBasalLight(view: TextView?, valueView: TextView? = null) {
         view ?: return
-        val lastBasalDose = try {
-            persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), false)
-                .blockingGet()
-                .sortedByDescending { it.timestamp }
-                .firstNotNullOfOrNull { te -> extractBasalDose(te.note)?.let { dose -> te to dose } }
-        } catch (e: Exception) {
-            null
-        }
-        if (lastBasalDose != null) {
-            val (lastBasal, dose) = lastBasalDose
-            val diff = dateUtil.computeDiff(lastBasal.timestamp, System.currentTimeMillis())
-            // include DAYS - computeDiff decomposes, so 24h+1m would otherwise show as "0h 01m"
-            val hours = (diff[TimeUnit.DAYS] ?: 0L) * 24 + (diff[TimeUnit.HOURS] ?: 0L)
-            val minutes = diff[TimeUnit.MINUTES] ?: 0L
-            view.text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
-            valueView?.text = formatDose(dose)
-            val hoursSince = hours + minutes / 60.0
-            view.setTextColor(
-                rh.gac(
-                    view.context, when {
-                        hoursSince < 2.0  -> app.aaps.core.ui.R.attr.defaultTextColor      // onset, not yet active
-                        hoursSince < 4.0  -> app.aaps.core.ui.R.attr.metadataTextWarningColor // ramping up
-                        hoursSince < 18.0 -> app.aaps.core.ui.R.attr.metadataTextOkColor   // full effect
-                        hoursSince < 22.0 -> app.aaps.core.ui.R.attr.metadataTextWarningColor // fading
-                        else              -> app.aaps.core.ui.R.attr.urgentColor           // worn off / overdue
-                    }
-                )
-            )
-        } else {
-            view.text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
-            view.setTextColor(rh.gac(view.context, app.aaps.core.ui.R.attr.defaultTextColor))
-            valueView?.text = rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+        // DB access off the main thread - this runs on every Overview refresh / Actions resume
+        scope.launch {
+            val lastBasalDose = try {
+                persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - basalLookbackMs(), TE.Type.NOTE, false)
+                    .sortedByDescending { it.timestamp }
+                    .firstNotNullOfOrNull { te -> BasalInjection.extractDose(te.note)?.let { dose -> te to dose } }
+            } catch (e: Exception) {
+                null
+            }
+            val now = System.currentTimeMillis()
+            val text: String
+            val dose: String?
+            val colorAttr: Int
+            if (lastBasalDose != null) {
+                val (lastBasal, basalDose) = lastBasalDose
+                val diff = dateUtil.computeDiff(lastBasal.timestamp, now)
+                // include DAYS - computeDiff decomposes, so 24h+1m would otherwise show as "0h 01m"
+                val hours = (diff[TimeUnit.DAYS] ?: 0L) * 24 + (diff[TimeUnit.HOURS] ?: 0L)
+                val minutes = diff[TimeUnit.MINUTES] ?: 0L
+                text = "${hours}h ${String.format(Locale.ENGLISH, "%02d", minutes)}m"
+                dose = formatDose(basalDose)
+                val hoursSince = hours + minutes / 60.0
+                colorAttr = when {
+                    hoursSince < 2.0  -> app.aaps.core.ui.R.attr.defaultTextColor      // onset, not yet active
+                    hoursSince < 4.0  -> app.aaps.core.ui.R.attr.metadataTextWarningColor // ramping up
+                    hoursSince < 18.0 -> app.aaps.core.ui.R.attr.metadataTextOkColor   // full effect
+                    hoursSince < 22.0 -> app.aaps.core.ui.R.attr.metadataTextWarningColor // fading
+                    else              -> app.aaps.core.ui.R.attr.urgentColor           // worn off / overdue
+                }
+            } else {
+                text = if (rh.shortTextMode()) "-" else rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+                dose = rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
+                colorAttr = app.aaps.core.ui.R.attr.defaultTextColor
+            }
+            withContext(Dispatchers.Main) {
+                view.text = text
+                view.setTextColor(rh.gac(view.context, colorAttr))
+                valueView?.text = dose
+            }
         }
     }
+
+    /** Shares the reminder's lookback, but never less than a week so a stale dose keeps its age. */
+    private fun basalLookbackMs(): Long =
+        T.days(max(7, preferences.get(IntKey.MdiMissedLantusLookbackDays)).toLong()).msecs()
 
     /** Displays the latest APS insulinReq and a robust median over the configured window, for information only. */
     fun updateInsulinReqLight(rawView: TextView?, medianView: TextView?) {
@@ -414,8 +439,4 @@ class StatusLightHandler @Inject constructor(
         return diff[TimeUnit.DAYS].toString() + days + diff[TimeUnit.HOURS] + hours
     }
 
-    private val BASAL_DOSE_REGEX = Regex("(?i)\\bLantus\\s*[:#]?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*U\\b")
-
-    private fun extractBasalDose(note: String?): Double? =
-        note?.let { BASAL_DOSE_REGEX.find(it)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull() }
 }

@@ -169,18 +169,27 @@ class LocalAlertUtilsImpl @Inject constructor(
             return
         }
         val lastDose = lastLantusInjection(now)
+        val nextReminder = preferences.get(LocalAlertLongKey.NextMissedLantusReminderAlarm)
         if (lastDose == null) {
+            // Nothing in the window: a user who never records Lantus must not be nagged, but once a
+            // cycle is running the dose only aged out - keep nagging.
+            if (nextReminder == 0L) {
+                dismissMissedLantusReminder()
+                return
+            }
+        } else if (now - lastDose < lantusReminderDelay()) {
             dismissMissedLantusReminder()
             return
         }
-        if (now - lastDose < lantusReminderDelay()) {
-            dismissMissedLantusReminder()
-            return
-        }
-        if (preferences.get(LocalAlertLongKey.NextMissedLantusReminderAlarm) > now) return
+        if (nextReminder > now) return
         preferences.put(LocalAlertLongKey.NextMissedLantusReminderAlarm, now + lantusReminderInterval())
-        val hoursOverdue = max(((now - lastDose) / T.hours(1).msecs()).toInt(), 0)
-        aapsLogger.debug(LTag.CORE, "Generating missed Lantus reminder. lastDose: " + dateUtil.dateAndTimeString(lastDose) + " overdue: " + hoursOverdue + " h")
+        // with no dose inside the window we only know "at least this long" - report the window itself
+        val overdueMs = lastDose?.let { now - it } ?: lantusDoseLookback()
+        val hoursOverdue = max((overdueMs / T.hours(1).msecs()).toInt(), 0)
+        aapsLogger.debug(
+            LTag.CORE,
+            "Generating missed Lantus reminder. lastDose: " + (lastDose?.let { dateUtil.dateAndTimeString(it) } ?: "none within the lookback window") + " overdue: " + hoursOverdue + " h"
+        )
         val notification = Notification(
             Notification.MISSED_LANTUS_REMINDER,
             rh.gs(R.string.missed_lantus_reminder, hoursOverdue),

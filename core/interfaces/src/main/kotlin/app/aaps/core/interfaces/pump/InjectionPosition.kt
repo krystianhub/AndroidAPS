@@ -24,28 +24,23 @@ object InjectionPosition {
         }
 
     /**
-     * Finds the most recent recorded injection position by looking back through
-     * the last [maxLookback] injections (boluses and NOTE therapy events such as
-     * recorded Lantus injections), regardless of the order the lists arrive in
-     * (the `ascending` flag of the DAO queries is effectively inverted, so callers
-     * pass lists in either order). The lists are merged and explicitly sorted
-     * newest-first by timestamp before the lookback, so only the [maxLookback]
-     * most recent injections are inspected. Injections without a position (e.g.
-     * into a limb not covered by the numbering) are skipped.
+     * Position of the newest injection carrying one (`pos x` in a bolus or NOTE therapy event).
+     * Records without a position do not consume the [maxLookback] budget, and the lists may arrive
+     * in either order (the DAO `ascending` flag is effectively inverted).
      */
     fun findLastPosition(boluses: List<BS>, therapyEvents: List<TE> = emptyList(), maxLookback: Int = 3): Int? =
         (boluses.asSequence()
             .filter { it.type != BS.Type.PRIMING }
-            .map { InjectionRecord(it.timestamp, extractFromNotes(it.notes)) } +
+            .mapNotNull { bolus -> extractFromNotes(bolus.notes)?.let { position -> InjectionRecord(bolus.timestamp, position) } } +
             therapyEvents.asSequence()
                 .filter { it.type == TE.Type.NOTE }
-                .map { InjectionRecord(it.timestamp, extractFromNotes(it.note)) })
+                .mapNotNull { event -> extractFromNotes(event.note)?.let { position -> InjectionRecord(event.timestamp, position) } })
             .sortedByDescending { it.timestamp }
             .take(maxLookback)
             .map { it.position }
-            .firstOrNull { it != null }
+            .firstOrNull()
 
-    private data class InjectionRecord(val timestamp: Long, val position: Int?)
+    private data class InjectionRecord(val timestamp: Long, val position: Int)
 
     /** Suggests the next injection position, rotating 1..[MAX_POSITION]. */
     fun suggestNext(lastPosition: Int?): Int? =

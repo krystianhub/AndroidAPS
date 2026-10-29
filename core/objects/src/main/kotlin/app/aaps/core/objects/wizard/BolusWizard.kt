@@ -271,7 +271,11 @@ class BolusWizard @Inject constructor(
         // Total
         calculatedTotalInsulin = insulinFromBG + insulinFromTrend + insulinFromCarbs + calculatedTotalIOB + insulinFromCorrection + insulinFromSuperBolus + insulinFromCOB
 
-        val percentage = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
+        // MDI hides the partial-bolus pref (a pump/SMB feature) - a stale value must not scale a
+        // pen dose invisibly.
+        val percentage = if (usePercentage) totalPercentage
+        else if (activePlugin.activePump.isMDI()) 100.0
+        else percentageCorrection.toDouble()
 
         // Percentage adjustment
         totalBeforePercentageAdjustment = calculatedTotalInsulin
@@ -406,7 +410,9 @@ class BolusWizard @Inject constructor(
                 }
             }
         }
-        mealMacroPlan?.let { plan ->
+        val plan = mealMacroPlan
+        if (plan != null && !advisor) {
+            // the advisor logs a bolus only - never advertise carbs/tails it will not create
             if (plan.upfrontCarbs > 0)
                 actions.add(rh.gs(app.aaps.core.ui.R.string.wizard_meal_macro_now, plan.upfrontCarbs, plan.suggestedUpfrontPercentage))
             if (plan.primaryTailCarbs > 0)
@@ -428,12 +434,30 @@ class BolusWizard @Inject constructor(
         return HtmlHelper.fromHtml(actions.joinToString("<br/>"))
     }
 
+    /** True when this run can log carbs: an upfront carb amount or the tails of a meal macro plan. */
+    @VisibleForTesting
+    val hasCarbsToLog: Boolean
+        get() = carbs > 0 || mealMacroPlan?.hasTails == true
+
     /**
      * True when a deferred entry is waiting for "Eat now", so a wizard run with carbs must not log
      * the same meal a second time.
      */
     @VisibleForTesting
-    fun isBlockedByPendingCarbs(): Boolean = carbs > 0 && pendingCarbStore.isPending()
+    fun isBlockedByPendingCarbs(): Boolean = hasCarbsToLog && pendingCarbStore.isPending()
+
+    /**
+     * The advisor pre-boluses without logging carbs, so it must not be offered when the carbs have
+     * to be logged now (deferred carb logging, meal-macro plan).
+     */
+    @VisibleForTesting
+    fun isBolusAdvisorAvailable(): Boolean =
+        preferences.get(BooleanKey.OverviewUseBolusAdvisor) &&
+            profileUtil.convertToMgdl(bg, profile.units) > 180 &&
+            carbs > 0 &&
+            carbTime >= 0 &&
+            mealMacroPlan == null &&
+            !deferCarbs
 
     fun confirmAndExecute(ctx: Context, quickWizardEntry: QuickWizardEntry? = null) {
         if (calculatedTotalInsulin > 0.0 || carbs > 0.0 || mealMacroPlan?.hasTails == true) {
@@ -452,7 +476,7 @@ class BolusWizard @Inject constructor(
                 automation.removeAutomationEventBolusReminder()
             if (carbs > 0.0)
                 automation.removeAutomationEventEatReminder()
-            if (preferences.get(BooleanKey.OverviewUseBolusAdvisor) && profileUtil.convertToMgdl(bg, profile.units) > 180 && carbs > 0 && carbTime >= 0)
+            if (isBolusAdvisorAvailable())
                 OKDialog.showYesNoCancel(
                     ctx, rh.gs(app.aaps.core.ui.R.string.bolus_advisor), rh.gs(app.aaps.core.ui.R.string.bolus_advisor_message),
                     { bolusAdvisorProcessing(ctx) },
@@ -494,7 +518,7 @@ class BolusWizard @Inject constructor(
                             bolus = createBolus(),
                             action = Action.BOLUS_ADVISOR,
                             source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
-                        ).subscribe()
+                        ).subscribe({}, { persistFailed("advised bolus", it) })
                         automation.scheduleAutomationEventEatReminder()
                     } else {
                         commandQueue.bolus(this, object : Callback() {
@@ -548,8 +572,8 @@ class BolusWizard @Inject constructor(
                 OKDialog.show(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), rh.gs(app.aaps.core.ui.R.string.deferred_carb_pending))
                 return@showConfirmation
             }
-            val deferred = preferences.get(BooleanKey.DeferredCarbLoggingEnabled) && deferCarbs && carbs > 0
-            if (insulinAfterConstraints > 0 || carbs > 0) {
+            val deferred = preferences.get(BooleanKey.DeferredCarbLoggingEnabled) && deferCarbs && hasCarbsToLog
+            if (insulinAfterConstraints > 0 || carbs > 0 || (deferred && mealMacroPlan?.hasTails == true)) {
                 // superbolus is implemented as a zero TBR - meaningless without a pump (MDI)
                 if (useSuperBolus && !pump.isMDI()) {
                     if (loop.allowedNextModes().contains(RM.Mode.SUPER_BOLUS)) {
@@ -671,13 +695,13 @@ class BolusWizard @Inject constructor(
                                         carbs = createCarbs(),
                                         action = action,
                                         source = source
-                                    ).subscribe()
+                                    ).subscribe({}, { persistFailed("carbs", it) })
                                 if (insulin > 0)
                                     persistenceLayer.insertOrUpdateBolus(
                                         bolus = createBolus(),
                                         action = action,
                                         source = source
-                                    ).subscribe()
+                                    ).subscribe({}, { persistFailed("bolus", it) })
                                 if (useAlarm && carbs > 0 && carbTime > 0)
                                     automation.scheduleTimeToEatReminder(T.mins(carbTime.toLong()).secs().toInt())
                             } else {
@@ -744,6 +768,12 @@ class BolusWizard @Inject constructor(
         }
     }
 
+    /** MDI: the DB row is the injection - a silent write failure would leave it without IOB/COB. */
+    private fun persistFailed(what: String, t: Throwable) {
+        aapsLogger.error(LTag.DATABASE, "Failed to persist $what", t)
+        uiInteraction.runAlarm(t.message ?: t.toString(), rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+    }
+
     private fun calcPercentageWithConstraints() {
         calculatedPercentage = 100
         if (totalBeforePercentageAdjustment != insulinFromCorrection)
@@ -757,6 +787,52 @@ class BolusWizard @Inject constructor(
         //Apply constraints
         calculatedCorrection = min(constraintChecker.getMaxBolusAllowed().value(), calculatedCorrection)
         calculatedCorrection = max(-constraintChecker.getMaxBolusAllowed().value(), calculatedCorrection)
+    }
+
+    companion object {
+
+        private const val PREVIEW_SEPARATOR = " · "
+
+        /**
+         * Wizard meal-macro preview: the insulin dosed for the carbs eaten now, plus the tail starts
+         * as scheduled (shift + carb time). [upfrontInsulin] is the pre-percentage
+         * [BolusWizard.insulinFromCarbs], so [percentage] is applied here; the plan's suggestion is
+         * hidden on an override, which skips the derate.
+         */
+        @VisibleForTesting
+        fun mealMacroPreview(
+            rh: ResourceHelper,
+            plan: MealMacroPlan,
+            upfrontInsulin: Double,
+            carbTimeMin: Int,
+            percentage: Double = 100.0,
+            percentageOverride: Boolean = false
+        ): String {
+            val parts = mutableListOf<String>()
+            if (plan.upfrontCarbs > 0)
+                parts.add(rh.gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_now, plan.upfrontCarbs))
+            if (!percentageOverride && plan.suggestedUpfrontPercentage != 100)
+                parts.add(rh.gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_plan, plan.suggestedUpfrontPercentage))
+            // avoid float drift on the plain path
+            val insulinNow = if (percentage == 100.0) upfrontInsulin else upfrontInsulin * percentage / 100.0
+            if (insulinNow > 0.001)
+                parts.add(rh.gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_insulin, insulinNow))
+            if (plan.primaryTailCarbs > 0)
+                parts.add(
+                    rh.gs(
+                        app.aaps.core.ui.R.string.wizard_meal_macro_preview_tail,
+                        plan.primaryTailCarbs, plan.primaryTailShiftMin + carbTimeMin, plan.primaryTailDurationH
+                    )
+                )
+            if (plan.fatTailCarbs > 0)
+                parts.add(
+                    rh.gs(
+                        app.aaps.core.ui.R.string.wizard_meal_macro_preview_fat_tail,
+                        plan.fatTailCarbs, plan.fatTailShiftMin + carbTimeMin, plan.fatTailDurationH
+                    )
+                )
+            return parts.joinToString(PREVIEW_SEPARATOR)
+        }
     }
 
 }

@@ -2,7 +2,10 @@ package app.aaps.core.objects.wizard
 
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.sharedPreferences.SP
 import app.aaps.core.interfaces.utils.DateUtil
 import com.google.common.truth.Truth.assertThat
@@ -10,8 +13,10 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito.clearInvocations
+import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.doAnswer
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
@@ -27,6 +32,12 @@ class PendingCarbStoreTest {
         whenever(it.now()).thenAnswer { now }
     }
 
+    private val aapsLogger = mock<AAPSLogger>()
+    private val rh = mock<ResourceHelper>().also {
+        whenever(it.gs(any<Int>())).thenReturn("unreadable")
+    }
+    private val rxBus = mock<RxBus>()
+
     private val sp = mock<SP>().also {
         whenever(it.getStringOrNull(anyString(), anyOrNull<String>())).thenAnswer { prefs[it.arguments[0] as String] }
         doAnswer {
@@ -37,6 +48,23 @@ class PendingCarbStoreTest {
             prefs.remove(it.arguments[0] as String)
             Unit
         }.whenever(it).remove(anyString())
+        doAnswer { invocation ->
+            val block = invocation.getArgument<(SP.Editor) -> Unit>(1)
+            block(newEditor())
+            Unit
+        }.whenever(it).edit(any(), any())
+    }
+
+    /** Editor that applies to the same in-memory map the SP mock reads from. */
+    private fun newEditor(): SP.Editor = mock<SP.Editor>().also { e ->
+        doAnswer { invocation ->
+            prefs[invocation.arguments[0] as String] = invocation.arguments[1] as String
+            Unit
+        }.whenever(e).putString(anyString(), anyString())
+        doAnswer { invocation ->
+            prefs.remove(invocation.arguments[0] as String)
+            Unit
+        }.whenever(e).remove(anyString())
     }
 
     private lateinit var store: PendingCarbStore
@@ -48,7 +76,7 @@ class PendingCarbStoreTest {
         now = 1_000_000L
         // Stubbing calls are recorded by Mockito; clear them so verify() only sees real interactions
         clearInvocations(sp)
-        store = PendingCarbStore(dateUtil, sp)
+        store = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus)
     }
 
     private fun pending(amount: Double = 50.0) = PendingCarbs(
@@ -127,7 +155,7 @@ class PendingCarbStoreTest {
     fun `expired entry is not loaded from SP on a fresh instance`() {
         store.setPending(pending())
         now += 60 * 60 * 1000L + 1
-        val restarted = PendingCarbStore(dateUtil, sp)
+        val restarted = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus)
         assertThat(restarted.isPending()).isFalse()
         assertThat(restarted.getPending()).isNull()
     }
@@ -140,7 +168,7 @@ class PendingCarbStoreTest {
     fun `pending survives a store recreation`() {
         store.setPending(pending())
         // A brand-new instance reading the same preferences simulates a process restart
-        val restarted = PendingCarbStore(dateUtil, sp)
+        val restarted = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus)
         assertThat(restarted.isPending()).isTrue()
         assertThat(restarted.getPending()?.mainCarbs?.carbs).isEqualTo(50.0)
     }
@@ -155,7 +183,7 @@ class PendingCarbStoreTest {
     @Test
     fun `round trip preserves all main carbs fields`() {
         store.setPending(fullPending())
-        val restored = PendingCarbStore(dateUtil, sp).getPending()!!
+        val restored = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus).getPending()!!
 
         assertThat(restored.mainCarbs.carbs).isEqualTo(45.5)
         assertThat(restored.mainCarbs.carbsTimestamp).isEqualTo(1_234_567_890L)
@@ -170,7 +198,7 @@ class PendingCarbStoreTest {
     @Test
     fun `round trip preserves the meal macro plan`() {
         store.setPending(fullPending())
-        val plan = PendingCarbStore(dateUtil, sp).getPending()!!.mealPlan!!
+        val plan = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus).getPending()!!.mealPlan!!
 
         assertThat(plan.upfrontCarbs).isEqualTo(30)
         assertThat(plan.primaryTailCarbs).isEqualTo(15)
@@ -196,7 +224,7 @@ class PendingCarbStoreTest {
             }
         )
         store.setPending(minimal)
-        val restored = PendingCarbStore(dateUtil, sp).getPending()!!
+        val restored = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus).getPending()!!
 
         assertThat(restored.mainCarbs.notes).isNull()
         assertThat(restored.mainCarbs.mgdlGlucose).isNull()
@@ -211,7 +239,7 @@ class PendingCarbStoreTest {
         store.setPending(pending(99.0))
         assertThat(store.getPending()?.mainCarbs?.carbs).isEqualTo(99.0)
         // The persisted copy must reflect the latest value too
-        assertThat(PendingCarbStore(dateUtil, sp).getPending()?.mainCarbs?.carbs).isEqualTo(99.0)
+        assertThat(PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus).getPending()?.mainCarbs?.carbs).isEqualTo(99.0)
     }
 
     // endregion
@@ -239,6 +267,41 @@ class PendingCarbStoreTest {
         assertThat(store.getPending()).isNull()
     }
 
+    @Test
+    fun `zero main carbs with a meal plan is a valid entry`() {
+        // A heavy meal whose upfront share truncates to 0 g only has tails to log
+        prefs["pending_carbs_entry"] =
+            """{"carbs":0.0,"createdAt":$now,"plan":{"upfrontCarbs":0,"primaryTailCarbs":40,"fatTailCarbs":6}}"""
+        val pending = store.getPending()
+        assertThat(pending).isNotNull()
+        assertThat(pending!!.mainCarbs.carbs).isEqualTo(0.0)
+        assertThat(pending.mealPlan!!.primaryTailCarbs).isEqualTo(40)
+        assertThat(pending.mealPlan!!.hasTails).isTrue()
+    }
+
+    @Test
+    fun `unreadable entry is discarded and reported to the user`() {
+        prefs["pending_carbs_entry"] = """{"carbs":50.0,"eventType":"NOT_A_TYPE","createdAt":$now}"""
+        clearInvocations(sp)
+
+        assertThat(store.isPending()).isFalse()
+
+        // The persisted copy is dropped so the buttons are not permanently hidden by a dead entry
+        assertThat(prefs["pending_carbs_entry"]).isNull()
+        verify(sp, times(1)).edit(eq(true), any())
+        verify(rxBus, times(1)).send(any())
+    }
+
+    @Test
+    fun `corrupt JSON is reported to the user`() {
+        prefs["pending_carbs_entry"] = "this is not json"
+
+        assertThat(store.isPending()).isFalse()
+
+        assertThat(prefs["pending_carbs_entry"]).isNull()
+        verify(rxBus, times(1)).send(any())
+    }
+
     // endregion
 
     // region caching / SP interaction
@@ -261,7 +324,7 @@ class PendingCarbStoreTest {
         store.setPending(pending())
         clearInvocations(sp)
 
-        val restarted = PendingCarbStore(dateUtil, sp)
+        val restarted = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus)
         restarted.isPending()
         restarted.isPending()
         restarted.getPending()
@@ -273,7 +336,8 @@ class PendingCarbStoreTest {
     fun `set pending writes to SP`() {
         clearInvocations(sp)
         store.setPending(pending())
-        verify(sp, times(1)).putString(anyString(), anyString())
+        verify(sp, times(1)).edit(eq(true), any())
+        assertThat(prefs["pending_carbs_entry"]).isNotNull()
     }
 
     @Test
@@ -281,7 +345,8 @@ class PendingCarbStoreTest {
         store.setPending(pending())
         clearInvocations(sp)
         store.clearPending()
-        verify(sp, times(1)).remove(anyString())
+        verify(sp, times(1)).edit(eq(true), any())
+        assertThat(prefs["pending_carbs_entry"]).isNull()
     }
 
     @Test
@@ -293,15 +358,14 @@ class PendingCarbStoreTest {
         assertThat(store.isPending()).isFalse()
 
         // Expiry only drops the in-memory copy; the read path must not touch SP
-        verify(sp, never()).remove(anyString())
-        verify(sp, never()).putString(anyString(), anyString())
+        verify(sp, never()).edit(any(), any())
     }
 
     @Test
     fun `clear on an empty store still removes the SP key`() {
         clearInvocations(sp)
         store.clearPending()
-        verify(sp, times(1)).remove(anyString())
+        verify(sp, times(1)).edit(eq(true), any())
     }
 
     // endregion
@@ -311,9 +375,9 @@ class PendingCarbStoreTest {
     @Test
     fun `beginCommit returns the pending entry`() {
         store.setPending(pending())
-        val claimed = store.beginCommit()
-        assertThat(claimed).isNotNull()
-        assertThat(claimed?.mainCarbs?.carbs).isEqualTo(50.0)
+        val claim = store.beginCommit()
+        assertThat(claim).isNotNull()
+        assertThat(claim?.pending?.mainCarbs?.carbs).isEqualTo(50.0)
     }
 
     @Test
@@ -331,8 +395,8 @@ class PendingCarbStoreTest {
     @Test
     fun `commitSucceeded clears the pending entry`() {
         store.setPending(pending())
-        store.beginCommit()
-        store.commitSucceeded()
+        val claim = store.beginCommit()!!
+        assertThat(store.commitSucceeded(claim.token)).isTrue()
         assertThat(store.isPending()).isFalse()
         assertThat(store.getPending()).isNull()
     }
@@ -340,8 +404,7 @@ class PendingCarbStoreTest {
     @Test
     fun `commitFailed keeps the entry so it can be retried`() {
         store.setPending(pending())
-        store.beginCommit()
-        store.commitFailed()
+        store.commitFailed(store.beginCommit()!!.token)
         assertThat(store.isPending()).isTrue()
         assertThat(store.beginCommit()).isNotNull()
     }
@@ -351,7 +414,89 @@ class PendingCarbStoreTest {
         store.setPending(pending())
         store.beginCommit()
         store.setPending(pending(99.0))
-        assertThat(store.beginCommit()?.mainCarbs?.carbs).isEqualTo(99.0)
+        assertThat(store.beginCommit()?.pending?.mainCarbs?.carbs).isEqualTo(99.0)
+    }
+
+    @Test
+    fun `beginCommit removes the persisted copy`() {
+        store.setPending(pending())
+        assertThat(store.beginCommit()).isNotNull()
+
+        // At-least-once: a process death between the claim and the DB write loses the carbs,
+        // but it can never insert them twice
+        assertThat(prefs["pending_carbs_entry"]).isNull()
+        // The claimed entry stays available in memory until the commit finishes
+        assertThat(store.getPending()?.mainCarbs?.carbs).isEqualTo(50.0)
+    }
+
+    @Test
+    fun `the claim removal is committed synchronously`() {
+        store.setPending(pending())
+        clearInvocations(sp)
+
+        store.beginCommit()
+
+        // commit = true: an async apply() could be lost on a process kill and resurrect a consumed entry
+        verify(sp, times(1)).edit(eq(true), any())
+        assertThat(prefs["pending_carbs_entry"]).isNull()
+    }
+
+    @Test
+    fun `commitFailed restores the persisted copy`() {
+        store.setPending(pending())
+        store.commitFailed(store.beginCommit()!!.token)
+
+        assertThat(prefs["pending_carbs_entry"]).isNotNull()
+        // ... so the entry also survives a process restart after a failed write
+        assertThat(PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus).isPending()).isTrue()
+    }
+
+    @Test
+    fun `claim older than a minute can be taken over`() {
+        store.setPending(pending())
+        assertThat(store.beginCommit()).isNotNull()
+        assertThat(store.beginCommit()).isNull()
+
+        // An Rx callback that never fires must not block "Eat now" forever
+        now += 60 * 1000L + 1
+        assertThat(store.beginCommit()).isNotNull()
+    }
+
+    @Test
+    fun `a superseded claim cannot clear the entry it no longer owns`() {
+        store.setPending(pending())
+        val stale = store.beginCommit()!!
+        // the write seems to hang, the user retries and takes the claim over
+        now += 60 * 1000L + 1
+        val fresh = store.beginCommit()!!
+
+        // the stale callback must be a no-op, otherwise it would wipe the new claim and let the
+        // committer schedule the meal-macro tails a second time
+        assertThat(store.commitSucceeded(stale.token)).isFalse()
+        assertThat(store.isPending()).isTrue()
+        assertThat(store.commitSucceeded(fresh.token)).isTrue()
+        assertThat(store.isPending()).isFalse()
+    }
+
+    @Test
+    fun `a superseded claim cannot restore a cancelled entry`() {
+        store.setPending(pending())
+        val stale = store.beginCommit()!!
+        store.clearPending()   // user pressed Cancel while the write was in flight
+
+        store.commitFailed(stale.token)
+
+        assertThat(store.isPending()).isFalse()
+        assertThat(prefs["pending_carbs_entry"]).isNull()
+    }
+
+    @Test
+    fun `claim within a minute is not taken over`() {
+        store.setPending(pending())
+        assertThat(store.beginCommit()).isNotNull()
+
+        now += 60 * 1000L
+        assertThat(store.beginCommit()).isNull()
     }
 
     // endregion
@@ -368,7 +513,8 @@ class PendingCarbStoreTest {
         val expired = store.consumeExpired()
         assertThat(expired).isNotNull()
         assertThat(expired?.mainCarbs?.carbs).isEqualTo(50.0)
-        verify(sp, times(1)).remove(anyString())
+        verify(sp, times(1)).edit(eq(true), any())
+        assertThat(prefs["pending_carbs_entry"]).isNull()
     }
 
     @Test
@@ -393,10 +539,10 @@ class PendingCarbStoreTest {
         now += 60 * 60 * 1000L + 1
         clearInvocations(sp)
 
-        val restarted = PendingCarbStore(dateUtil, sp)
+        val restarted = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus)
         assertThat(restarted.isPending()).isFalse()
         assertThat(restarted.consumeExpired()).isNotNull()
-        verify(sp, times(1)).remove(anyString())
+        verify(sp, times(1)).edit(eq(true), any())
     }
 
     @Test

@@ -1,5 +1,6 @@
 package app.aaps.ui.dialogs
 
+import app.aaps.core.data.time.T
 import app.aaps.shared.tests.TestBase
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
@@ -106,4 +107,63 @@ class InsulinDialogTest : TestBase() {
     }
 
     // endregion
+
+    // region remainingProfileSwitchMinutes - a running profile switch survives the basal rewrite
+
+    @Test
+    fun permanentSwitchStaysPermanent() {
+        assertThat(InsulinDialog.remainingProfileSwitchMinutes(duration = 0, end = 0, timestamp = NOW, now = NOW)).isEqualTo(0)
+        // end is irrelevant for a permanent switch
+        assertThat(InsulinDialog.remainingProfileSwitchMinutes(duration = 0, end = NOW + T.hours(1).msecs(), timestamp = NOW, now = NOW)).isEqualTo(0)
+    }
+
+    @Test
+    fun remainingDurationIsCarriedOver() {
+        val duration = T.hours(24).msecs()
+        // 6 h into a 24 h switch -> 18 h left (end not stored -> from timestamp + duration)
+        assertThat(InsulinDialog.remainingProfileSwitchMinutes(duration, end = 0, timestamp = NOW - T.hours(6).msecs(), now = NOW))
+            .isEqualTo(T.hours(18).mins().toInt())
+        // a stored originalEnd wins over timestamp + duration
+        assertThat(InsulinDialog.remainingProfileSwitchMinutes(duration, end = NOW + T.hours(2).msecs(), timestamp = NOW - T.hours(6).msecs(), now = NOW))
+            .isEqualTo(T.hours(2).mins().toInt())
+    }
+
+    @Test
+    fun expiredSwitchDoesNotProduceNegativeDuration() {
+        assertThat(InsulinDialog.remainingProfileSwitchMinutes(T.hours(1).msecs(), end = 0, timestamp = NOW - T.hours(2).msecs(), now = NOW))
+            .isEqualTo(0)
+    }
+
+    @Test
+    fun expiredLimitedSwitchIsNotCarriedOver() {
+        // The EPS row survives its own end until KeepAliveWorker re-applies the requested profile.
+        // Carrying it over with a 0 duration would freeze it permanently, so an expired limited
+        // switch must be treated as "no switch" (percentage back to 100).
+        val running = T.hours(2).msecs()
+        assertThat(InsulinDialog.isProfileSwitchCarryable(running, end = 0, timestamp = NOW - T.hours(1).msecs(), now = NOW)).isTrue()
+        assertThat(InsulinDialog.isProfileSwitchCarryable(running, end = 0, timestamp = NOW - T.hours(3).msecs(), now = NOW)).isFalse()
+        // exactly at the end it is already over
+        assertThat(InsulinDialog.isProfileSwitchCarryable(running, end = 0, timestamp = NOW - running, now = NOW)).isFalse()
+        // a permanent switch has no end - it is always carried over
+        assertThat(InsulinDialog.isProfileSwitchCarryable(0, end = 0, timestamp = NOW - T.days(30).msecs(), now = NOW)).isTrue()
+    }
+
+    // endregion
+
+    // region amountMax - the basal (Lantus) state has its own cap, not the bolus limit
+
+    @Test
+    fun basalStateUsesBasalMax() {
+        assertThat(InsulinDialog.amountMax(recordBasal = true, bolusMax = 3.0, basalMax = 30.0)).isEqualTo(30.0)
+        assertThat(InsulinDialog.amountMax(recordBasal = false, bolusMax = 3.0, basalMax = 30.0)).isEqualTo(3.0)
+        // a changed cap comes from the preference value, not from a constant
+        assertThat(InsulinDialog.amountMax(recordBasal = true, bolusMax = 3.0, basalMax = 200.0)).isEqualTo(200.0)
+    }
+
+    // endregion
+
+    private companion object {
+
+        const val NOW = 1_700_000_000_000L
+    }
 }

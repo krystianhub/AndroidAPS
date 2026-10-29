@@ -20,7 +20,6 @@ import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.protection.ProtectionCheck
-import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.actions.CustomAction
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -276,18 +275,18 @@ class ActionsFragment : DaggerFragment() {
             }
         }
         val activeBgSource = activePlugin.activeBgSource
+        val isMDI = pump.isMDI()
         binding.historyBrowser.visibility = (profile != null).toVisibility()
         binding.fill.visibility = (pump.pumpDescription.isRefillingCapable && pump.isInitialized()).toVisibility()
         binding.pumpBatteryChange.visibility = (pump.pumpDescription.isBatteryReplaceable || pump.isBatteryChangeLoggingEnabled()).toVisibility()
         binding.tempTarget.visibility = (profile != null && loop.runningMode.isLoopRunning()).toVisibility()
-        binding.tddStats.visibility = pump.pumpDescription.supportsTDDs.toVisibility()
+        // MDI: the TDD statistics (incl. the derived I:C column) are just as useful for pen users
+        binding.tddStats.visibility = (pump.pumpDescription.supportsTDDs || isMDI).toVisibility()
         val isPatchPump = pump.pumpDescription.isPatchPump
-        val isMDI = pump.isMDI()
         binding.status.apply {
             cannulaOrPatch.text = if (cannulaOrPatch.text.isEmpty()) "" else if (isPatchPump) rh.gs(R.string.patch_pump) else rh.gs(R.string.cannula)
             val imageResource = if (isPatchPump) app.aaps.core.objects.R.drawable.ic_patch_pump_outline else R.drawable.ic_cp_age_cannula
             cannulaOrPatch.setCompoundDrawablesWithIntrinsicBounds(imageResource, 0, 0, 0)
-            batteryLayout.visibility = (!isPatchPump || pump.pumpDescription.useHardwareLink).toVisibility()
 
             // MDI (virtual pump): cannula/insulin/reservoir/battery statuses are meaningless - hide them
             sensorInsulinDivider.visibility = (!isMDI).toVisibility()
@@ -295,7 +294,7 @@ class ActionsFragment : DaggerFragment() {
             insulinCannulaDivider.visibility = (!isMDI).toVisibility()
             cannulaLayout.visibility = (!isMDI).toVisibility()
             cannulaBatteryDivider.visibility = (!isMDI).toVisibility()
-            batteryLayout.visibility = (isMDI || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
+            batteryLayout.visibility = (!isMDI && (!isPatchPump || pump.pumpDescription.useHardwareLink)).toVisibility()
             // MDI: show last bolus / last basal insulin age rows instead
             lastBolusLayout.visibility = isMDI.toVisibility()
             lastBasalLayout.visibility = isMDI.toVisibility()
@@ -320,8 +319,8 @@ class ActionsFragment : DaggerFragment() {
         }
         checkPumpCustomActions()
 
-        // MDI (virtual pump): hide the "Actions" card entirely when no action button is visible
-        val actionsCardVisible = listOf(
+        // MDI (virtual pump): hide the "Actions" card entirely when no action is available
+        val actionsCardVisible = pumpCustomButtons.isNotEmpty() || listOf(
             binding.profileSwitch, binding.tempTarget, binding.setTempBasal, binding.cancelTempBasal,
             binding.extendedBolus, binding.extendedBolusCancel, binding.fill, binding.pumpBatteryChange
         ).any { it.visibility == View.VISIBLE }

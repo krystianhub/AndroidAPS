@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.net.toUri
 import androidx.preference.PreferenceCategory
+import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
 import app.aaps.core.data.aps.SMBDefaults
@@ -39,6 +40,7 @@ import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntentKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -48,6 +50,7 @@ import app.aaps.core.objects.extensions.plannedRemainingMinutes
 import app.aaps.core.objects.extensions.target
 import app.aaps.core.utils.MidnightUtils
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
+import app.aaps.core.validators.preferences.AdaptiveIntPreference
 import app.aaps.core.validators.preferences.AdaptiveIntentPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.aps.OpenAPSFragment
@@ -101,12 +104,23 @@ class OpenAPSAMAPlugin @Inject constructor(
     override var lastAPSResult: APSResult? = null
 
     override fun specialEnableCondition(): Boolean {
-        // APS computation only needs BG + bolus/TDD data, not temp basals; allow MDI users.
-        return true
+        // MDI is allowed: APS computation needs no temp basals, closed loop is refused elsewhere
+        return try {
+            val pump = activePlugin.activePump
+            pump.isMDI() || pump.pumpDescription.isTempBasalCapable
+        } catch (_: Exception) {
+            // may fail during initialization
+            true
+        }
     }
 
     override fun specialShowInListCondition(): Boolean {
-        return true
+        return try {
+            val pump = activePlugin.activePump
+            pump.isMDI() || pump.pumpDescription.isTempBasalCapable
+        } catch (_: Exception) {
+            true
+        }
     }
 
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
@@ -325,6 +339,14 @@ class OpenAPSAMAPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsUseAutosens, title = R.string.openapsama_use_autosens))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAmaAutosensAdjustTargets, summary = R.string.openapsama_autosens_adjust_targets_summary, title = R.string.openapsama_autosens_adjust_targets))
             addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAmaMin5MinCarbsImpact, dialogMessage = R.string.openapsama_min_5m_carb_impact_summary, title = R.string.openapsama_min_5m_carb_impact))
+            // MDI: pen suggestion notification settings (see LoopPlugin.presentPenBolusSuggestion)
+            if (isMdi) {
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiBolusSuggestionEnabled, summary = R.string.mdi_bolus_suggestion_enabled_summary, title = R.string.mdi_bolus_suggestion_enabled_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.MdiMinBolusSuggestion, dialogMessage = R.string.mdi_min_bolus_suggestion_summary, title = R.string.mdi_min_bolus_suggestion_title))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.MdiMaxBolusSuggestion, dialogMessage = R.string.mdi_max_bolus_suggestion_summary, title = R.string.mdi_max_bolus_suggestion_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.MdiBolusSuggestionSmoothing, summary = R.string.mdi_bolus_suggestion_smoothing_summary, title = R.string.mdi_bolus_suggestion_smoothing_title))
+                addPreference(AdaptiveIntPreference(ctx = context, intKey = IntKey.MdiBolusSuggestionMedianMinutes, dialogMessage = R.string.mdi_bolus_suggestion_median_minutes_summary, title = R.string.mdi_bolus_suggestion_median_minutes_title))
+            }
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 key = "absorption_ama_advanced"
                 title = rh.gs(app.aaps.core.ui.R.string.advanced_settings_title)
@@ -352,6 +374,15 @@ class OpenAPSAMAPlugin @Inject constructor(
                 }
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAmaBolusSnoozeDivisor, dialogMessage = R.string.openapsama_bolus_snooze_dia_divisor_summary, title = R.string.openapsama_bolus_snooze_dia_divisor))
             })
+        }
+    }
+
+    override fun preprocessPreferences(preferenceFragment: PreferenceFragmentCompat) {
+        super.preprocessPreferences(preferenceFragment)
+        // MDI: the smoothing window depends on smoothing, which in turn depends on the master switch
+        if (activePlugin.activePump.isMDI()) {
+            preferenceFragment.findPreference<AdaptiveIntPreference>(IntKey.MdiBolusSuggestionMedianMinutes.key)?.isVisible =
+                preferences.get(BooleanKey.MdiBolusSuggestionEnabled) && preferences.get(BooleanKey.MdiBolusSuggestionSmoothing)
         }
     }
 }

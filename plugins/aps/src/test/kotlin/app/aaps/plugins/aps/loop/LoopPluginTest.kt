@@ -34,6 +34,7 @@ import app.aaps.core.interfaces.rx.events.EventDismissNotification
 import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.HardLimits
+import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
@@ -105,10 +106,16 @@ class LoopPluginTest : TestBaseWithProfile() {
         // Plugin is enabled by default
         assertThat(loopPlugin.isEnabled()).isTrue()
 
-        // Loop plugin is enabled regardless of temp basal capability (MDI support)
+        // Loop plugin is enabled for non-MDI pumps with temp basal support and always for MDI
+        // (open-loop APS computation needs no temp basals)
         virtualPumpPlugin.pumpDescription.isTempBasalCapable = false
+        whenever(virtualPumpPlugin.isMDI()).thenReturn(true)
         assertThat(loopPlugin.specialEnableCondition()).isTrue()
+        // a non-MDI pump without temp basals cannot run the loop
+        whenever(virtualPumpPlugin.isMDI()).thenReturn(false)
+        assertThat(loopPlugin.specialEnableCondition()).isFalse()
         virtualPumpPlugin.pumpDescription.isTempBasalCapable = true
+        assertThat(loopPlugin.specialEnableCondition()).isTrue()
 
         // Fragment is hidden by default
         assertThat(loopPlugin.isFragmentVisible()).isFalse()
@@ -263,6 +270,40 @@ class LoopPluginTest : TestBaseWithProfile() {
         }
         assertThat(newEvents).isEmpty()
         assertThat(dismissEvents).hasSize(1)
+    }
+
+    @Test
+    fun `pen suggestion rounds down before the constraints can round it up`() {
+        // applyBolusConstraints rounds to the *nearest* pen step (0.80 U -> 1.0 U). The raw
+        // insulinReq must be floored to 0.5 U before the constraints run.
+        setupPenSuggestionDefaults()
+        stubNearestStepConstraintRounding()
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 0.80), validProfile)
+        }
+        assertThat(dismissEvents).isEmpty()
+        assertThat(newEvents).hasSize(1)
+        assertThat(newEvents[0].notification.text).contains("Bolus 0.5 U now")
+    }
+
+    @Test
+    fun `pen suggestion below one pen step is suppressed after flooring`() {
+        setupPenSuggestionDefaults()
+        stubNearestStepConstraintRounding()
+        // 0.26 U floors to 0.0 U -> nothing actionable
+        val (newEvents, dismissEvents) = captureNotificationEvents {
+            loopPlugin.presentPenBolusSuggestion(penResult(insulinReq = 0.26), validProfile)
+        }
+        assertThat(newEvents).isEmpty()
+        assertThat(dismissEvents).hasSize(1)
+    }
+
+    /** Emulates the real constraints, which round the bolus to the nearest 0.5 U pen step. */
+    private fun stubNearestStepConstraintRounding() {
+        whenever(constraintChecker.applyBolusConstraints(anyOrNull())).thenAnswer {
+            val constraint = it.arguments[0] as Constraint<Double>
+            ConstraintObject(Round.roundTo(constraint.value(), 0.5), aapsLogger)
+        }
     }
 
     @Test

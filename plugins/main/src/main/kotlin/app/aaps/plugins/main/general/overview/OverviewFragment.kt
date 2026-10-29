@@ -122,6 +122,7 @@ import app.aaps.plugins.main.general.overview.ui.StatusLightHandler
 import app.aaps.plugins.main.skins.SkinProvider
 import com.jjoe64.graphview.GraphView
 import dagger.android.support.DaggerFragment
+import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.util.Locale
@@ -391,6 +392,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         popupBolusDialogIfRunning(onClick = false)
     }
 
+    /** [refreshAll] from a UI callback without blocking it (it does IOB/COB/TDD work inline). */
+    private fun refreshAllOffUiThread() {
+        handler.post { refreshAll() }
+    }
+
     fun refreshAll() {
         if (!config.appInitialized) return
         runOnUiThread {
@@ -545,18 +551,17 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // The entry expired between the last refresh and this tap. Report it before the refresh
             // clears the buttons, so the tap does not silently do nothing.
             pendingCarbStore.consumeExpired()?.let { notifyExpiredPendingCarbs(it) }
-            refreshAll()
+            refreshAllOffUiThread()
             return
         }
-        val carbsText = rh.gs(app.aaps.core.ui.R.string.format_carbs, pending.mainCarbs.carbs.roundToInt())
         OKDialog.showConfirmation(
             activity,
             rh.gs(R.string.eat_now),
-            rh.gs(R.string.eat_now_confirmation, carbsText),
+            rh.gs(R.string.eat_now_confirmation, pendingCarbsSummary(pending)),
             {
                 // false: nothing was committed - the entry expired while the dialog was open, or a
                 // commit of the same entry is still running. Refreshing hides stale buttons.
-                if (!pendingCarbCommitter.commit(activity)) refreshAll()
+                if (!pendingCarbCommitter.commit(activity)) refreshAllOffUiThread()
             }
         )
     }
@@ -566,7 +571,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (pendingCarbStore.getPending() == null) {
             // Nothing left to cancel; surface the expiry notice if that's what happened.
             pendingCarbStore.consumeExpired()?.let { notifyExpiredPendingCarbs(it) }
-            refreshAll()
+            refreshAllOffUiThread()
             return
         }
         OKDialog.showConfirmation(
@@ -575,7 +580,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             rh.gs(R.string.cancel_pending_carbs_confirmation),
             {
                 pendingCarbStore.clearPending()
-                refreshAll()
+                refreshAllOffUiThread()
             }
         )
     }
@@ -587,13 +592,31 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private fun notifyExpiredPendingCarbs(expired: PendingCarbs) {
         val activity = activity ?: return
         if (!isAdded || activity.isFinishing) return
-        val carbsText = rh.gs(app.aaps.core.ui.R.string.format_carbs, expired.mainCarbs.carbs.roundToInt())
+        // a plain deferred meal has no tails - don't claim they were dropped
+        val message = if (expired.mealPlan?.hasTails == true)
+            app.aaps.core.ui.R.string.deferred_carbs_expired_message_tails
+        else
+            app.aaps.core.ui.R.string.deferred_carbs_expired_message
         OKDialog.show(
             activity,
             rh.gs(app.aaps.core.ui.R.string.deferred_carbs_expired_title),
-            rh.gs(app.aaps.core.ui.R.string.deferred_carbs_expired_message, carbsText)
+            rh.gs(message, pendingCarbsSummary(expired))
         )
     }
+
+    /** Main carbs and/or macro tails of a deferred entry - a tails-only entry must not read "0 g". */
+    private fun pendingCarbsSummary(pending: PendingCarbs): String =
+        listOfNotNull(
+            pending.mainCarbs.carbs.roundToInt().takeIf { it > 0 }
+                ?.let { rh.gs(app.aaps.core.ui.R.string.format_carbs, it) },
+            pending.mealPlan?.takeIf { it.hasTails }?.let { plan ->
+                val tails = listOfNotNull(
+                    plan.primaryTailCarbs.takeIf { it > 0 }?.let { rh.gs(app.aaps.core.ui.R.string.format_carbs, it) },
+                    plan.fatTailCarbs.takeIf { it > 0 }?.let { rh.gs(app.aaps.core.ui.R.string.format_carbs, it) }
+                ).joinToString(" + ")
+                rh.gs(R.string.pending_carbs_tails, tails)
+            }
+        ).joinToString(" + ")
 
     private fun openCgmApp(packageName: String) {
         context?.let {
@@ -1060,7 +1083,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             cannulaOrPatch.setImageResource(if (isPatchPump) app.aaps.core.objects.R.drawable.ic_patch_pump_outline else R.drawable.ic_cp_age_cannula)
             cannulaOrPatch.contentDescription = rh.gs(if (isPatchPump) R.string.statuslights_patch_pump_age else R.string.statuslights_cannula_age)
             insulinAge.visibility = isPatchPump.not().toVisibility()
-            batteryLayout.visibility = (!isPatchPump || pump.pumpDescription.useHardwareLink).toVisibility()
             pbAge.visibility = (pump.pumpDescription.isBatteryReplaceable || pump.isBatteryChangeLoggingEnabled()).toVisibility()
             val useBatteryLevel = (pump.model() == PumpType.OMNIPOD_EROS)
                 || (pump.model() != PumpType.ACCU_CHEK_COMBO && pump.model() != PumpType.OMNIPOD_DASH)
@@ -1069,7 +1091,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // MDI: battery/reservoir/cannula/insulin-age lights are meaningless - hide them.
             cannulaLayout.visibility = (!isMDI).toVisibility()
             insulinLayout.visibility = (!isMDI).toVisibility()
-            batteryLayout.visibility = (isMDI || (!isPatchPump || pump.pumpDescription.useHardwareLink)).not().toVisibility()
+            batteryLayout.visibility = (!isMDI && (!isPatchPump || pump.pumpDescription.useHardwareLink)).toVisibility()
             lastBolusLayout.visibility = isMDI.toVisibility()
             lastBasalLayout.visibility = isMDI.toVisibility()
             apsStatusLayout.visibility = (isMDI && loop.runningMode == RM.Mode.OPEN_LOOP).toVisibility()
@@ -1149,7 +1171,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private fun updateIobCob() {
         val iobText = iobText()
         val iobDialogText = iobDialogText()
-        val icDialogText = icDialogText(context)
         val displayText = iobCobCalculator.getCobInfo("Overview COB").displayText(rh, decimalFormatter)
         val lastCarbsTime = persistenceLayer.getNewestCarbs()?.timestamp ?: 0L
         runOnUiThread {
@@ -1175,7 +1196,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
             }
             binding.infoLayout.cob.text = cobText
-            binding.infoLayout.cobLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(R.string.ic_estimate_title), icDialogText) } }
+            // built lazily: the estimate walks the whole day in 5-min buckets with blockable DB
+            // queries, and the dialog is opened rarely
+            binding.infoLayout.cobLayout.setOnClickListener {
+                val ctx = activity ?: return@setOnClickListener
+                disposable += Single.fromCallable { icDialogText(ctx) }
+                    .subscribeOn(aapsSchedulers.io)
+                    .observeOn(aapsSchedulers.main)
+                    .subscribe({ text -> OKDialog.show(ctx, rh.gs(R.string.ic_estimate_title), text) }, fabricPrivacy::logException)
+            }
         }
     }
 

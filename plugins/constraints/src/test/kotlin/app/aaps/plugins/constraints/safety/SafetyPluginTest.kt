@@ -93,11 +93,22 @@ class SafetyPluginTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun pumpDescriptionShouldNotLimitLoopInvocation() {
-        // Loop invocation (APS computation) is allowed even without temp basal capability (MDI support)
+    fun mdiAllowsLoopInvocationWithoutTempBasalCapability() {
+        // Loop invocation (APS computation) needs no temp basals; MDI runs the APS in open loop
+        whenever(virtualPumpPlugin.isMDI()).thenReturn(true)
         pumpDescription.isTempBasalCapable = false
         val c = safetyPlugin.isLoopInvocationAllowed(ConstraintObject(true, aapsLogger))
         assertThat(c.value()).isTrue()
+    }
+
+    @Test
+    fun pumpWithoutTempBasalCapabilityDisallowsLoopInvocation() {
+        // non-MDI pump that cannot set temp basals must not run the loop (upstream guard)
+        whenever(virtualPumpPlugin.isMDI()).thenReturn(false)
+        pumpDescription.isTempBasalCapable = false
+        val c = safetyPlugin.isLoopInvocationAllowed(ConstraintObject(true, aapsLogger))
+        assertThat(c.value()).isFalse()
+        assertThat(c.getReasons()).contains("Pump is not temp basal capable")
     }
 
     @Test

@@ -120,8 +120,8 @@ data class MealMacroPlan(
             upfrontPctHeavy = 60,
             fatIntensityRef = 40,
             proteinIntensityRef = 80,
-            minFatG = 5,
-            minProteinG = 10
+            minFatG = 30,
+            minProteinG = 40
         )
     }
 

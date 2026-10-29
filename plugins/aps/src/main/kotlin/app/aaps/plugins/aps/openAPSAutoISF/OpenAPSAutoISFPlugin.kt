@@ -198,12 +198,23 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     override fun getSensitivityOverviewString(): String? = null // placeholder for Auto ISF Detailed information for overview
 
     override fun specialEnableCondition(): Boolean {
-        // APS computation only needs BG + bolus/TDD data, not temp basals; allow MDI (virtual pump) users too.
-        return true
+        // MDI may run the APS in open loop; other pumps must be temp-basal capable
+        return try {
+            val pump = activePlugin.activePump
+            pump.isMDI() || pump.pumpDescription.isTempBasalCapable
+        } catch (_: Exception) {
+            // may fail during initialization
+            true
+        }
     }
 
     override fun specialShowInListCondition(): Boolean {
-        return true
+        return try {
+            val pump = activePlugin.activePump
+            pump.isMDI() || pump.pumpDescription.isTempBasalCapable
+        } catch (_: Exception) {
+            true
+        }
     }
 
     override fun preprocessPreferences(preferenceFragment: PreferenceFragmentCompat) {
