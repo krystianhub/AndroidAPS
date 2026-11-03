@@ -168,6 +168,7 @@ class LocalAlertUtilsImpl @Inject constructor(
             dismissMissedLantusReminder()
             return
         }
+        val delay = lantusReminderDelay()
         val lastDose = lastLantusInjection(now)
         val nextReminder = preferences.get(LocalAlertLongKey.NextMissedLantusReminderAlarm)
         if (lastDose == null) {
@@ -177,18 +178,35 @@ class LocalAlertUtilsImpl @Inject constructor(
                 dismissMissedLantusReminder()
                 return
             }
-        } else if (now - lastDose < lantusReminderDelay()) {
+        } else if (now - lastDose < delay) {
+            // Log the armed schedule in the last hour of the wait. Without it "no reminder at the
+            // configured hour" is indistinguishable from "the check never ran" (deferred worker).
+            if (now - lastDose > delay - T.hours(1).msecs()) {
+                aapsLogger.debug(
+                    LTag.CORE,
+                    "Missed Lantus reminder not due yet. lastDose: " + dateUtil.dateAndTimeString(lastDose) +
+                        ", delay: " + durationString(delay) + ", due: " + dateUtil.dateAndTimeString(lastDose + delay)
+                )
+            }
             dismissMissedLantusReminder()
             return
         }
-        if (nextReminder > now) return
+        if (nextReminder > now) {
+            aapsLogger.debug(
+                LTag.CORE,
+                "Missed Lantus reminder throttled until " + dateUtil.dateAndTimeString(nextReminder) +
+                    " (re-raise interval " + durationString(lantusReminderInterval()) + ")"
+            )
+            return
+        }
         preferences.put(LocalAlertLongKey.NextMissedLantusReminderAlarm, now + lantusReminderInterval())
         // with no dose inside the window we only know "at least this long" - report the window itself
         val overdueMs = lastDose?.let { now - it } ?: lantusDoseLookback()
         val hoursOverdue = max((overdueMs / T.hours(1).msecs()).toInt(), 0)
         aapsLogger.debug(
             LTag.CORE,
-            "Generating missed Lantus reminder. lastDose: " + (lastDose?.let { dateUtil.dateAndTimeString(it) } ?: "none within the lookback window") + " overdue: " + hoursOverdue + " h"
+            "Generating missed Lantus reminder. lastDose: " + (lastDose?.let { dateUtil.dateAndTimeString(it) } ?: "none within the lookback window") +
+                " overdue: " + hoursOverdue + " h, delay: " + durationString(delay)
         )
         val notification = Notification(
             Notification.MISSED_LANTUS_REMINDER,
@@ -232,4 +250,10 @@ class LocalAlertUtilsImpl @Inject constructor(
     /** Lookback for the last Lantus injection, configurable (default 5 days). */
     private fun lantusDoseLookback(): Long =
         T.days(preferences.get(IntKey.MdiMissedLantusLookbackDays).toLong()).msecs()
+
+    /** Compact "Xh Ym" for log output. */
+    private fun durationString(ms: Long): String {
+        val t = T.msecs(ms)
+        return "${t.hours()}h ${t.mins() % 60}m"
+    }
 }
