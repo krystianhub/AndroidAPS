@@ -1,6 +1,8 @@
 # AndroidAPS — MDI fork
 
-Personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS) (upstream `master`) aimed at **MDI users** — pen users running the app with the virtual pump. Makes the app usable as a decision-support tool with pens.
+Personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS) (upstream `master`), now based on **4.0.0**, aimed at **MDI users** — pen users running the app with the virtual pump. Makes the app usable as a decision-support tool with pens.
+
+> **4.0.0 update:** the phone UI is Compose, all shared code is Kotlin Multiplatform (`commonMain`), settings moved to the new preference/search screens, and the bolus path is record-only capable. The MDI features below were ported; `TESTING.md` has the manual checklist.
 
 > ## ⚠️ WARNING
 >
@@ -18,7 +20,7 @@ Personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS) (upstrea
 
 ### Injection position ("pos")
 
-Site position 1–12 stored as a `pos x` note on the treatment (syncs to Nightscout). Insulin/Treatment/Wizard dialogs show the field (opt-in via *Show position in dialogs*), display the last position and pre-suggest the next in rotation.
+Site position 1–12 stored as a `pos x` note on the treatment (syncs to Nightscout). The Insulin, Wizard and Treatment dialogs show the field (opt-in via *Appearance → Show injection position in dialogs*), display the last position and pre-suggest the next in rotation.
 
 ### Lantus recording
 
@@ -26,11 +28,11 @@ Site position 1–12 stored as a `pos x` note on the treatment (syncs to Nightsc
 - A recorded dose above **Max Lantus dose (MDI)** (default 30 U) is rejected instead of being recorded — protection against typos like `200` instead of `20`, which would also rewrite the profile basal.
 - On any dose change the profile basal is rewritten to a flat `dose / 24` U/h and a profile switch is activated (compared on the quantized rate, so re-recording the same dose doesn't retrigger). An active profile switch (percentage / time shift / remaining duration) is preserved. Keeps TDD/DynISF honest.
 - Profile screen **"Sync basal"** button (MDI only) rewrites **and saves** the profile without activating it — switching remains your decision, so tap *Activate profile* if you want the loop to use the new basal. Enabled only when out of sync.
-- **Missed Lantus reminder** (*Overview → Lantus (MDI)*): urgent notification when no Lantus injection has been recorded for 24 h + grace period after the last one, repeating at the configured interval until a dose is recorded. Once a reminder cycle has started it keeps reminding even after the last dose falls out of the lookback window (the message then reports the window as the minimum overdue time); a user who never recorded a Lantus dose is not nagged. Toggle: **Enable reminder**; configurable **grace period** (default 120 min), **re-raise interval** (default 60 min) and **lookback** (default 5 days, min 2).
+- **Missed Lantus reminder** (*Loop → Lantus (MDI)*): urgent notification when no Lantus injection has been recorded for 24 h + grace period after the last one, repeating at the configured interval until a dose is recorded. Once a reminder cycle has started it keeps reminding even after the last dose falls out of the lookback window (the message then reports the window as the minimum overdue time); a user who never recorded a Lantus dose is not nagged. Toggle: **Enable reminder**; configurable **grace period** (default 120 min), **re-raise interval** (default 60 min) and **lookback** (default 5 days, min 2).
 
 ### Overview status lights
 
-Pump lights (cannula, insulin, reservoir, battery) hidden; sensor age stays. New MDI lights: APS row with **insulinReq** (current / median over a configurable window) and **lowest predicted → eventual BG** (colored by the projected dip), **last bolus ago** (colored by the insulin curve) and **last basal insulin ago** (colored by the Lantus curve). Last bolus/basal ages also appear in the Actions stats.
+Pump lights (cannula, insulin, reservoir, battery) hidden; sensor age stays. New MDI status card: **insulinReq** (current / median over a configurable window), **lowest predicted → eventual BG** (colored by the projected dip), **last bolus ago** (colored by the insulin curve) and **last basal insulin ago** (colored by the Lantus curve). The status card is under the overview chips; its settings are in the card's gear. Last bolus/basal ages also appear in the Manage (Actions) sheet.
 
 ### APS plugins
 
@@ -44,7 +46,7 @@ Always available (no flag file), automation action usable without engineering mo
 
 ### Deferred carb logging
 
-Enable globally in *Overview → Deferred carb logging*, then tick **Defer carbs** in the Bolus Wizard when you want to delay the carb entry. The bolus is logged immediately; the carbs are held back and only recorded when you press **Eat now** on the Overview screen. **Cancel** discards them. Defer carbs and Carb time are mutually exclusive — pick one per wizard run.
+**MDI-only feature.** Enable it in *Bolus Wizard settings → Deferred carb logging* (also searchable in Settings), then tick **Defer carbs** in the Bolus Wizard when you want to delay the carb entry. The bolus is logged immediately; the carbs are held back and only recorded when you press **Eat now** on the Overview screen. **Cancel** discards them. Defer carbs and Carb time are mutually exclusive — pick one per wizard run. Defer carbs also disables the 4.0 auto e-carbs (Bread/Cake/Pizza) for that run: the whole meal is held, so the two cannot be combined.
 
 While a deferred entry is pending, the **Eat now** / **Cancel** buttons appear on the Overview screen. The entry expires after **1 hour**; if it expires without being confirmed, the Overview shows a notice so the missing carb entry isn't overlooked (a deferred entry that cannot be read is also reported instead of vanishing). Only one entry can be active at a time. Cancelling or letting it expire discards the carb entry — the bolus given at wizard time is not undone, so log the carbs manually if you already ate.
 
@@ -89,7 +91,7 @@ Everything else (Enable SMB, UAM, DynISF, target adjustments, carbs threshold) w
 
 ## Building
 
-Gradle 9, Java 21, flavors `full` / `pumpcontrol` / `aapsclient` / `aapsclient2`:
+Gradle 9, Java 21, flavors `full` / `pumpcontrol` / `aapsclient` / `aapsclient2` / `aapsclient3` (upstream 4.0):
 
 ```
 ./gradlew :app:assembleFullRelease   # or Android Studio
