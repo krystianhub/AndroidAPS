@@ -79,8 +79,7 @@ class BolusWizard @Inject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val decimalFormatter: DecimalFormatter,
     private val processedDeviceStatusData: ProcessedDeviceStatusData,
-    private val pendingCarbStore: PendingCarbStore,
-    private val eCarbsScheduler: ECarbsScheduler
+    private val pendingCarbStore: PendingCarbStore
 ) {
 
     var timeStamp = dateUtil.now()
@@ -155,10 +154,6 @@ class BolusWizard @Inject constructor(
     var usePercentage: Boolean = false
     var positiveIOBOnly: Boolean = false
 
-    /** Meal macro plan to be scheduled as extended carbs on confirmation (null = none) */
-    var mealMacroPlan: MealMacroPlan? = null
-        private set
-
     fun doCalc(
         profile: Profile,
         profileName: String,
@@ -182,8 +177,7 @@ class BolusWizard @Inject constructor(
         usePercentage: Boolean = false,
         totalPercentage: Double = 100.0,
         quickWizard: Boolean = false,
-        positiveIOBOnly: Boolean = false,
-        mealMacroPlan: MealMacroPlan? = null
+        positiveIOBOnly: Boolean = false
     ): BolusWizard {
 
         this.profile = profile
@@ -209,7 +203,6 @@ class BolusWizard @Inject constructor(
         this.usePercentage = usePercentage
         this.totalPercentage = totalPercentage
         this.positiveIOBOnly = positiveIOBOnly
-        this.mealMacroPlan = mealMacroPlan
 
         // Insulin from BG
         sens = profileUtil.fromMgdlToUnits(profile.getIsfMgdlForCarbs(dateUtil.now(), "BolusWizard", config, processedDeviceStatusData))
@@ -240,10 +233,6 @@ class BolusWizard @Inject constructor(
         // Insulin from carbs
         ic = profile.getIc()
         insulinFromCarbs = carbs / ic
-        // Meal macro plan: only the planned share of the immediate meal-carb insulin is bolused now,
-        // the deferred part is covered by the eCarbs tails. BG correction, COB and IOB are not scaled
-        // and an explicit percentage set by the user overrides the plan's derate.
-        mealMacroPlan?.let { insulinFromCarbs = it.upfrontCarbInsulin(insulinFromCarbs, usePercentage) }
         insulinFromCOB = if (useCob) (cob / ic) else 0.0
 
         // Insulin from IOB
@@ -410,34 +399,16 @@ class BolusWizard @Inject constructor(
                 }
             }
         }
-        val plan = mealMacroPlan
-        if (plan != null && !advisor) {
-            // the advisor logs a bolus only - never advertise carbs/tails it will not create
-            if (plan.upfrontCarbs > 0)
-                actions.add(rh.gs(app.aaps.core.ui.R.string.wizard_meal_macro_now, plan.upfrontCarbs, plan.suggestedUpfrontPercentage))
-            if (plan.primaryTailCarbs > 0)
-                actions.add(
-                    rh.gs(app.aaps.core.ui.R.string.uel_extended_carbs) + ": " + rh.gs(
-                        app.aaps.core.ui.R.string.format_carbs, plan.primaryTailCarbs
-                    ) + "/" + plan.primaryTailDurationH + "h (+" + plan.primaryTailShiftMin + "min)"
-                )
-            if (plan.fatTailCarbs > 0)
-                actions.add(
-                    rh.gs(app.aaps.core.ui.R.string.uel_extended_carbs) + ": " + rh.gs(
-                        app.aaps.core.ui.R.string.format_carbs, plan.fatTailCarbs
-                    ) + "/" + plan.fatTailDurationH + "h (+" + plan.fatTailShiftMin + "min)"
-                )
-        }
         val displayNotes = if (position != null) InjectionPosition.stripPosition(notes) else notes
         if (displayNotes.isNotEmpty())
             actions.add(rh.gs(app.aaps.core.ui.R.string.notes_label) + ": " + displayNotes)
         return HtmlHelper.fromHtml(actions.joinToString("<br/>"))
     }
 
-    /** True when this run can log carbs: an upfront carb amount or the tails of a meal macro plan. */
+    /** True when this run can log carbs. */
     @VisibleForTesting
     val hasCarbsToLog: Boolean
-        get() = carbs > 0 || mealMacroPlan?.hasTails == true
+        get() = carbs > 0
 
     /**
      * True when a deferred entry is waiting for "Eat now", so a wizard run with carbs must not log
@@ -448,7 +419,7 @@ class BolusWizard @Inject constructor(
 
     /**
      * The advisor pre-boluses without logging carbs, so it must not be offered when the carbs have
-     * to be logged now (deferred carb logging, meal-macro plan).
+     * to be logged now (deferred carb logging).
      */
     @VisibleForTesting
     fun isBolusAdvisorAvailable(): Boolean =
@@ -456,11 +427,10 @@ class BolusWizard @Inject constructor(
             profileUtil.convertToMgdl(bg, profile.units) > 180 &&
             carbs > 0 &&
             carbTime >= 0 &&
-            mealMacroPlan == null &&
             !deferCarbs
 
     fun confirmAndExecute(ctx: Context, quickWizardEntry: QuickWizardEntry? = null) {
-        if (calculatedTotalInsulin > 0.0 || carbs > 0.0 || mealMacroPlan?.hasTails == true) {
+        if (calculatedTotalInsulin > 0.0 || carbs > 0.0) {
             if (accepted) {
                 aapsLogger.debug(LTag.UI, "guarding: already accepted")
                 return
@@ -573,7 +543,7 @@ class BolusWizard @Inject constructor(
                 return@showConfirmation
             }
             val deferred = preferences.get(BooleanKey.DeferredCarbLoggingEnabled) && deferCarbs && hasCarbsToLog
-            if (insulinAfterConstraints > 0 || carbs > 0 || (deferred && mealMacroPlan?.hasTails == true)) {
+            if (insulinAfterConstraints > 0 || carbs > 0) {
                 // superbolus is implemented as a zero TBR - meaningless without a pump (MDI)
                 if (useSuperBolus && !pump.isMDI()) {
                     if (loop.allowedNextModes().contains(RM.Mode.SUPER_BOLUS)) {
@@ -721,7 +691,6 @@ class BolusWizard @Inject constructor(
                 }
             }
             if (!deferred) {
-                mealMacroPlan?.let { eCarbsScheduler.schedule(ctx, it, if (quickWizard) Sources.QuickWizard else Sources.WizardDialog, baseNotes = notes, mealOffsetMin = carbTime) }
                 if (quickWizardEntry != null) {
                     scheduleECarbsFromQuickWizard(ctx, quickWizardEntry)
                 }
@@ -743,7 +712,6 @@ class BolusWizard @Inject constructor(
                 carbsTimestamp = now
                 notes = this@BolusWizard.notes
             },
-            mealPlan = mealMacroPlan,
             source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
         )
 
@@ -751,20 +719,49 @@ class BolusWizard @Inject constructor(
         val eCarbsYesNo = JsonHelper.safeGetInt(quickWizardEntry.storage, "useEcarbs", QuickWizardEntry.NO)
         if (eCarbsYesNo == QuickWizardEntry.YES) {
             val timeOffset = JsonHelper.safeGetInt(quickWizardEntry.storage, "time", 0)
-            val duration = JsonHelper.safeGetInt(quickWizardEntry.storage, "duration", 0)
+            val duration = JsonHelper.safeGetInt(quickWizardEntry.storage, "duration", 0).coerceAtLeast(0)
             val carbs2 = JsonHelper.safeGetInt(quickWizardEntry.storage, "carbs2", 0)
 
             if (carbs2 > 0) {
-                eCarbsScheduler.schedule(
-                    ctx = ctx,
-                    carbs = carbs2,
-                    timeOffsetMin = timeOffset,
-                    durationH = duration,
-                    notes = quickWizardEntry.storage.get("buttonText")?.toString() ?: "",
-                    source = Sources.QuickWizard
-                )
-            }
+                val eventTime: Long = dateUtil.now() + (timeOffset * 60000L)
+                val notes = quickWizardEntry.storage.get("buttonText")?.toString() ?: ""
 
+                val detailedBolusInfo = DetailedBolusInfo()
+                detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
+                detailedBolusInfo.carbs = carbs2.toDouble()
+                detailedBolusInfo.context = ctx
+                detailedBolusInfo.notes = notes
+                detailedBolusInfo.carbsDuration = T.hours(duration.toLong()).msecs()
+                detailedBolusInfo.carbsTimestamp = eventTime
+                uel.log(
+                    action = Action.EXTENDED_CARBS,
+                    source = Sources.QuickWizard,
+                    note = notes,
+                    listValues = listOfNotNull(
+                        ValueWithUnit.Timestamp(eventTime),
+                        ValueWithUnit.Gram(carbs2),
+                        ValueWithUnit.Minute(timeOffset).takeIf { timeOffset != 0 },
+                        ValueWithUnit.Hour(duration).takeIf { duration != 0 }
+                    )
+                )
+                if (activePlugin.activePump.isMDI()) {
+                    // MDI: no pump to deliver with - record the carbs directly. A silent failure would
+                    // leave the extended carbs without COB.
+                    persistenceLayer.insertOrUpdateCarbs(
+                        carbs = detailedBolusInfo.createCarbs(),
+                        action = Action.EXTENDED_CARBS,
+                        source = Sources.QuickWizard
+                    ).subscribe({}, { persistFailed("extended carbs", it) })
+                } else {
+                    commandQueue.bolus(detailedBolusInfo, object : Callback() {
+                        override fun run() {
+                            if (!result.success) {
+                                uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                            }
+                        }
+                    })
+                }
+            }
         }
     }
 
@@ -787,52 +784,6 @@ class BolusWizard @Inject constructor(
         //Apply constraints
         calculatedCorrection = min(constraintChecker.getMaxBolusAllowed().value(), calculatedCorrection)
         calculatedCorrection = max(-constraintChecker.getMaxBolusAllowed().value(), calculatedCorrection)
-    }
-
-    companion object {
-
-        private const val PREVIEW_SEPARATOR = " · "
-
-        /**
-         * Wizard meal-macro preview: the insulin dosed for the carbs eaten now, plus the tail starts
-         * as scheduled (shift + carb time). [upfrontInsulin] is the pre-percentage
-         * [BolusWizard.insulinFromCarbs], so [percentage] is applied here; the plan's suggestion is
-         * hidden on an override, which skips the derate.
-         */
-        @VisibleForTesting
-        fun mealMacroPreview(
-            rh: ResourceHelper,
-            plan: MealMacroPlan,
-            upfrontInsulin: Double,
-            carbTimeMin: Int,
-            percentage: Double = 100.0,
-            percentageOverride: Boolean = false
-        ): String {
-            val parts = mutableListOf<String>()
-            if (plan.upfrontCarbs > 0)
-                parts.add(rh.gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_now, plan.upfrontCarbs))
-            if (!percentageOverride && plan.suggestedUpfrontPercentage != 100)
-                parts.add(rh.gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_plan, plan.suggestedUpfrontPercentage))
-            // avoid float drift on the plain path
-            val insulinNow = if (percentage == 100.0) upfrontInsulin else upfrontInsulin * percentage / 100.0
-            if (insulinNow > 0.001)
-                parts.add(rh.gs(app.aaps.core.ui.R.string.wizard_meal_macro_preview_insulin, insulinNow))
-            if (plan.primaryTailCarbs > 0)
-                parts.add(
-                    rh.gs(
-                        app.aaps.core.ui.R.string.wizard_meal_macro_preview_tail,
-                        plan.primaryTailCarbs, plan.primaryTailShiftMin + carbTimeMin, plan.primaryTailDurationH
-                    )
-                )
-            if (plan.fatTailCarbs > 0)
-                parts.add(
-                    rh.gs(
-                        app.aaps.core.ui.R.string.wizard_meal_macro_preview_fat_tail,
-                        plan.fatTailCarbs, plan.fatTailShiftMin + carbTimeMin, plan.fatTailDurationH
-                    )
-                )
-            return parts.joinToString(PREVIEW_SEPARATOR)
-        }
     }
 
 }

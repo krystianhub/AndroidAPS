@@ -93,19 +93,6 @@ class PendingCarbStoreTest {
             mgdlGlucose = 120.0
             glucoseType = TE.MeterType.FINGER
         },
-        mealPlan = MealMacroPlan(
-            upfrontCarbs = 30,
-            primaryTailCarbs = 15,
-            fatTailCarbs = 10,
-            suggestedUpfrontPercentage = 70,
-            primaryTailShiftMin = 60,
-            primaryTailDurationH = 3,
-            fatTailShiftMin = 120,
-            fatTailDurationH = 4,
-            intensity = 0.65,
-            fat = 20,
-            protein = 25
-        ),
         source = Sources.QuickWizard
     )
 
@@ -196,24 +183,6 @@ class PendingCarbStoreTest {
     }
 
     @Test
-    fun `round trip preserves the meal macro plan`() {
-        store.setPending(fullPending())
-        val plan = PendingCarbStore(dateUtil, sp, aapsLogger, rh, rxBus).getPending()!!.mealPlan!!
-
-        assertThat(plan.upfrontCarbs).isEqualTo(30)
-        assertThat(plan.primaryTailCarbs).isEqualTo(15)
-        assertThat(plan.fatTailCarbs).isEqualTo(10)
-        assertThat(plan.suggestedUpfrontPercentage).isEqualTo(70)
-        assertThat(plan.primaryTailShiftMin).isEqualTo(60)
-        assertThat(plan.primaryTailDurationH).isEqualTo(3)
-        assertThat(plan.fatTailShiftMin).isEqualTo(120)
-        assertThat(plan.fatTailDurationH).isEqualTo(4)
-        assertThat(plan.intensity).isEqualTo(0.65)
-        assertThat(plan.fat).isEqualTo(20)
-        assertThat(plan.protein).isEqualTo(25)
-    }
-
-    @Test
     fun `round trip preserves null optional fields`() {
         val minimal = PendingCarbs(
             mainCarbs = DetailedBolusInfo().apply {
@@ -229,7 +198,6 @@ class PendingCarbStoreTest {
         assertThat(restored.mainCarbs.notes).isNull()
         assertThat(restored.mainCarbs.mgdlGlucose).isNull()
         assertThat(restored.mainCarbs.glucoseType).isNull()
-        assertThat(restored.mealPlan).isNull()
         assertThat(restored.source).isEqualTo(Sources.WizardDialog)
     }
 
@@ -265,18 +233,6 @@ class PendingCarbStoreTest {
         prefs["pending_carbs_entry"] = """{"carbs":-5.0,"createdAt":$now}"""
         assertThat(store.isPending()).isFalse()
         assertThat(store.getPending()).isNull()
-    }
-
-    @Test
-    fun `zero main carbs with a meal plan is a valid entry`() {
-        // A heavy meal whose upfront share truncates to 0 g only has tails to log
-        prefs["pending_carbs_entry"] =
-            """{"carbs":0.0,"createdAt":$now,"plan":{"upfrontCarbs":0,"primaryTailCarbs":40,"fatTailCarbs":6}}"""
-        val pending = store.getPending()
-        assertThat(pending).isNotNull()
-        assertThat(pending!!.mainCarbs.carbs).isEqualTo(0.0)
-        assertThat(pending.mealPlan!!.primaryTailCarbs).isEqualTo(40)
-        assertThat(pending.mealPlan!!.hasTails).isTrue()
     }
 
     @Test
@@ -470,8 +426,7 @@ class PendingCarbStoreTest {
         now += 60 * 1000L + 1
         val fresh = store.beginCommit()!!
 
-        // the stale callback must be a no-op, otherwise it would wipe the new claim and let the
-        // committer schedule the meal-macro tails a second time
+        // the stale callback must be a no-op, otherwise it would wipe the new claim
         assertThat(store.commitSucceeded(stale.token)).isFalse()
         assertThat(store.isPending()).isTrue()
         assertThat(store.commitSucceeded(fresh.token)).isTrue()

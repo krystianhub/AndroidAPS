@@ -42,35 +42,11 @@ Pump lights (cannula, insulin, reservoir, battery) hidden; sensor age stays. New
 
 Always available (no flag file), automation action usable without engineering mode. MDI results table gains a "Lantus (U)" row; save/copy/profile-switch actions never change the profile basal — only the Lantus flow does.
 
-### Meal macro assistant
-
-Wizard gains **Fat** and **Protein** fields (grams). Filling either shows a plan preview:
-
-```
-Now 70g · plan 63% · 2.4U · Tail 66g @ +60min/4h · Fat-eq 3g @ +90min/8h
-```
-
-The preview shows the **resulting upfront insulin** next to the plan's suggested percentage (the percentage applies to the upfront carb insulin only), and the tail start times are relative to the meal (a "Carb time" offset shifts them). If you set an explicit `%` in the wizard, that percentage is applied to the shown units (and the plan's suggestion is hidden, because the override replaces the plan's derate).
-
-- **Upfront**: a heaviness score splits carbs into fast/slow and derates **only the fast-carb insulin** between the lean/heavy preferences (defaults 100 % ↔ 60 %). The withheld part is deliberately not dosed; an explicit wizard % overrides it (the wizard preview always shows the units that will actually be dosed now).
-- **Bolus advisor**: the advisor is skipped when a meal plan is active (or **Defer carbs** is ticked) — it logs a bolus without carbs, which would leave the plan's insulin without COB and drop the tails.
-- **Tails**: slow carbs + protein equivalents (default 10 % of protein) as eCarbs from +60 min over 4 h; fat equivalents (default 8 % of fat) as a second eCarbs record from +90 min over 8 h. Both feed COB/predictions.
-- Meals with **less than 30 g fat and less than 40 g protein** skip the assistant (plain wizard). Either macro reaching its threshold activates the plan; both minimums are configurable in the same settings screen.
-- Settings in *Overview → Meal macro assistant* — the **Enable assistant** switch (off by default) hides the rest of the screen and the wizard fat/protein fields until enabled. Presets:
-
-| Preset | Protein | Fat | Heavy-meal upfront |
-| --- | --- | --- | --- |
-| **Conservative** (default) | 10 % / 4 h | 8 % / 8 h | 60 % |
-| **Warsaw-style (derated)** | 30 % / 4 h | 28 % / 8 h | 50 % |
-| **Warsaw-style 0.7×** | 21 % / 5 h | 20 % / 8 h | 55 % |
-
-> ⚠️ Community heuristics, **not** validated dosing rules. Start Conservative and compare the actual curve against the plan for a few meals before moving up.
-
 ### Deferred carb logging
 
 Enable globally in *Overview → Deferred carb logging*, then tick **Defer carbs** in the Bolus Wizard when you want to delay the carb entry. The bolus is logged immediately; the carbs are held back and only recorded when you press **Eat now** on the Overview screen. **Cancel** discards them. Defer carbs and Carb time are mutually exclusive — pick one per wizard run.
 
-While a deferred entry is pending, the **Eat now** / **Cancel** buttons appear on the Overview screen. The entry expires after **1 hour**; if it expires without being confirmed, the Overview shows a notice so the missing carb entry isn't overlooked (a deferred entry that cannot be read is also reported instead of vanishing). Only one entry can be active at a time. Cancelling or letting it expire also drops the planned fat/protein tails — the bolus given at wizard time is not undone, so log the carbs manually if you already ate.
+While a deferred entry is pending, the **Eat now** / **Cancel** buttons appear on the Overview screen. The entry expires after **1 hour**; if it expires without being confirmed, the Overview shows a notice so the missing carb entry isn't overlooked (a deferred entry that cannot be read is also reported instead of vanishing). Only one entry can be active at a time. Cancelling or letting it expire discards the carb entry — the bolus given at wizard time is not undone, so log the carbs manually if you already ate.
 
 ### MDI UI cleanup
 
@@ -109,7 +85,7 @@ Pen suggestions are sized from `insulinReq`, never from a U/h rate, so the pump 
 
 Everything else (Enable SMB, UAM, DynISF, target adjustments, carbs threshold) works at defaults.
 
-**Limitations:** at most one suggestion per 60 min, each capped by Max pen bolus suggestion *and* Max bolus, and basal reductions are never suggested. Expect a patient advisor, not a loop. Levers for slow meal tails: raise **both** caps and **Max IOB**.
+**Limitations:** at most one suggestion per 60 min, each capped by Max pen bolus suggestion *and* Max bolus, and basal reductions are never suggested. Expect a patient advisor, not a loop. Levers for slow meal absorption: raise **both** caps and **Max IOB**.
 
 ## Building
 

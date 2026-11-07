@@ -561,7 +561,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             {
                 // false: nothing was committed - the entry expired while the dialog was open, or a
                 // commit of the same entry is still running. Refreshing hides stale buttons.
-                if (!pendingCarbCommitter.commit(activity)) refreshAllOffUiThread()
+                if (!pendingCarbCommitter.commit()) refreshAllOffUiThread()
             }
         )
     }
@@ -592,31 +592,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private fun notifyExpiredPendingCarbs(expired: PendingCarbs) {
         val activity = activity ?: return
         if (!isAdded || activity.isFinishing) return
-        // a plain deferred meal has no tails - don't claim they were dropped
-        val message = if (expired.mealPlan?.hasTails == true)
-            app.aaps.core.ui.R.string.deferred_carbs_expired_message_tails
-        else
-            app.aaps.core.ui.R.string.deferred_carbs_expired_message
         OKDialog.show(
             activity,
             rh.gs(app.aaps.core.ui.R.string.deferred_carbs_expired_title),
-            rh.gs(message, pendingCarbsSummary(expired))
+            rh.gs(app.aaps.core.ui.R.string.deferred_carbs_expired_message, pendingCarbsSummary(expired))
         )
     }
 
-    /** Main carbs and/or macro tails of a deferred entry - a tails-only entry must not read "0 g". */
     private fun pendingCarbsSummary(pending: PendingCarbs): String =
-        listOfNotNull(
-            pending.mainCarbs.carbs.roundToInt().takeIf { it > 0 }
-                ?.let { rh.gs(app.aaps.core.ui.R.string.format_carbs, it) },
-            pending.mealPlan?.takeIf { it.hasTails }?.let { plan ->
-                val tails = listOfNotNull(
-                    plan.primaryTailCarbs.takeIf { it > 0 }?.let { rh.gs(app.aaps.core.ui.R.string.format_carbs, it) },
-                    plan.fatTailCarbs.takeIf { it > 0 }?.let { rh.gs(app.aaps.core.ui.R.string.format_carbs, it) }
-                ).joinToString(" + ")
-                rh.gs(R.string.pending_carbs_tails, tails)
-            }
-        ).joinToString(" + ")
+        rh.gs(app.aaps.core.ui.R.string.format_carbs, pending.mainCarbs.carbs.roundToInt())
 
     private fun openCgmApp(packageName: String) {
         context?.let {

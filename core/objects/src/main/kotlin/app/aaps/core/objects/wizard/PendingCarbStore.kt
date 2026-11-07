@@ -97,7 +97,7 @@ class PendingCarbStore @Inject constructor(
         return PendingCarbClaim(pending, claimToken)
     }
 
-    /** Drops the claimed entry; false when the claim was superseded - the caller must then skip the tails. */
+    /** Drops the claimed entry; false when the claim was superseded. */
     @Synchronized
     fun commitSucceeded(token: Long): Boolean {
         if (token != claimToken) return false
@@ -195,7 +195,6 @@ class PendingCarbStore @Inject constructor(
 
 data class PendingCarbs(
     val mainCarbs: DetailedBolusInfo,
-    val mealPlan: MealMacroPlan? = null,
     val source: Sources = Sources.WizardDialog,
     /** Stamped by [PendingCarbStore.setPending]; a value passed here is ignored. */
     val createdAt: Long = 0L
@@ -214,28 +213,11 @@ private fun PendingCarbs.toJson(): JSONObject = JSONObject().apply {
     put("glucoseType", mainCarbs.glucoseType?.name ?: JSONObject.NULL)
     put("source", source.name)
     put("createdAt", createdAt)
-    mealPlan?.let { plan ->
-        put("plan", JSONObject().apply {
-            put("upfrontCarbs", plan.upfrontCarbs)
-            put("primaryTailCarbs", plan.primaryTailCarbs)
-            put("fatTailCarbs", plan.fatTailCarbs)
-            put("suggestedUpfrontPercentage", plan.suggestedUpfrontPercentage)
-            put("primaryTailShiftMin", plan.primaryTailShiftMin)
-            put("primaryTailDurationH", plan.primaryTailDurationH)
-            put("fatTailShiftMin", plan.fatTailShiftMin)
-            put("fatTailDurationH", plan.fatTailDurationH)
-            put("intensity", plan.intensity)
-            put("fat", plan.fat)
-            put("protein", plan.protein)
-        })
-    }
 }
 
 private fun JSONObject.toPendingCarbs(): PendingCarbs? {
     val carbs = optDouble("carbs", 0.0)
-    val planJson = optJSONObject("plan")
-    // a tails-only plan is valid with 0 main carbs
-    if (carbs <= 0.0 && planJson == null) return null
+    if (carbs <= 0.0) return null
     val mainCarbs = DetailedBolusInfo().apply {
         this.carbs = carbs
         carbsTimestamp = optLong("carbsTimestamp", 0L)
@@ -245,24 +227,8 @@ private fun JSONObject.toPendingCarbs(): PendingCarbs? {
         mgdlGlucose = if (isNull("mgdlGlucose")) null else optDouble("mgdlGlucose")
         glucoseType = if (isNull("glucoseType")) null else TE.MeterType.valueOf(optString("glucoseType"))
     }
-    val mealPlan = planJson?.let { plan ->
-        MealMacroPlan(
-            upfrontCarbs = plan.optInt("upfrontCarbs"),
-            primaryTailCarbs = plan.optInt("primaryTailCarbs"),
-            fatTailCarbs = plan.optInt("fatTailCarbs"),
-            suggestedUpfrontPercentage = plan.optInt("suggestedUpfrontPercentage"),
-            primaryTailShiftMin = plan.optInt("primaryTailShiftMin"),
-            primaryTailDurationH = plan.optInt("primaryTailDurationH"),
-            fatTailShiftMin = plan.optInt("fatTailShiftMin"),
-            fatTailDurationH = plan.optInt("fatTailDurationH"),
-            intensity = plan.optDouble("intensity", 0.0),
-            fat = plan.optInt("fat"),
-            protein = plan.optInt("protein")
-        )
-    }
     return PendingCarbs(
         mainCarbs = mainCarbs,
-        mealPlan = mealPlan,
         source = Sources.valueOf(optString("source", Sources.WizardDialog.name)),
         createdAt = optLong("createdAt", 0L)
     )
