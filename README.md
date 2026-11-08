@@ -1,8 +1,6 @@
 # AndroidAPS — MDI fork
 
-Personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS) (upstream `master`), now based on **4.0.0**, aimed at **MDI users** — pen users running the app with the virtual pump. Makes the app usable as a decision-support tool with pens.
-
-> **4.0.0 update:** the phone UI is Compose, all shared code is Kotlin Multiplatform (`commonMain`), settings moved to the new preference/search screens, and the bolus path is record-only capable. The MDI features below were ported; `TESTING.md` has the manual checklist.
+Personal fork of [AndroidAPS](https://github.com/nightscout/AndroidAPS), based on upstream **4.0.0**, aimed at **MDI users** — pen users running the app with the virtual pump. Makes the app usable as a decision-support tool with pens.
 
 > ## ⚠️ WARNING
 >
@@ -47,7 +45,7 @@ Always available (no flag file): enable it in *Configuration Builder → General
 
 ### Deferred carb logging
 
-**MDI-only feature.** Enable it in *Bolus Wizard settings → Deferred carb logging* (also searchable in Settings), then tick **Defer carbs** in the Bolus Wizard when you want to delay the carb entry. The bolus is logged immediately; the carbs are held back and only recorded when you press **Eat now** on the Overview screen. **Cancel** discards them. Defer carbs and Carb time are mutually exclusive — pick one per wizard run. Defer carbs also disables the 4.0 auto e-carbs (Bread/Cake/Pizza) for that run: the whole meal is held, so the two cannot be combined.
+**MDI-only feature.** Enable it in *Bolus Wizard settings → Deferred carb logging* (also searchable in Settings), then tick **Defer carbs** in the Bolus Wizard when you want to delay the carb entry. The bolus is logged immediately; the carbs are held back and only recorded when you press **Eat now** on the Overview screen. **Cancel** discards them. Defer carbs and Carb time are mutually exclusive — pick one per wizard run. Defer carbs also disables the auto e-carbs (Bread/Cake/Pizza) for that run: the whole meal is held, so the two cannot be combined.
 
 While a deferred entry is pending, the Overview shows a banner with the held amount and **Eat now** / **Cancel** buttons. Both actions ask for confirmation first, so a meal is not logged or thrown away by a stray tap. The entry expires after **1 hour**; if it expires without being confirmed, the Overview shows a notice so the missing carb entry isn't overlooked (a deferred entry that cannot be read is also reported instead of vanishing). Only one entry can be active at a time. Discarding or letting it expire does not undo the bolus given at wizard time — log the carbs manually if you already ate.
 
@@ -96,7 +94,7 @@ Everything else (DynISF, Autosens, UAM prediction, target adjustments, carbs thr
 
 ## Building
 
-Gradle 9.8.2, Java 21, flavors `full` / `pumpcontrol` / `aapsclient` / `aapsclient2` / `aapsclient3` (upstream 4.0):
+Gradle 9.8.2, Java 21, flavors `full` / `pumpcontrol` / `aapsclient` / `aapsclient2` / `aapsclient3`:
 
 ```
 ./gradlew :app:assembleFullRelease   # or Android Studio
