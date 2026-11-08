@@ -97,6 +97,16 @@ Gradle 9, Java 21, flavors `full` / `pumpcontrol` / `aapsclient` / `aapsclient2`
 ./gradlew :app:assembleFullRelease   # or Android Studio
 ```
 
+For a **signed production APK** with the same injected signing as Android Studio/CI:
+
+```
+cp .env.example .env      # fill in KEYSTORE_FILE / KEYSTORE_PASSWORD / KEY_ALIAS
+./build-release.sh        # full flavor; add a flavor name to override
+```
+
+The script reads `.env`, prompts for anything missing (passwords without echo), and prints the APK
+path and SHA-256. `.env` is git-ignored.
+
 Module compile checks must name a flavor (`compileDebugKotlin` is ambiguous):
 
 ```
