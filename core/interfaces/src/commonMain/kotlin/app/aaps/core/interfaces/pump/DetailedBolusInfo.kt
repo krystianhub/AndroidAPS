@@ -54,15 +54,21 @@ class DetailedBolusInfo {
         else error("insulin == 0.0")
 
     fun createCarbs(): CA =
-        if (carbs != 0.0)
+        if (carbs != 0.0) {
+            // Nightscout v3 derives a treatment's identifier from `date` + `eventType`, so a bolus and
+            // its carbs written in the same millisecond get the same identifier there and the second
+            // upload replaces the first (the carbs win and the insulin disappears). One millisecond
+            // apart keeps them separate; it is invisible to IOB/COB.
+            val bolusTs = bolusTimestamp ?: timestamp
+            val carbsTs = carbsTimestamp ?: timestamp
             CA(
-                timestamp = carbsTimestamp ?: timestamp,
+                timestamp = if (insulin != 0.0 && carbsTs == bolusTs) carbsTs + 1 else carbsTs,
                 amount = carbs,
                 duration = carbsDuration,
                 // injection position is a property of the insulin injection, not of the meal
                 notes = notes?.let { InjectionPosition.stripPosition(it) }?.takeIf { it.isNotBlank() }
             )
-        else error("carbs == 0.0")
+        } else error("carbs == 0.0")
 
     fun copy(): DetailedBolusInfo {
         val n = DetailedBolusInfo()
