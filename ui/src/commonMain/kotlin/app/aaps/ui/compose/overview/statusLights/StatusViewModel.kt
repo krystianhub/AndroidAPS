@@ -356,7 +356,8 @@ class StatusViewModel(
                 .firstNotNullOfOrNull { te -> BasalInjection.extractDose(te.note)?.let { te to it } }
         }
         val lastBasalAge = lastBasal?.let { formatAge(it.first.timestamp, includeMinutes = true) }
-        val lastBasalDose = lastBasal?.let { rh.gs(CoreUiStrings.value_with_unit, decimalFormatter.to1Decimal(it.second), insulinUnit) }
+        // Lantus is dialled in whole units only.
+        val lastBasalDose = lastBasal?.let { rh.gs(CoreUiStrings.value_with_unit, decimalFormatter.to0Decimal(it.second), insulinUnit) }
         val lastBasalLevel = lastBasal?.let { basalLevel(it.first.timestamp, now) } ?: StatusLevel.UNSPECIFIED
 
         val windowMs = T.mins(preferences.get(IntKey.OverviewInsulinReqMedianMinutes).toLong()).msecs()
