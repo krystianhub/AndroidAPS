@@ -89,6 +89,8 @@ data class WizardDialogUiState(
 
     /** True when the entry must be recorded only (no pump delivery): pump unavailable or the mode forbids bolus. (A client delivers via the master, not record-only.) */
     val forcedRecordOnly: Boolean = false,
+    /** MDI: record-only is the normal path, so the warning banner would be noise. */
+    val isMdi: Boolean = false,
     /** An SMB is being delivered on this phone (always false on a client: its master decides). */
     val smbBeingDelivered: Boolean = false,
     /** The user has changed the BG field. From then on it keeps their value and no longer follows new readings. */

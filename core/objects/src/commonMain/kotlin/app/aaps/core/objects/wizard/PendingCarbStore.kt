@@ -2,11 +2,13 @@ package app.aaps.core.objects.wizard
 
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -35,6 +37,7 @@ class PendingCarbStore(
     private val dateUtil: DateUtil,
     private val preferences: Preferences,
     private val aapsLogger: AAPSLogger,
+    private val rh: TextResolver,
     private val notificationManager: NotificationManager
 ) {
 
@@ -190,7 +193,7 @@ class PendingCarbStore(
         removePending()
         notificationManager.post(
             NotificationId.DEFERRED_CARBS_UNREADABLE,
-            "Deferred carbs could not be read and were discarded. Log the carbs manually."
+            rh.gs(InterfacesStrings.deferred_carbs_unreadable)
         )
     }
 

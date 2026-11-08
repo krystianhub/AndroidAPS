@@ -126,6 +126,7 @@ class TreatmentDialogViewModel(
                 bolusStep = bolusStep,
                 isAapsClient = isAapsClient,
                 forcedRecordOnly = true,
+                isMdi = pump.isMDI(),
                 showPosition = showPosition
             )
         }
@@ -238,7 +239,7 @@ class TreatmentDialogViewModel(
                     BatchAction.Bolus(
                         insulin = deliverableInsulin, carbs = state.carbs, carbsTimeOffsetMinutes = 0, carbsDurationHours = 0,
                         recordOnly = state.forcedRecordOnly,
-                        notes = if (state.showPosition) "pos ${state.position}" else "",
+                        notes = if (state.showPosition) InjectionPosition.appendToNotes("", state.position) else "",
                         timestamp = 0L, iCfg = iCfg
                     )
                 )

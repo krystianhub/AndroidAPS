@@ -52,14 +52,14 @@ data class TddStatsData(
  *
  * **Table Structure:**
  * ```
- * Date       | Basal | Bolus | Total | Carbs
- * -----------|-------|-------|-------|-------
- * 2024-01-15 | 12.50 | 18.30 | 30.80 | 150
- * 2024-01-14 | 12.20 | 19.10 | 31.30 | 145
+ * Date       | Basal | Bolus | Total | Basal % | Carbs
+ * -----------|-------|-------|-------|---------|-------
+ * 2024-01-15 | 12.50 | 18.30 | 30.80 | 41%     | 150
+ * 2024-01-14 | 12.20 | 19.10 | 31.30 | 39%     | 145
  * ...
- * -----------|-------|-------|-------|-------
- * Average    | 12.35 | 18.70 | 31.05 | 148
- * Today      | 8.50  | 12.40 | 20.90 | 95
+ * -----------|-------|-------|-------|---------|-------
+ * Average    | 12.35 | 18.70 | 31.05 | 40%     | 148
+ * Today      | 8.50  | 12.40 | 20.90 | 41%     | 95
  * ```
  *
  * @param tddStatsData TDD statistics data containing historical TDDs, average, and today's data
@@ -89,7 +89,8 @@ fun TddStatsCompose(
                     date = dateUtil.dateString(tdd.timestamp),
                     basal = decimalFormatter.to2Decimal(tdd.basalAmount),
                     bolus = decimalFormatter.to2Decimal(tdd.bolusAmount),
-                    total = decimalFormatter.to2Decimal(tdd.totalAmount),
+                    total = decimalFormatter.to2Decimal(tdd.total),
+                    basalPct = stringResource(CoreUiStrings.formatPercent, tdd.basalPercent),
                     carbs = decimalFormatter.to0Decimal(tdd.carbs),
                     ic = tdd.icRatio?.let { decimalFormatter.to1Decimal(it) } ?: "-"
                 )
@@ -106,7 +107,8 @@ fun TddStatsCompose(
                     date = "${tddStatsData.days3} d",
                     basal = decimalFormatter.to2Decimal(avg3.data.basalAmount),
                     bolus = decimalFormatter.to2Decimal(avg3.data.bolusAmount),
-                    total = decimalFormatter.to2Decimal(avg3.data.totalAmount),
+                    total = decimalFormatter.to2Decimal(avg3.data.total),
+                    basalPct = stringResource(CoreUiStrings.formatPercent, avg3.data.basalPercent),
                     carbs = decimalFormatter.to0Decimal(avg3.data.carbs),
                     ic = avg3.data.icRatio?.let { decimalFormatter.to1Decimal(it) } ?: "-",
                     isBold = false
@@ -116,7 +118,8 @@ fun TddStatsCompose(
                 date = stringResource(CoreUiStrings.average),
                 basal = decimalFormatter.to2Decimal(avg.data.basalAmount),
                 bolus = decimalFormatter.to2Decimal(avg.data.bolusAmount),
-                total = decimalFormatter.to2Decimal(avg.data.totalAmount),
+                total = decimalFormatter.to2Decimal(avg.data.total),
+                basalPct = stringResource(CoreUiStrings.formatPercent, avg.data.basalPercent),
                 carbs = decimalFormatter.to0Decimal(avg.data.carbs),
                 ic = avg.data.icRatio?.let { decimalFormatter.to1Decimal(it) } ?: "-",
                 isBold = true
@@ -132,7 +135,8 @@ fun TddStatsCompose(
                 date = stringResource(InterfacesStrings.today),
                 basal = decimalFormatter.to2Decimal(today.basalAmount),
                 bolus = decimalFormatter.to2Decimal(today.bolusAmount),
-                total = decimalFormatter.to2Decimal(today.totalAmount),
+                total = decimalFormatter.to2Decimal(today.total),
+                basalPct = stringResource(CoreUiStrings.formatPercent, today.basalPercent),
                 carbs = decimalFormatter.to0Decimal(today.carbs),
                 ic = today.icRatio?.let { decimalFormatter.to1Decimal(it) } ?: "-",
                 isBold = true
@@ -184,6 +188,13 @@ fun TddTableHeaderRow() {
             textAlign = TextAlign.Center
         )
         Text(
+            text = stringResource(CoreUiStrings.basalpct),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.Center
+        )
+        Text(
             text = stringResource(InterfacesStrings.carbs),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
@@ -208,6 +219,7 @@ fun TddTableHeaderRow() {
  * @param basal Basal insulin amount formatted as string (e.g., "12.50")
  * @param bolus Bolus insulin amount formatted as string (e.g., "18.30")
  * @param total Total daily insulin formatted as string (e.g., "30.80")
+ * @param basalPct Basal share of the total, formatted as percent (e.g., "41%")
  * @param carbs Total carbohydrates formatted as string (e.g., "150")
  * @param isBold Whether to display text in bold (true for average and today rows)
  */
@@ -217,6 +229,7 @@ fun TddTableDataRow(
     basal: String,
     bolus: String,
     total: String,
+    basalPct: String,
     carbs: String,
     ic: String = "-",
     isBold: Boolean = false
@@ -250,6 +263,13 @@ fun TddTableDataRow(
         )
         Text(
             text = total,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = basalPct,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
             modifier = Modifier.weight(1f),

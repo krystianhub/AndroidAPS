@@ -22,6 +22,7 @@ import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.PumpStatusProvider
+import app.aaps.core.interfaces.pump.PumpWithConcentration
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.sync.XDripBroadcast
@@ -60,6 +61,7 @@ import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.isNull
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyBlocking
@@ -1296,6 +1298,23 @@ class SmsCommunicatorPluginTest : TestBaseWithProfile() {
         smsCommunicatorPlugin.sendNotificationToAllNumbers("abc")
         assertThat(smsCommunicatorPlugin.messages[0].text).isEqualTo("abc")
         assertThat(smsCommunicatorPlugin.messages[1].text).isEqualTo("abc")
+    }
+
+    @Test fun `bolus and target commands are refused in mdi`() = runTest {
+        whenever(preferences.get(BooleanKey.SmsAllowRemoteCommands)).thenReturn(true)
+        val mdiPump = mock<PumpWithConcentration>()
+        whenever(mdiPump.isMDI()).thenReturn(true)
+        whenever(activePlugin.activePump).thenReturn(mdiPump)
+
+        // A pen cannot deliver: replying "delivered" (record-only) would be a lie.
+        smsCommunicatorPlugin.messages = ArrayList()
+        smsCommunicatorPlugin.processSms(Sms("1234", "BOLUS 2"))
+        assertThat(smsCommunicatorPlugin.messages[1].text).contains("Not available in MDI mode")
+
+        // A remotely set temp target would change the APS target while being invisible in the MDI UI.
+        smsCommunicatorPlugin.messages = ArrayList()
+        smsCommunicatorPlugin.processSms(Sms("1234", "TARGET MEAL"))
+        assertThat(smsCommunicatorPlugin.messages[1].text).contains("Not available in MDI mode")
     }
 
     @Test

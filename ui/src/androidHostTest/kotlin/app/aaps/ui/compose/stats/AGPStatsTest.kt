@@ -115,9 +115,15 @@ class AGPStatsTest {
     fun mmolMetricsKeepTheirConversionWithoutUnits() {
         showLoadedData(GlucoseUnit.MMOL)
 
-        compose.onNodeWithText("38.8").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("38.8 / 5.7%").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("44.3").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("1.4").performScrollTo().assertIsDisplayed()
+        // Left-aligned columns, evenly distributed across the row.
+        val labelLefts = listOf("eA1c", "GMI", "SD", "CV", "Days").map {
+            compose.onNodeWithText(it).fetchSemanticsNode().boundsInRoot.left
+        }
+        assertThat(labelLefts).isInOrder()
+        assertThat(labelLefts.first()).isLessThan(labelLefts.last())
     }
 
     private fun showLoadedData(units: GlucoseUnit) {

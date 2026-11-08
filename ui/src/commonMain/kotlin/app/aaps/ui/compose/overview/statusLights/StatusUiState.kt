@@ -26,5 +26,7 @@ data class StatusUiState(
     val insulinReq: String? = null,
     val insulinReqMedian: String? = null,
     val predictedBg: String? = null,
-    val predictedBgLevel: StatusLevel = StatusLevel.UNSPECIFIED
+    val predictedBgLevel: StatusLevel = StatusLevel.UNSPECIFIED,
+    /** The APS result behind the insulinReq/predicted values is older than 5 min. */
+    val apsStale: Boolean = false
 )

@@ -74,7 +74,11 @@ class LoopActionViewModel(
         val profile = profileFunction.getProfile()
         val lastRun = loop.lastRun
 
-        val resultAvailable = lastRun != null &&
+        // MDI has no temp basal to accept. The APS result can still contain a temp-basal request
+        // (the engine computes one before constraints), so isChangeRequested() alone would leave
+        // the Loop action offering "Accept new temp basal" on a pen setup.
+        val resultAvailable = !pump.isMDI() &&
+            lastRun != null &&
             (lastRun.lastOpenModeAccept == 0L || lastRun.lastOpenModeAccept < lastRun.lastAPSRun) &&
             lastRun.constraintsProcessed?.isChangeRequested() == true
 

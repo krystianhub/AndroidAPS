@@ -11,7 +11,13 @@ import kotlin.math.max
  */
 object BasalInjection {
 
+    /** Lantus pens dial whole units; only rapid-acting pens use 0.5 U steps. */
+    const val DOSE_STEP = 1.0
+
     private val DOSE_REGEX = Regex("(?i)\\bLantus\\s*[:#]?\\s*([0-9]+(?:[.,][0-9]+)?)\\s*U\\b")
+
+    /** Snaps a basal dose to the pen's whole-unit grid. */
+    fun snapDose(amount: Double): Double = Round.roundTo(amount, DOSE_STEP)
 
     /** Extracts the recorded dose from a NOTE therapy event, if present. */
     fun extractDose(note: String?): Double? =

@@ -76,6 +76,24 @@ import kotlinx.coroutines.withContext
 import kotlin.math.floor
 import kotlin.math.ln
 
+/**
+ * Pump-enactment settings with no effect on an MDI pen. The keys also carry NON_MDI visibility;
+ * filtering here keeps them out even if a preference screen is rendered without a VisibilityContext.
+ */
+private val MDI_HIDDEN_SMB_SETTINGS = setOf<Any>(
+    DoubleKey.ApsMaxBasal,
+    UnitDoubleKey.ApsLgsThreshold,
+    BooleanKey.ApsUseSmb,
+    BooleanKey.ApsUseSmbWithHighTt,
+    BooleanKey.ApsUseSmbAlways,
+    BooleanKey.ApsUseSmbWithCob,
+    BooleanKey.ApsUseSmbWithLowTt,
+    BooleanKey.ApsUseSmbAfterCarbs,
+    IntKey.ApsMaxSmbFrequency,
+    IntKey.ApsMaxMinutesOfBasalToLimitSmb,
+    IntKey.ApsUamMaxMinutesOfBasalToLimitSmb
+)
+
 @SingleIn(AppScope::class)
 @Inject
 open class OpenAPSSMBPlugin(
@@ -594,7 +612,7 @@ open class OpenAPSSMBPlugin(
                     DoubleKey.ApsMaxCurrentBasalMultiplier
                 )
             )
-        ),
+        ).filterNot { activePlugin.activePump.isMDI() && it in MDI_HIDDEN_SMB_SETTINGS },
         icon = pluginDescription.icon
     )
 

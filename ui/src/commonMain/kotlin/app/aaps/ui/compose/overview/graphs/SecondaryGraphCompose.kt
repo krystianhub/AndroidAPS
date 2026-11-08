@@ -115,6 +115,8 @@ fun SecondaryGraphCompose(
     derivedTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
     activityOverlay: Boolean = false,
+    /** False for MDI: a pen has no pump basal to draw as the background band. */
+    showBasal: Boolean = true,
     onVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
     /** While holding the BG graph, a line at the inspected time. Null turns it off. */
     inspect: GraphInspectState? = null,
@@ -150,7 +152,7 @@ fun SecondaryGraphCompose(
     val hasIob = SeriesType.IOB in seriesTypes
     val hasCob = SeriesType.COB in seriesTypes
     // The basal band takes the top of the graph, so only when IOB is the graph's only series
-    val hasBasalLayer = sides.left == listOf(SeriesType.IOB) && sides.right.isEmpty()
+    val hasBasalLayer = showBasal && sides.left == listOf(SeriesType.IOB) && sides.right.isEmpty()
 
     val iobData = if (hasIob) viewModel.iobGraphFlow.collectAsStateWithLifecycle().value else null
     val cobData = if (hasCob) viewModel.cobGraphFlow.collectAsStateWithLifecycle().value else null

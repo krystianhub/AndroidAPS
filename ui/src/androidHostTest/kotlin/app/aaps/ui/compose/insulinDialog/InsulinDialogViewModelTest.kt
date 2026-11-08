@@ -3,6 +3,7 @@ package app.aaps.ui.compose.insulinDialog
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.RM
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.Loop
@@ -32,6 +33,7 @@ import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.HardLimits
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.ClientRole
 import app.aaps.core.keys.interfaces.Preferences
@@ -152,6 +154,40 @@ internal class InsulinDialogViewModelTest {
     fun `updateInsulin clamps negatives to zero`() {
         sut.updateInsulin(-5.0)
         assertThat(sut.uiState.value.insulin).isEqualTo(0.0)
+    }
+
+    @Test
+    fun `unticking record basal clears the Lantus-sized amount`() {
+        whenever(pump.isMDI()).thenReturn(true)
+        whenever(preferences.get(DoubleKey.MdiMaxBasalInjection)).thenReturn(30.0)
+        val vm = create()
+
+        vm.updateRecordBasal(true)
+        vm.updateInsulin(24.0)
+        assertThat(vm.uiState.value.insulin).isEqualTo(24.0)
+
+        // A Lantus amount must not carry into the uncapped rapid-acting field when the switch is turned off.
+        vm.updateRecordBasal(false)
+        assertThat(vm.uiState.value.insulin).isEqualTo(0.0)
+        assertThat(vm.uiState.value.maxAmount).isEqualTo(10.0)
+    }
+
+    @Test
+    fun `the record basal prefill uses the newest Lantus dose`() = runTest {
+        whenever(pump.isMDI()).thenReturn(true)
+        whenever(preferences.get(DoubleKey.MdiMaxBasalInjection)).thenReturn(30.0)
+        whenever(persistenceLayer.getTherapyEventDataFromTime(any(), any(), any())).thenReturn(
+            listOf(
+                TE(timestamp = 1_000, type = TE.Type.NOTE, note = "Lantus 24U", glucoseUnit = GlucoseUnit.MGDL),
+                TE(timestamp = 2_000, type = TE.Type.NOTE, note = "Lantus 18U", glucoseUnit = GlucoseUnit.MGDL)
+            )
+        )
+        val vm = create()
+        main.scheduler.advanceUntilIdle()
+
+        vm.updateRecordBasal(true)
+
+        assertThat(vm.uiState.value.insulin).isEqualTo(18.0)
     }
 
     @Test

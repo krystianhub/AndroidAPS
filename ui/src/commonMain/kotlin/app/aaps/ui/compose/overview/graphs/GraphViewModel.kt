@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.GraphConfigRepository
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.overview.graph.SeriesType
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanNonKey
@@ -54,8 +55,12 @@ class GraphViewModel(
     private val aapsLogger: AAPSLogger,
     private val preferences: Preferences,
     private val dateUtil: DateUtil,
-    private val rh: TextResolver
+    private val rh: TextResolver,
+    private val activePlugin: ActivePlugin
 ) : ViewModel() {
+
+    /** MDI has no pump basal, so the IOB graph must not draw the basal band. */
+    val isMdi: Boolean get() = activePlugin.activePump.isMDI()
 
     @AssistedFactory
     interface Factory {

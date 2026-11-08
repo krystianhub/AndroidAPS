@@ -640,8 +640,25 @@ fun GraphsSection(
                 onDismiss = { editingBgOverlays = false }
             )
         }
-        // Fixed IOB graph (Graph 1) with optional Activity overlay
+        // Fixed IOB graph (Graph 1) with optional Activity and COB overlays. MDI hides the basal
+        // band; COB gets the right axis (and therefore also replaces the basal band).
         var editingIobOverlays by remember { mutableStateOf(false) }
+        val showCobOnIob = SeriesType.COB in graphConfig.iobOverlays
+        val iobGraphName = when {
+            showCobOnIob -> stringResource(
+                InterfacesStrings.values_with_slash,
+                stringResource(CoreUiStrings.iob),
+                stringResource(CoreUiStrings.cob)
+            )
+
+            !graphViewModel.isMdi -> stringResource(
+                InterfacesStrings.values_with_slash,
+                stringResource(CoreUiStrings.iob),
+                stringResource(CoreUiStrings.basal_shortname)
+            )
+
+            else -> stringResource(CoreUiStrings.iob)
+        }
         Box(
             modifier = Modifier
                 .pullUp(IOB_GRAPH_PULL_UP)
@@ -650,12 +667,13 @@ fun GraphsSection(
         ) {
             SecondaryGraphCompose(
                 viewModel = graphViewModel,
-                seriesTypes = listOf(SeriesType.IOB),
+                seriesTypes = listOf(SeriesType.IOB) + if (showCobOnIob) listOf(SeriesType.COB) else emptyList(),
                 scrollState = iobScrollState,
                 zoomState = iobZoomState,
                 derivedTimeRange = derivedTimeRange,
                 nowTimestamp = nowTimestamp,
                 activityOverlay = SeriesType.ACTIVITY in graphConfig.iobOverlays,
+                showBasal = !graphViewModel.isMdi,
                 onVisibleRangeChanged = { iobVisibleRange = it },
                 inspect = inspect,
                 modifier = Modifier
@@ -663,7 +681,7 @@ fun GraphsSection(
                     .height(graphConfig.iobHeight.dp - REMOVED_TIME_LABELS_HEIGHT)
             )
             GraphNameRow(
-                name = stringResource(InterfacesStrings.values_with_slash, stringResource(CoreUiStrings.iob), stringResource(CoreUiStrings.basal_shortname)),
+                name = iobGraphName,
                 editName = stringResource(CoreUiStrings.iob),
                 onEdit = if (isSimpleMode) null else ({ editingIobOverlays = true }),
                 modifier = Modifier
@@ -673,9 +691,9 @@ fun GraphsSection(
         }
         if (editingIobOverlays) {
             GraphSeriesBottomSheet(
-                title = stringResource(InterfacesStrings.values_with_slash, stringResource(CoreUiStrings.iob), stringResource(CoreUiStrings.basal_shortname)),
+                title = iobGraphName,
                 selectedSeries = graphConfig.iobOverlays,
-                availableSeries = listOf(SeriesType.ACTIVITY),
+                availableSeries = listOf(SeriesType.ACTIVITY, SeriesType.COB),
                 height = graphConfig.iobHeight,
                 onHeightChange = { h ->
                     graphViewModel.updateGraphConfig(graphConfig.copy(iobHeight = h))

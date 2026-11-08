@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.overview.chips
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -19,6 +20,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.aaps.core.interfaces.navigation.ElementType
@@ -35,14 +37,14 @@ import app.aaps.core.ui.compose.stringResource
 @Composable
 internal fun IobChip(
     state: IobUiState,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)? = null,
     showIcon: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val hasValue = state.iobTotal != 0.0
     val haptic = LocalHapticFeedback.current
-    // Disable the clickable Surface's 48dp minimum interactive size so the chip keeps its
-    // compact height and stays vertically aligned with the (non-clickable) CobChip.
+    // A null onClick (MDI: basal IOB is always zero) makes the chip pure status, like the COB chip.
+    // The provider keeps the 48dp minimum touch target out of the layout even when it is clickable.
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
         // Name the whole chip, not the icon. state.text is only a bare value like "1.20 U", so
         // without a noun a screen reader cannot tell it from a bolus. It goes on the Surface and
@@ -56,10 +58,15 @@ internal fun IobChip(
         // by side, giving "IOB" then "1.20 U".
         val chipDescription = stringResource(CoreUiStrings.iob)
         Surface(
-            onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
             shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
             color = if (hasValue) ElementType.INSULIN.color().copy(alpha = 0.2f) else Color.Transparent,
             modifier = modifier
+                .then(
+                    if (onClick != null) Modifier.clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onClick()
+                    } else Modifier
+                )
                 .heightIn(min = AapsSpacing.chipHeight)
                 .semantics { contentDescription = chipDescription }
         ) {
@@ -80,6 +87,8 @@ internal fun IobChip(
                     text = state.text,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = if (showIcon) AapsSpacing.medium else 0.dp)
                 )
             }

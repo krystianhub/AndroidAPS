@@ -1,5 +1,6 @@
 package app.aaps.implementation.wizard
 
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.alerts.EatReminder
@@ -14,6 +15,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.pump.PumpWithConcentration
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.runningMode.RunningModeGuard
@@ -100,6 +102,11 @@ class BolusWizardTest : TestBaseWithProfile() {
         glucoseStatusProvider, persistenceLayer, runningModeGuard,
         ch, masterActionExecutor, mock<PendingCarbStore>(), activePlugin, CoroutineScope(Dispatchers.Unconfined)
     )
+
+    private fun mdiPump(): PumpWithConcentration = mock<PumpWithConcentration>().also {
+        whenever(it.isMDI()).thenReturn(true)
+        whenever(it.pumpDescription).thenReturn(PumpDescription().also { desc -> desc.bolusStep = pumpBolusStep })
+    }
 
     /**
      * With loop results stored, the wizard counts with their average, the same ISF for carbs the COB
@@ -335,6 +342,22 @@ class BolusWizardTest : TestBaseWithProfile() {
         )
         assertThat(bw.totalBeforePercentageAdjustment).isWithin(0.001).of(5.0)
         assertThat(bw.calculatedTotalInsulin).isWithin(0.001).of(3.5)
+    }
+
+    @Test
+    fun appliesThePercentageItIsGivenInMdiToo() = runBlocking {
+        // 20 g at I:C 12 = 1.67 U. MDI callers pass 100 for the hidden partial-bolus pref, but an
+        // explicit percentage (wizard % checkbox, QuickWizard entry, watch wizard) must still apply.
+        val profile = setupProfile(4.0, 8.0, 20.0, 12.0)
+        whenever(profile.units).thenReturn(GlucoseUnit.MGDL)
+        val pump = mdiPump()
+        whenever(activePlugin.activePump).thenReturn(pump)
+        val bw = createWizard().doCalc(
+            profile, "", null, carbs = 20, cob = 0.0, bg = 0.0, correction = 0.0, percentageCorrection = 80,
+            useBg = false, useCob = false, includeBolusIOB = false, includeBasalIOB = false,
+            useSuperBolus = false, useTT = false, useTrend = false, useAlarm = false
+        )
+        assertThat(bw.calculatedTotalInsulin).isWithin(0.01).of(1.3)
     }
 
     // ==========================================

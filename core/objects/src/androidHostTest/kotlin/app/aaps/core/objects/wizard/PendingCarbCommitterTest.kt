@@ -36,10 +36,10 @@ class PendingCarbCommitterTest {
         }.whenever(it).putSync(any(), any())
     }
     private val notificationManager = mock<NotificationManager>()
-    private val store = PendingCarbStore(dateUtil, preferences, mock<AAPSLogger>(), notificationManager)
+    private val rh = mock<TextResolver>()
+    private val store = PendingCarbStore(dateUtil, preferences, mock<AAPSLogger>(), rh, notificationManager)
     private val persistenceLayer = mock<PersistenceLayer>()
     private val uel = mock<UserEntryLogger>()
-    private val rh = mock<TextResolver>()
 
     private lateinit var committer: PendingCarbCommitter
 

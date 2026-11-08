@@ -47,6 +47,7 @@ import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.PendingCarbStore
 import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.ui.CoreUiStrings
@@ -83,6 +84,7 @@ class MasterActionExecutorImplTest : TestBaseWithProfile() {
     @Mock lateinit var quickWizard: QuickWizard
     @Mock lateinit var bolusWizardProvider: () -> BolusWizard
     @Mock lateinit var runningModeGuard: RunningModeGuard
+    @Mock lateinit var pendingCarbStore: PendingCarbStore
     @Mock lateinit var commandQueue: CommandQueue
     @Mock lateinit var persistenceLayer: PersistenceLayer
     @Mock lateinit var uel: UserEntryLogger
@@ -97,8 +99,8 @@ class MasterActionExecutorImplTest : TestBaseWithProfile() {
 
     private fun create() = MasterActionExecutorImpl(
         aapsLogger, baseText, config, quickWizard, bolusWizardProvider, profileFunction, profileRepository, iobCobCalculator, constraintsChecker, activePlugin,
-        runningModeGuard, commandQueue, persistenceLayer, uel, loop, dateUtil, decimalFormatter, profileUtil, automation, notificationManager, bolusProgressData,
-        CoroutineScope(Dispatchers.Unconfined), masterRecordWriter, smbPause, eatReminder
+        runningModeGuard, pendingCarbStore, commandQueue, persistenceLayer, uel, loop, dateUtil, decimalFormatter, profileUtil, automation, notificationManager,
+        bolusProgressData, CoroutineScope(Dispatchers.Unconfined), masterRecordWriter, smbPause, eatReminder
     )
 
     // The base mocks ConstraintsChecker without a default answer; the FIXED/batch cap path needs a passthrough.
@@ -505,6 +507,26 @@ class MasterActionExecutorImplTest : TestBaseWithProfile() {
     @Test
     fun prepareQuickWizard_cutByExactlyOneStep_isAConstraintError() = runTest {
         val result = preparedQuickWizardOnA01StepPump(calculated = 1.2, afterConstraints = 1.1)
+
+        assertThat(result).isInstanceOf(MasterActionExecutor.PrepareResult.Error::class.java)
+    }
+
+    // A deferred entry holds the whole meal. The dialog checks this too, but the watch/client/quick-wizard
+    // prepares bypass it, so the executor has to be the backstop.
+    @Test
+    fun prepareQuickWizard_isRefusedWhileADeferredEntryIsPending() = runTest {
+        whenever(pendingCarbStore.isPending()).thenReturn(true)
+
+        val result = preparedQuickWizardOnA01StepPump(calculated = 1.58, afterConstraints = 1.5)
+
+        assertThat(result).isInstanceOf(MasterActionExecutor.PrepareResult.Error::class.java)
+    }
+
+    @Test
+    fun prepareWizard_isRefusedWhileADeferredEntryIsPending() = runTest {
+        whenever(pendingCarbStore.isPending()).thenReturn(true)
+
+        val result = preparedManualWizard(calculated = 2.0, afterConstraints = 2.0, carbs = 20)
 
         assertThat(result).isInstanceOf(MasterActionExecutor.PrepareResult.Error::class.java)
     }

@@ -351,29 +351,67 @@ private fun AgpOverviewValue(label: String, value: String, color: Color) {
 @Composable
 private fun AgpMetrics(data: AgpStatsData) {
     val profileUtil = LocalProfileUtil.current
+    // mmol profiles get the extra percentage after the slash; mg/dL already is a percentage and
+    // keeps the upstream layout untouched.
+    val showPercentage = profileUtil.units == GlucoseUnit.MMOL
     val metrics = listOf(
-        stringResource(UiStrings.agp_ea1c) to formatGlycemicMetric(data.eA1cPercent, profileUtil.units),
+        stringResource(UiStrings.agp_ea1c) to formatEA1c(data.eA1cPercent, profileUtil.units),
         stringResource(UiStrings.agp_gmi) to formatGlycemicMetric(data.gmiPercent, profileUtil.units),
         stringResource(UiStrings.agp_standard_deviation) to profileUtil.fromMgdlToStringInUnits(data.standardDeviationMgdl),
         stringResource(UiStrings.agp_cv) to stringResource(UiStrings.agp_percent, data.coefficientOfVariation),
         stringResource(UiStrings.agp_available_days) to stringResource(UiStrings.agp_decimal, data.availableDays)
     )
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AapsSpacing.medium),
-        verticalAlignment = Alignment.Top
-    ) {
-        metrics.forEach { (label, value) ->
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(AapsSpacing.extraSmall)
-            ) {
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+    if (showPercentage) {
+        // The mmol eA1c is wider than the other values. Give each metric its own width and let
+        // SpaceBetween put the same gap between all five columns; text stays left-aligned.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            metrics.forEach { (label, value) ->
+                Column(verticalArrangement = Arrangement.spacedBy(AapsSpacing.extraSmall)) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    } else {
+        // mg/dL keeps the upstream layout untouched.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AapsSpacing.medium),
+            verticalAlignment = Alignment.Top
+        ) {
+            metrics.forEach { (label, value) ->
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(AapsSpacing.extraSmall)
+                ) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
 }
+
+/**
+ * Upstream shows eA1c in mmol/mol for mmol profiles and as a plain percentage otherwise. Both are
+ * the same estimate in different units, so mmol profiles get "37.1 / 5.5%" instead of a second row.
+ */
+@Composable
+private fun formatEA1c(valuePercent: Double, glucoseUnit: GlucoseUnit): String =
+    if (glucoseUnit == GlucoseUnit.MMOL)
+        stringResource(UiStrings.agp_decimal_slash_percent, valuePercent * 10.929 - 23.5, valuePercent)
+    else
+        formatGlycemicMetric(valuePercent, glucoseUnit)
 
 @Composable
 private fun formatGlycemicMetric(valuePercent: Double, glucoseUnit: GlucoseUnit): String =

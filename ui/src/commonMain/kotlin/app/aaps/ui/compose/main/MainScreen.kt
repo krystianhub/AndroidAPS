@@ -68,6 +68,7 @@ import app.aaps.ui.compose.overview.EatReminderBanner
 import app.aaps.ui.compose.overview.OverviewScreen
 import app.aaps.ui.compose.overview.PendingCarbsBanner
 import app.aaps.ui.compose.overview.chips.ChipsViewModel
+import app.aaps.ui.compose.overview.chips.IcInfoDialog
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import app.aaps.ui.compose.quickLaunch.QuickLaunchAction
@@ -161,6 +162,7 @@ fun MainScreen(
     var showTreatmentSheet by remember { mutableStateOf(false) }
     var showAutomationSheet by remember { mutableStateOf(false) }
     var showLoopActionSheet by remember { mutableStateOf(false) }
+    val icInfoState by chipsViewModel.icInfo.collectAsStateWithLifecycle()
     val automationState by scenesViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = LocalSnackbarHostState.current
 
@@ -315,6 +317,7 @@ fun MainScreen(
                             PendingCarbsBanner(
                                 pending = pendingCarbsState.pending,
                                 expired = pendingCarbsState.expired,
+                                carbs = pendingCarbsState.carbs,
                                 onEatNow = mainViewModel::eatNow,
                                 onCancel = mainViewModel::cancelPendingCarbs,
                                 onDismissExpired = mainViewModel::dismissPendingCarbsExpired
@@ -557,6 +560,11 @@ fun MainScreen(
             onPerform = { mainViewModel.performLoopAccept() },
             onDismiss = { showLoopActionSheet = false }
         )
+    }
+
+    // Minimal derived-I:C dialog, opened from the COB chip.
+    icInfoState?.let { state ->
+        IcInfoDialog(state = state, onDismiss = chipsViewModel::dismissIcInfo)
     }
 
     // Shared confirmation dialog (automation actions, TT presets, scene end — from toolbar or

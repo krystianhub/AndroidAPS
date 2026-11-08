@@ -57,6 +57,7 @@ fun TreatmentsScreen(
     onNavigateBack: () -> Unit
 ) {
     val showExtendedBolusTab = viewModel.showExtendedBolusTab()
+    val isMdi = viewModel.activePlugin.activePump.isMDI()
     val iconColors = AapsTheme.elementColors
     val defaultToolbarConfig = remember {
         ToolbarConfig(
@@ -74,7 +75,7 @@ fun TreatmentsScreen(
     }
 
     // Define tabs with their icons and content
-    val tabs = remember(showExtendedBolusTab) {
+    val tabs = remember(showExtendedBolusTab, isMdi) {
         var currentIndex = 0
         buildList {
             add(
@@ -85,7 +86,9 @@ fun TreatmentsScreen(
                     colorGetter = { iconColors.carbs },
                 )
             )
-            if (showExtendedBolusTab) {
+            // MDI has no pump temp basal, extended bolus or temp targets. Keep their historical
+            // tabs out of the history browser as well as out of the treatment entry points.
+            if (!isMdi && showExtendedBolusTab) {
                 add(
                     TreatmentTab(
                         pageIndex = currentIndex++,
@@ -95,22 +98,24 @@ fun TreatmentsScreen(
                     )
                 )
             }
-            add(
-                TreatmentTab(
-                    pageIndex = currentIndex++,
-                    icon = IcTbrHigh,
-                    titleRes = CoreUiStrings.tempbasal_label,
-                    colorGetter = { iconColors.tempBasal },
+            if (!isMdi) {
+                add(
+                    TreatmentTab(
+                        pageIndex = currentIndex++,
+                        icon = IcTbrHigh,
+                        titleRes = CoreUiStrings.tempbasal_label,
+                        colorGetter = { iconColors.tempBasal },
+                    )
                 )
-            )
-            add(
-                TreatmentTab(
-                    pageIndex = currentIndex++,
-                    icon = IcTtHigh,
-                    titleRes = CoreUiStrings.temporary_target,
-                    colorGetter = { iconColors.tempTarget },
+                add(
+                    TreatmentTab(
+                        pageIndex = currentIndex++,
+                        icon = IcTtHigh,
+                        titleRes = CoreUiStrings.temporary_target,
+                        colorGetter = { iconColors.tempTarget },
+                    )
                 )
-            )
+            }
             add(
                 TreatmentTab(
                     pageIndex = currentIndex++,

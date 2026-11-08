@@ -345,6 +345,8 @@ class SmsCommunicatorPlugin(
 
                 "BOLUS"    ->
                     if (!remoteCommandsAllowed) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(SyncStrings.smscommunicator_remote_command_not_allowed)))
+                    // A pen cannot deliver, and the reply would otherwise claim "delivered". CARBS stays available.
+                    else if (activePlugin.activePump.isMDI()) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(SyncStrings.smscommunicator_not_available_mdi)))
                     else if (commandQueue.bolusInQueue()) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(SyncStrings.smscommunicator_another_bolus_in_queue)))
                     // Spacing guard applies to BOTH plain ("BOLUS x") and meal ("BOLUS x MEAL") forms;
                     // the meal form (size 3) previously skipped it, allowing unbounded back-to-back stacking.
@@ -918,6 +920,13 @@ class SmsCommunicatorPlugin(
         val isActivity = divided[1].equals("ACTIVITY", ignoreCase = true)
         val isHypo = divided[1].equals("HYPO", ignoreCase = true)
         val isStop = divided[1].equals("STOP", ignoreCase = true) || divided[1].equals("CANCEL", ignoreCase = true)
+        if ((isMeal || isActivity || isHypo) && activePlugin.activePump.isMDI()) {
+            // Temp targets are not part of MDI therapy and are hidden in the UI; a remote one would be invisible
+            // while still changing the APS target. Cancelling a leftover target stays possible.
+            receivedSms.processed = true
+            sendSMS(Sms(receivedSms.phoneNumber, rh.gs(SyncStrings.smscommunicator_not_available_mdi)))
+            return
+        }
         if (isMeal || isActivity || isHypo) {
             val passCode = generatePassCode()
             val reply = rh.gs(SyncStrings.smscommunicator_temptarget_with_code, divided[1].uppercase(Locale.getDefault()), passCode)

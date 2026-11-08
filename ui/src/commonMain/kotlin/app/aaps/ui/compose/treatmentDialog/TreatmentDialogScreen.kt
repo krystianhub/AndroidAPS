@@ -51,6 +51,7 @@ import app.aaps.core.ui.compose.navigation.label
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.compose.stringResourceOrNull
 import app.aaps.ui.compose.components.DialogStatusBar
+import app.aaps.ui.compose.components.InjectionPositionRow
 import app.aaps.ui.compose.components.RecordOnlyBanner
 import app.aaps.ui.compose.components.SmbBeingDeliveredBanner
 import app.aaps.ui.compose.overview.chips.CobUiState
@@ -172,7 +173,7 @@ internal fun TreatmentDialogContent(
                     },
                     actions = {}
                 )
-                if (uiState.forcedRecordOnly) RecordOnlyBanner()
+                if (uiState.forcedRecordOnly && !uiState.isMdi) RecordOnlyBanner()
                 if (uiState.waitsForSmb) SmbBeingDeliveredBanner()
             }
         },
@@ -268,25 +269,12 @@ internal fun TreatmentDialogContent(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
                 ) {
-                    Column(
+                    InjectionPositionRow(
+                        position = uiState.position,
+                        lastPosition = uiState.lastPosition,
+                        onPositionChange = onPositionChange,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        NumberInputRow(
-                            labelRef = InterfacesStrings.position_label,
-                            value = uiState.position.toDouble(),
-                            onValueChange = { onPositionChange(it.toInt()) },
-                            valueRange = 1.0..app.aaps.core.interfaces.pump.InjectionPosition.MAX_POSITION.toDouble(),
-                            step = 1.0,
-                            unitLabel = app.aaps.core.keys.interfaces.TextRef.Literal("")
-                        )
-                        uiState.lastPosition?.let {
-                            Text(
-                                text = "prev $it",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    )
                 }
             }
 

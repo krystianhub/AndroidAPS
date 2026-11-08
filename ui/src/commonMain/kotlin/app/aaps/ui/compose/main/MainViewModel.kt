@@ -277,17 +277,26 @@ class MainViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MainUiState())
 
-    data class PendingCarbsUiState(val pending: Boolean = false, val expired: Boolean = false)
+    data class PendingCarbsUiState(
+        val pending: Boolean = false,
+        val expired: Boolean = false,
+        /** Grams held back; shown in the banner and its confirmation dialogs. */
+        val carbs: Int? = null
+    )
 
     private val _pendingCarbsState = MutableStateFlow(PendingCarbsUiState())
     val pendingCarbsState: StateFlow<PendingCarbsUiState> = _pendingCarbsState.asStateFlow()
 
     private fun refreshPendingCarbs(notifyExpired: Boolean = true) {
         val expired = if (notifyExpired) pendingCarbStore.consumeExpired() else null
+        val entry = pendingCarbStore.getPending()
         _pendingCarbsState.update {
             it.copy(
-                pending = pendingCarbStore.isPending(),
-                expired = it.expired || expired != null
+                pending = entry != null,
+                // A new entry supersedes the notice about the previous one: showing "expired and was not
+                // logged" beside (or right after) a freshly logged entry is misleading.
+                expired = entry == null && (it.expired || expired != null),
+                carbs = entry?.mainCarbs?.carbs?.toInt()
             )
         }
     }
@@ -301,7 +310,7 @@ class MainViewModel(
 
     fun cancelPendingCarbs() {
         pendingCarbStore.clearPending()
-        _pendingCarbsState.update { it.copy(pending = false, expired = false) }
+        _pendingCarbsState.update { it.copy(pending = false, expired = false, carbs = null) }
     }
 
     fun dismissPendingCarbsExpired() {
@@ -876,6 +885,9 @@ class MainViewModel(
     }
 
     fun performLoopAccept() {
+        // Nothing to accept on a pen: the action sheet is hidden in MDI, and this is the guard for
+        // any stale trigger that still reaches the callback.
+        if (activePlugin.activePump.isMDI()) return
         protectionCheck.requestProtection(ProtectionCheck.Protection.BOLUS) { result ->
             if (result == ProtectionResult.GRANTED) {
                 viewModelScope.launch {

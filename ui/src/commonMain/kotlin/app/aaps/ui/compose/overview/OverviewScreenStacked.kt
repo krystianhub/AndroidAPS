@@ -137,6 +137,7 @@ fun OverviewScreenStacked(
                 tempTargetReason = tempTargetReason,
                 tempTargetSceneManaged = tempTargetSceneManaged,
                 tbrState = tbrState,
+                isMdi = statusState.isMdi,
                 iobUiState = iobUiState,
                 cobUiState = cobUiState,
                 sensitivityUiState = sensitivityUiState,

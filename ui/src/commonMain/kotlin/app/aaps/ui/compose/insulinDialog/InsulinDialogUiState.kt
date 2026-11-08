@@ -3,6 +3,7 @@ package app.aaps.ui.compose.insulinDialog
 import androidx.compose.runtime.Immutable
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
+import app.aaps.core.interfaces.pump.BasalInjection
 
 @Immutable
 data class InsulinDialogUiState(
@@ -49,11 +50,21 @@ val InsulinDialogUiState.eventTimeChanged: Boolean
     get() = eventTime != eventTimeOriginal
 
 val InsulinDialogUiState.timeLayoutVisible: Boolean
+    // Also for MDI: a pen dose can be back- or forward-dated like any other treatment.
     get() = recordOnlyChecked || recordBasal
 
 /** The amount limit for the current mode: a basal (Lantus) dose has its own cap. */
 val InsulinDialogUiState.maxAmount: Double
     get() = if (recordBasal) maxBasalDose else maxInsulin
+
+/** Lantus pens dial whole units; rapid-acting pens keep the pump's 0.5 U step. */
+val InsulinDialogUiState.amountStep: Double
+    get() = if (recordBasal) BasalInjection.DOSE_STEP else bolusStep
+
+/** Quick-add presets: whole units for Lantus, the configured rapid-acting increments otherwise. */
+val InsulinDialogUiState.quickAddIncrements: List<Double>
+    get() = if (recordBasal) listOf(1.0, 2.0, 5.0)
+    else listOf(insulinButtonIncrement1, insulinButtonIncrement2, insulinButtonIncrement3).filter { it != 0.0 }
 
 val InsulinDialogUiState.recordOnlyEnabled: Boolean
     // A client CAN record-only: the entry goes through the batch → master (SSOT), so the toggle is enabled

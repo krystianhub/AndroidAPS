@@ -3,15 +3,13 @@ package app.aaps.ui.compose.manageSheet
 import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.EB
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TB
-import app.aaps.core.data.model.TE
-import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ui.ConfirmationLine
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.autotune.Autotune
 import app.aaps.core.interfaces.bolus.BatchAction
 import app.aaps.core.interfaces.bolus.BatchExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
@@ -24,7 +22,6 @@ import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.profile.ProfileFunction
-import app.aaps.core.interfaces.pump.BasalInjection
 import app.aaps.core.interfaces.pump.actions.CustomActionType
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -34,7 +31,6 @@ import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
-import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.ui.CoreUiStrings
@@ -59,7 +55,6 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.math.max
 import kotlinx.coroutines.withContext
 
 // Registers itself: @ViewModelKey infers the key from the class. No graph entry, and deliberately
@@ -137,7 +132,7 @@ class ManageViewModel(
             val showCancelExtendedBolus: Boolean
             val cancelExtendedBolusText: String
 
-            if (!pumpDescription.isExtendedBolusCapable || !isInitialized || isSuspended ||
+            if (pump.isMDI() || !pumpDescription.isExtendedBolusCapable || !isInitialized || isSuspended ||
                 isDisconnected || pump.isFakingTempsByExtendedBoluses
             ) {
                 showExtendedBolus = false
@@ -163,7 +158,7 @@ class ManageViewModel(
             val showCancelTempBasal: Boolean
             val cancelTempBasalText: String
 
-            if (!pumpDescription.isTempBasalCapable || !isInitialized || isSuspended ||
+            if (pump.isMDI() || !pumpDescription.isTempBasalCapable || !isInitialized || isSuspended ||
                 isDisconnected
             ) {
                 showTempBasal = false
@@ -186,20 +181,13 @@ class ManageViewModel(
 
             // Custom actions
             val customActions = pump.getCustomActions()?.filter { it.isEnabled } ?: emptyList()
-
-            // MDI: the old Actions stats rows
-            val isMdi = pump.isMDI()
-            val lastBolus = if (isMdi) withContext(aapsIoDispatcher) { persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL) } else null
-            val lastBasal = if (isMdi) withContext(aapsIoDispatcher) {
-                val lookback = T.days(max(7, preferences.get(IntKey.MdiMissedLantusLookbackDays)).toLong()).msecs()
-                persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - lookback, TE.Type.NOTE, false)
-                    .sortedByDescending { it.timestamp }
-                    .firstNotNullOfOrNull { te -> BasalInjection.extractDose(te.note)?.let { te to it } }
-            } else null
+            val autotunePlugin = activePlugin.getPluginsList().firstOrNull { it is Autotune }
+            val showAutotune = autotunePlugin?.isEnabled() == true && autotunePlugin.hasComposeContent()
 
             _uiState.update { state ->
                 state.copy(
-                    showTempTarget = true,
+                    // Temp targets are not part of MDI therapy; the overview still shows the profile/APS target.
+                    showTempTarget = !pump.isMDI(),
                     showTempBasal = showTempBasal,
                     showCancelTempBasal = showCancelTempBasal,
                     showExtendedBolus = showExtendedBolus,
@@ -207,6 +195,7 @@ class ManageViewModel(
                     showHistoryBrowser = profile != null,
                     showBatteryChange = pumpDescription.isBatteryReplaceable || pump.isBatteryChangeLoggingEnabled(),
                     showFill = pumpDescription.isRefillingCapable && isInitialized,
+                    showAutotune = showAutotune,
                     showAuthorizedClients = preferences.get(BooleanKey.NsClient3UseWs) && !config.AAPSCLIENT,
                     showPairWithMaster = config.AAPSCLIENT && preferences.get(BooleanKey.NsClient3UseWs),
                     showMutatingActions = !config.AAPSCLIENT || nsClient.masterOrPairedClientFlow.value,
@@ -216,20 +205,10 @@ class ManageViewModel(
                     cancelExtendedBolusText = cancelExtendedBolusText,
                     isPatchPump = pumpDescription.isPatchPump,
                     pumpPlugin = activePlugin.activePumpInternal as PluginBase,
-                    customActions = customActions,
-                    isMdi = isMdi,
-                    lastBolusAge = lastBolus?.let { ageText(it.timestamp) },
-                    lastBolusDose = lastBolus?.let { rh.gs(CoreUiStrings.value_with_unit, it.amount, rh.gs(CoreUiStrings.insulin_unit_shortname)) },
-                    lastBasalAge = lastBasal?.let { ageText(it.first.timestamp) },
-                    lastBasalDose = lastBasal?.let { rh.gs(CoreUiStrings.value_with_unit, it.second, rh.gs(CoreUiStrings.insulin_unit_shortname)) }
+                    customActions = customActions
                 )
             }
         }
-    }
-
-    private fun ageText(timestamp: Long): String {
-        val diff = dateUtil.computeDiff(timestamp, dateUtil.now())
-        return "${diff.days * 24 + diff.hours}h ${diff.minutes}m"
     }
 
     // Action handlers — cancel goes through the MASTER (batchExecutor): the master validates its pump, authors the

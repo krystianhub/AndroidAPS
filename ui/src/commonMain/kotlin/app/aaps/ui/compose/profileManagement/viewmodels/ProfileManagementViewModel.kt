@@ -257,6 +257,9 @@ class ProfileManagementViewModel(
         }
 
         val profileNames = profiles.map { it.name }
+        // Sync basal acts on the profile being viewed, not the active one. The old Profile screen
+        // updated any selected profile without switching to it.
+        val selectedProfileName = profileNames.getOrNull(currentIndex)
 
         val basalSums = profiles.map { singleProfile ->
             singleProfile.toPureProfile(dateUtil)?.let { pureProfile ->
@@ -301,30 +304,33 @@ class ProfileManagementViewModel(
             commandsAllowed = access.activate,
             editAllowed = access.edit,
             isMdi = activePlugin.activePump.isMDI(),
-            canSyncBasal = canSyncBasal(profiles, activeProfileName),
+            canSyncBasal = canSyncBasal(profiles, selectedProfileName),
             isLoading = false
         )
     }
 
     /** MDI: the profile basal is out of sync when it is not one flat block at the rate of the last Lantus dose. */
-    private suspend fun canSyncBasal(profiles: List<SingleProfile>, activeProfileName: String?): Boolean {
-        if (!activePlugin.activePump.isMDI() || activeProfileName == null) return false
-        val dose = lastLantusDose() ?: return false
-        val profile = profiles.firstOrNull { it.name == activeProfileName } ?: return false
+    private suspend fun canSyncBasal(profiles: List<SingleProfile>, profileName: String?): Boolean {
+        if (!activePlugin.activePump.isMDI() || profileName == null) return false
+        // No recorded dose: keep the icon tappable so syncBasal() can say why there is nothing to sync,
+        // instead of leaving a dead button with no explanation.
+        val dose = lastLantusDose() ?: return true
+        val profile = profiles.firstOrNull { it.name == profileName } ?: return false
         val total = profile.basal.sumOf { it.amount * it.duration / T.hours(1).msecs() }
         return profile.basal.size != 1 || !BasalInjection.matchesProfile(total, BasalInjection.flatRateTotal(dose))
     }
 
     private suspend fun lastLantusDose(): Double? =
         try {
+            // Newest recorded dose, not the largest one from the last week.
             persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), TE.Type.NOTE, false)
-                .mapNotNull { BasalInjection.extractDose(it.note) }
-                .maxOrNull()
+                .sortedByDescending { it.timestamp }
+                .firstNotNullOfOrNull { BasalInjection.extractDose(it.note) }
         } catch (_: Exception) {
             null
         }
 
-    /** MDI: rewrite the active profile to one flat basal block for the last Lantus dose, without activating it. */
+    /** MDI: rewrite the selected profile to one flat basal block for the last Lantus dose, without activating it. */
     fun syncBasal() {
         appScope.launch {
             val dose = lastLantusDose()
@@ -332,10 +338,10 @@ class ProfileManagementViewModel(
                 _snackbarEvent.tryEmit(rh.gs(UiStrings.sync_basal_no_dose))
                 return@launch
             }
-            val name = profileFunction.getOriginalProfileName()
             val profiles = profileRepository.profiles.value
-            val index = profiles.indexOfFirst { it.name == name }
-            if (index < 0) {
+            val index = _selectedIndex.value.coerceIn(0, (profiles.size - 1).coerceAtLeast(0))
+            val name = profiles.getOrNull(index)?.name
+            if (name == null) {
                 _snackbarEvent.tryEmit(rh.gs(UiStrings.sync_basal_no_profile))
                 return@launch
             }

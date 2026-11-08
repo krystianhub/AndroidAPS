@@ -42,6 +42,7 @@ import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.InjectionPosition
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.queue.Command
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -57,6 +58,7 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.PendingCarbStore
 import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.ui.CoreUiStrings
@@ -91,6 +93,7 @@ class MasterActionExecutorImpl(
     private val constraintChecker: ConstraintsChecker,
     private val activePlugin: ActivePlugin,
     private val runningModeGuard: RunningModeGuard,
+    private val pendingCarbStore: PendingCarbStore,
     private val commandQueue: CommandQueue,
     private val persistenceLayer: PersistenceLayer,
     private val uel: UserEntryLogger,
@@ -278,6 +281,10 @@ class MasterActionExecutorImpl(
         val profile = profileFunction.getProfile()
         val profileName = profileFunction.getProfileName()
         val entry = quickWizard.get(guid) ?: return MasterActionExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.quick_wizard_not_available))
+        // A deferred entry holds the whole meal; any wizard run that logs carbs now would count the meal twice.
+        // Enforced here, not only in the dialog: the quick wizard (phone and watch) and client prepares bypass it.
+        if (pendingCarbStore.isPending() && (entry.carbs() > 0 || entry.carbs2() > 0))
+            return MasterActionExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.deferred_carb_pending))
         if (actualBg == null) return MasterActionExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_no_actual_bg))
         if (profile == null) return MasterActionExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_no_active_profile))
         // No COB gate: QuickWizardEntry.doCalc treats a null COB as 0 (only ever LOWERS the dose = safe),
@@ -348,6 +355,8 @@ class MasterActionExecutorImpl(
         // Same pre-init guard as prepareQuickWizard: doCalc would otherwise hit ProfileSealed's "APS not defined" guard
         // when a remote prepare arrives before verifySelectionInCategories() has populated activeAPS.
         if (!config.appInitialized) return MasterActionExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.initializing))
+        if (pendingCarbStore.isPending() && (inputs.carbs > 0 || inputs.eCarbsGrams > 0))
+            return MasterActionExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.deferred_carb_pending))
         runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS)?.let { return MasterActionExecutor.PrepareResult.Error(it) }
         // Resolve the dialog's profile selection: null → the master's active profile (kept dynamic — the master is
         // authoritative); a name → that stored profile (a client/watch relays a name the master owns), wrapped so
@@ -912,7 +921,9 @@ class MasterActionExecutorImpl(
                 else decimalFormatter.toPumpSupportedBolusWithUnits(insulin, pumpDescription.bolusStep)
             out += ConfirmationLine(ConfirmationRole.BOLUS, rh.gs(InterfacesStrings.confirmation_line, rh.gs(InterfacesStrings.bolus), insulinText))
             if (recordOnly) {
-                out += ConfirmationLine(ConfirmationRole.WARNING, rh.gs(InterfacesStrings.bolus_recorded_only))
+                // MDI is record-only by definition; the warning is only news for a pump that could deliver.
+                if (!activePlugin.activePump.isMDI())
+                    out += ConfirmationLine(ConfirmationRole.WARNING, rh.gs(InterfacesStrings.bolus_recorded_only))
                 bolus.iCfg?.let { out += ConfirmationLine(ConfirmationRole.NORMAL, rh.gs(CoreUiStrings.selected_insulin, it.insulinLabel)) }
             } else if (Round.isMoreThanRounding(bolus.insulin, insulin, activePlugin.activePump.bolusStepSize(insulin))) {
                 out += ConfirmationLine(ConfirmationRole.WARNING, rh.gs(InterfacesStrings.bolus_constraint_applied_warn, bolus.insulin, insulin))
@@ -931,8 +942,13 @@ class MasterActionExecutorImpl(
         }
         if (bolus.eCarbsGrams > 0)
             out += ConfirmationLine(ConfirmationRole.CARBS, rh.gs(InterfacesStrings.wizard_ecarbs, bolus.eCarbsGrams, bolus.eCarbsDurationHours, bolus.eCarbsDelayMinutes))
-        if (bolus.notes.isNotEmpty())
-            out += ConfirmationLine(ConfirmationRole.NORMAL, rh.gs(InterfacesStrings.confirmation_line, rh.gs(CoreUiStrings.notes_label), bolus.notes))
+        // Same line and colour as the wizard's position line; the notes keep only the user's text.
+        InjectionPosition.extractFromNotes(bolus.notes)?.let { position ->
+            out += ConfirmationLine(ConfirmationRole.INFO, rh.gs(InterfacesStrings.confirmation_line, rh.gs(InterfacesStrings.position_label), position.toString()))
+        }
+        val displayNotes = InjectionPosition.stripPosition(bolus.notes).trim()
+        if (displayNotes.isNotEmpty())
+            out += ConfirmationLine(ConfirmationRole.NORMAL, rh.gs(InterfacesStrings.confirmation_line, rh.gs(CoreUiStrings.notes_label), displayNotes))
         return out
     }
 

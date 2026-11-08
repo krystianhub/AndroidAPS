@@ -2,6 +2,7 @@ package app.aaps.core.objects.wizard
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.notifications.NotificationManager
+import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -23,6 +24,7 @@ class PendingCarbStoreTest {
         whenever(it.now()).thenAnswer { now }
     }
     private val aapsLogger = mock<AAPSLogger>()
+    private val rh = mock<TextResolver>()
     private val notificationManager = mock<NotificationManager>()
     private val preferences = mock<Preferences>().also {
         whenever(it.get(StringNonKey.PendingCarbs)).thenAnswer { stored }
@@ -38,7 +40,7 @@ class PendingCarbStoreTest {
     fun setUp() {
         stored = ""
         now = 1_000_000L
-        store = PendingCarbStore(dateUtil, preferences, aapsLogger, notificationManager)
+        store = PendingCarbStore(dateUtil, preferences, aapsLogger, rh, notificationManager)
     }
 
     private fun entry(createdAt: Long = 0L): PendingCarbs =

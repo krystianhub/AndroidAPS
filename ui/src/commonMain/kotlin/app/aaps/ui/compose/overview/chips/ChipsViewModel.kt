@@ -24,8 +24,10 @@ import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.shareIn
@@ -89,8 +91,10 @@ class ChipsViewModel(
                 val lastCarbsTime = persistenceLayer.getNewestCarbs()?.timestamp ?: 0L
                 if (lastCarbsTime < lastRun.lastAPSRun) {
                     cobText = rh.gs(CoreUiStrings.value_with_unit, cobText, rh.gs(CoreUiStrings.value_with_unit, constraintsProcessed.carbsReq.toString(), rh.gs(CoreUiStrings.required)))
+                    // Only a request that is still outstanding blinks and widens the chip; once carbs
+                    // were logged the text is back to plain COB on the next refresh.
+                    carbsReq = constraintsProcessed.carbsReq
                 }
-                carbsReq = constraintsProcessed.carbsReq
             }
         }
 
@@ -128,6 +132,13 @@ class ChipsViewModel(
         )
     }
 
+    private val _icInfo = MutableStateFlow<IcInfoUiState?>(null)
+    val icInfo: StateFlow<IcInfoUiState?> = _icInfo.asStateFlow()
+
+    fun dismissIcInfo() {
+        _icInfo.value = null
+    }
+
     /** MDI fork: today's derived I:C vs the profile value, opened by tapping the COB chip. */
     fun showIcInfo() {
         viewModelScope.launch {
@@ -136,17 +147,24 @@ class ChipsViewModel(
             val profile = profileFunction.getProfile()
             val secondsFromMidnight = app.aaps.core.utils.MidnightUtils.secondsFromMidnight(dateUtil.now())
             val profileIc = profile?.getIcTimeFromMidnight(secondsFromMidnight)
-            val message = if (estimated == null || profileIc == null) {
-                rh.gs(CoreUiStrings.ic_estimate_unavailable)
-            } else {
-                val diff = estimated - profileIc
-                listOf(
-                    rh.gs(CoreUiStrings.ic_estimate_today, decimalFormatter.to1Decimal(estimated)),
-                    rh.gs(CoreUiStrings.ic_estimate_profile, decimalFormatter.to1Decimal(profileIc)),
-                    rh.gs(CoreUiStrings.ic_estimate_diff, (if (diff >= 0) "+" else "") + decimalFormatter.to1Decimal(diff))
-                ).joinToString("\n")
+            if (estimated == null || profileIc == null) {
+                _icInfo.value = IcInfoUiState(unavailable = true)
+                return@launch
             }
-            rxBus.send(EventShowDialog.Ok(title = rh.gs(CoreUiStrings.ic_estimate_title), message = message))
+            val diff = estimated - profileIc
+            val diffPct = diff / profileIc * 100
+            val diffText = (if (diff >= 0) "+" else "") + decimalFormatter.to1Decimal(diff)
+            val pctText = (if (diffPct >= 0) "+" else "") + decimalFormatter.to0Decimal(diffPct)
+            _icInfo.value = IcInfoUiState(
+                today = decimalFormatter.to1Decimal(estimated),
+                profile = decimalFormatter.to1Decimal(profileIc),
+                difference = rh.gs(CoreUiStrings.ic_estimate_diff, diffText, pctText),
+                direction = when {
+                    diff > 0 -> IcDiffDirection.UP
+                    diff < 0 -> IcDiffDirection.DOWN
+                    else     -> IcDiffDirection.SAME
+                }
+            )
         }
     }
 

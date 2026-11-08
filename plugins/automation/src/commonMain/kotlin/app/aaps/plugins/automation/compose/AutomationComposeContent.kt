@@ -40,6 +40,7 @@ import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.ComposablePluginContent
 import app.aaps.core.ui.compose.ToolbarConfig
 import app.aaps.core.ui.compose.masterEditingEnabled
+import app.aaps.core.ui.compose.preference.LocalVisibilityContext
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.plugins.automation.AutomationEventFactory
 import app.aaps.plugins.automation.AutomationRuntime
@@ -454,7 +455,12 @@ class AutomationComposeContent(
         )
 
         if (showActionSheet) {
-            val options = remember { plugin.getActionDummyObjects().map { ActionOption.from(it) } }
+            val visibilityContext = LocalVisibilityContext.current
+            val options = remember(visibilityContext) {
+                plugin.getActionDummyObjects()
+                    .filter { visibilityContext == null || it.elementType().isAvailable(visibilityContext) }
+                    .map { ActionOption.from(it) }
+            }
             ChooseActionSheet(
                 options = options,
                 onPick = { opt ->

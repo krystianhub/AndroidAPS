@@ -14,7 +14,7 @@ import app.aaps.core.ui.compose.AapsSpacing
 fun IobCobChipsRow(
     iobUiState: IobUiState,
     cobUiState: CobUiState,
-    onIobChipClick: () -> Unit,
+    onIobChipClick: (() -> Unit)? = null,
     onCobChipClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -54,14 +54,17 @@ fun IobCobChipsRow(
         val naturalWidths = measurables.map { it.maxIntrinsicWidth(constraints.maxHeight) }
 
         val placeables = if (isWidthBounded) {
-            // IOB hugs its content but never grabs more than half the row when space is tight.
-            val iobWidth = naturalWidths[0].coerceAtMost(availableWidth / 2)
-            // COB fills the rest of the row up to the edge so the chips span the full width;
-            // its text marquee-scrolls when it can't fit (see CobChip).
-            val cobWidth = (availableWidth - iobWidth).coerceAtLeast(0)
+            // Without a request both chips share the row equally. With "N req" the COB text is
+            // longer, so use the upstream split: IOB hugs its own text and COB takes the rest.
+            val widths = if (cobUiState.carbsReq > 0) {
+                val iobWidth = naturalWidths[0].coerceAtMost(availableWidth / 2)
+                listOf(iobWidth, (availableWidth - iobWidth).coerceAtLeast(0))
+            } else {
+                listOf(availableWidth / 2, availableWidth / 2)
+            }
             listOf(
-                measurables[0].measure(constraints.copy(minWidth = iobWidth, maxWidth = iobWidth)),
-                measurables[1].measure(constraints.copy(minWidth = cobWidth, maxWidth = cobWidth))
+                measurables[0].measure(constraints.copy(minWidth = widths[0], maxWidth = widths[0])),
+                measurables[1].measure(constraints.copy(minWidth = widths[1], maxWidth = widths[1]))
             )
         } else {
             measurables.mapIndexed { i, measurable ->

@@ -440,7 +440,8 @@ class BolusWizard(
             if (abs(insulinAfterConstraints - calculatedTotalInsulin) > ch.bolusStep(insulinAfterConstraints)) {
                 line(ConfirmationRole.WARNING, rh.gs(InterfacesStrings.bolus_constraint_applied_warn, calculatedTotalInsulin, insulinAfterConstraints))
             }
-            if ((config.AAPSCLIENT || forcedRecordOnly) && insulinAfterConstraints > 0) {
+            // Recording only is the normal MDI behaviour, not a warning the user has to read.
+            if ((config.AAPSCLIENT || forcedRecordOnly) && insulinAfterConstraints > 0 && !activePlugin.activePump.isMDI()) {
                 line(ConfirmationRole.WARNING, rh.gs(InterfacesStrings.bolus_recorded_only))
             }
             if (useAlarm && !advisor && carbs > 0 && carbTime > 0) {

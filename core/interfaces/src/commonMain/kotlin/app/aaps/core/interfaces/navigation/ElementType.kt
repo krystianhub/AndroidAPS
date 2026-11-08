@@ -48,7 +48,11 @@ enum class ElementType(
     // needs to see and calculate with (it receives them from Nightscout), so the screen opens READ-ONLY
     // there instead of disappearing — same rule as the overview chips and status lights.
     PROFILE_MANAGEMENT(category = ElementCategory.MANAGEMENT, searchable = true, protection = ProtectionCheck.Protection.BOLUS),
-    TEMP_TARGET_MANAGEMENT(category = ElementCategory.MANAGEMENT, searchable = true, protection = ProtectionCheck.Protection.BOLUS, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT, role = ClientRole.Caregiver),
+    // Temp targets are pump/loop therapy; the MDI fork only displays the profile/APS target.
+    TEMP_TARGET_MANAGEMENT(
+        category = ElementCategory.MANAGEMENT, searchable = true, protection = ProtectionCheck.Protection.BOLUS,
+        visibility = ElementVisibility { !it.isMdi && (!it.isClient || it.masterOrPairedClient) }, role = ClientRole.Caregiver
+    ),
     INSULIN_MANAGEMENT(category = ElementCategory.MANAGEMENT, searchable = true, protection = ProtectionCheck.Protection.BOLUS, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT, role = ClientRole.Caregiver),
     QUICK_WIZARD_MANAGEMENT(category = ElementCategory.MANAGEMENT, searchable = true, protection = ProtectionCheck.Protection.BOLUS, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT, role = ClientRole.Caregiver),
     FOOD_MANAGEMENT(category = ElementCategory.MANAGEMENT, searchable = true, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT, role = ClientRole.Caregiver),
@@ -69,9 +73,15 @@ enum class ElementType(
     FILL(category = ElementCategory.DEVICE, searchable = true, protection = ProtectionCheck.Protection.BOLUS, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT, role = ClientRole.Caregiver),
     SITE_ROTATION(category = ElementCategory.DEVICE, searchable = true, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT, role = ClientRole.Caregiver),
 
-    // Basal — both ride Client-Control → CLIENT_PAIRED.
-    TEMP_BASAL(category = ElementCategory.BASAL, searchable = true, protection = ProtectionCheck.Protection.BOLUS, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT, role = ClientRole.Caregiver),
-    EXTENDED_BOLUS(category = ElementCategory.BASAL, searchable = true, protection = ProtectionCheck.Protection.BOLUS, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT, role = ClientRole.Caregiver),
+    // Basal — both ride Client-Control → CLIENT_PAIRED. Neither can be enacted with a pen.
+    TEMP_BASAL(
+        category = ElementCategory.BASAL, searchable = true, protection = ProtectionCheck.Protection.BOLUS,
+        visibility = ElementVisibility { !it.isMdi && (!it.isClient || it.masterOrPairedClient) }, role = ClientRole.Caregiver
+    ),
+    EXTENDED_BOLUS(
+        category = ElementCategory.BASAL, searchable = true, protection = ProtectionCheck.Protection.BOLUS,
+        visibility = ElementVisibility { !it.isMdi && (!it.isClient || it.masterOrPairedClient) }, role = ClientRole.Caregiver
+    ),
 
     // System
     AUTOMATION(category = ElementCategory.SYSTEM),

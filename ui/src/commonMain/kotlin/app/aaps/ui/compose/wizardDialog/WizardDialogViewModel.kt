@@ -196,10 +196,11 @@ class WizardDialogViewModel(
         val useBolusAdvisor = preferences.get(BooleanKey.OverviewUseBolusAdvisor)
 
         // MDI: the stored partial-bolus pref is hidden and must never scale a pen dose
-        val storedPercentage = if (activePlugin.activePump.isMDI()) 100 else preferences.get(IntKey.OverviewBolusPercentage)
+        val isMdi = activePlugin.activePump.isMDI()
+        val storedPercentage = if (isMdi) 100 else preferences.get(IntKey.OverviewBolusPercentage)
         val percentage = bolusPercentageFor(storedPercentage)
         appliedPercentagePreference = storedPercentage
-        val showPosition = activePlugin.activePump.isMDI() && preferences.get(BooleanKey.OverviewShowPositionInDialogs)
+        val showPosition = isMdi && preferences.get(BooleanKey.OverviewShowPositionInDialogs)
         val lastPosition = if (showPosition) lastInjectionPosition() else null
 
         // Current BG
@@ -218,7 +219,7 @@ class WizardDialogViewModel(
         // An AAPSCLIENT always delivers via the master (deliverManualWizard), so it is NEVER forced record-only;
         // only a master's own can't-deliver conditions force the local record-only log (matches Insulin/Treatment dialog).
         val forcedRecordOnly = if (config.AAPSCLIENT) false
-        else (cantDeliverBolus || !activePlugin.activePump.isInitialized() || activePlugin.activePump.isMDI())
+        else (cantDeliverBolus || !activePlugin.activePump.isInitialized() || isMdi)
 
         _uiState.update {
             WizardDialogUiState(
@@ -236,7 +237,7 @@ class WizardDialogViewModel(
                 selectedProfileIndex = 0,
                 // Toggles
                 useBg = true,
-                useTT = true,
+                useTT = !isMdi,
                 useTrend = useTrend,
                 useIOB = true,
                 useCOB = useCOB,
@@ -249,10 +250,11 @@ class WizardDialogViewModel(
                 units = units,
                 profileNames = profileList,
                 showNotes = showNotes,
-                hasTempTarget = tempTarget != null,
+                hasTempTarget = tempTarget != null && !isMdi,
                 useBolusAdvisor = useBolusAdvisor,
-                // Only the record-only (MDI) path implements deferred carbs; do not offer it where it would be ignored.
-                deferredCarbLoggingAvailable = preferences.get(BooleanKey.DeferredCarbLoggingEnabled) && activePlugin.activePump.isMDI(),
+                // Only the master's record-only path implements deferred carbs; on a client the delegated
+                // delivery would silently log the carbs immediately, so do not offer it there.
+                deferredCarbLoggingAvailable = preferences.get(BooleanKey.DeferredCarbLoggingEnabled) && isMdi && !config.AAPSCLIENT,
                 simpleMode = preferences.simpleMode,
                 carbsButtonIncrement1 = preferences.get(IntKey.OverviewCarbsButtonIncrement1),
                 carbsButtonIncrement2 = preferences.get(IntKey.OverviewCarbsButtonIncrement2),
@@ -262,7 +264,8 @@ class WizardDialogViewModel(
                 bgAgeMinutes = bgAgeMinutes,
                 // Initial IOB display
                 totalIOB = -totalIOB,
-                forcedRecordOnly = forcedRecordOnly
+                forcedRecordOnly = forcedRecordOnly,
+                isMdi = isMdi
             )
         }
 

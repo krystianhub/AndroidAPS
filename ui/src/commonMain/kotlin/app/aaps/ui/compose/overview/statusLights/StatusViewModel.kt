@@ -10,6 +10,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.EPS
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.aps.RT
@@ -107,6 +108,9 @@ class StatusViewModel(
         rxBus.toFlow(EventInitializationChanged::class).map { },
         rxBus.toFlow(EventConfigBuilderChange::class).map { },
         persistenceLayer.observeChanges(TE::class).map { },
+        // A new bolus and an insulin switch must show up without waiting for the next tick.
+        persistenceLayer.observeChanges(BS::class).map { },
+        persistenceLayer.observeChanges(EPS::class).map { },
         persistenceLayer.databaseClearedFlow.map { },
         // AAPSCLIENT: the reservoir comes from the NS device status
         rxBus.toFlow(EventNsClientStatusUpdated::class).map { },
@@ -182,7 +186,8 @@ class StatusViewModel(
                     insulinReq = mdi?.insulinReq,
                     insulinReqMedian = mdi?.insulinReqMedian,
                     predictedBg = mdi?.predictedBg,
-                    predictedBgLevel = mdi?.predictedBgLevel ?: StatusLevel.UNSPECIFIED
+                    predictedBgLevel = mdi?.predictedBgLevel ?: StatusLevel.UNSPECIFIED,
+                    apsStale = mdi?.apsStale ?: false
                 )
             }
 
@@ -329,7 +334,8 @@ class StatusViewModel(
         val insulinReq: String?,
         val insulinReqMedian: String?,
         val predictedBg: String?,
-        val predictedBgLevel: StatusLevel
+        val predictedBgLevel: StatusLevel,
+        val apsStale: Boolean
     )
 
     private suspend fun buildMdiStatus(): MdiStatus {
@@ -337,7 +343,7 @@ class StatusViewModel(
         val insulinUnit = rh.gs(CoreUiStrings.insulin_unit_shortname)
 
         val lastBolus = withContext(aapsIoDispatcher) { persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL) }
-        val lastBolusAge = lastBolus?.let { formatAge(it.timestamp) }
+        val lastBolusAge = lastBolus?.let { formatAge(it.timestamp, includeMinutes = true) }
         val lastBolusDose = lastBolus?.takeIf { it.amount > 0 }?.let {
             rh.gs(CoreUiStrings.value_with_unit, decimalFormatter.to1Decimal(it.amount), insulinUnit)
         }
@@ -349,7 +355,7 @@ class StatusViewModel(
                 .sortedByDescending { it.timestamp }
                 .firstNotNullOfOrNull { te -> BasalInjection.extractDose(te.note)?.let { te to it } }
         }
-        val lastBasalAge = lastBasal?.let { formatAge(it.first.timestamp) }
+        val lastBasalAge = lastBasal?.let { formatAge(it.first.timestamp, includeMinutes = true) }
         val lastBasalDose = lastBasal?.let { rh.gs(CoreUiStrings.value_with_unit, decimalFormatter.to1Decimal(it.second), insulinUnit) }
         val lastBasalLevel = lastBasal?.let { basalLevel(it.first.timestamp, now) } ?: StatusLevel.UNSPECIFIED
 
@@ -375,12 +381,15 @@ class StatusViewModel(
             eventual != null                                      -> profileUtil.fromMgdlToStringInUnits(eventual, units)
             else                                                  -> null
         }
-        val targetLow = profile?.getTargetLowMgdl() ?: 70.0
-        val predictedBgLevel = when {
-            lowest != null && lowest < targetLow -> StatusLevel.CRITICAL
-            eventual != null && eventual < targetLow -> StatusLevel.WARNING
-            else -> StatusLevel.NORMAL
-        }
+        val profileAtResult = latest?.first?.let { profileFunction.getProfile(it) } ?: profile
+        val resultTime = latest?.first ?: now
+        val predictedBgLevel = predictedBgLevel(
+            eventualBgMgdl = eventual,
+            lowestPredictedMgdl = lowest,
+            targetLowMgdl = profileAtResult?.getTargetLowMgdl(resultTime),
+            targetHighMgdl = profileAtResult?.getTargetHighMgdl(resultTime)
+        )
+        val apsStale = latest != null && now - latest.first >= T.mins(5).msecs()
 
         return MdiStatus(
             lastBolusAge = lastBolusAge,
@@ -392,22 +401,17 @@ class StatusViewModel(
             insulinReq = insulinReq,
             insulinReqMedian = insulinReqMedian,
             predictedBg = predictedBg,
-            predictedBgLevel = predictedBgLevel
+            predictedBgLevel = predictedBgLevel,
+            apsStale = apsStale
         )
     }
 
     private suspend fun bolusLevel(bolus: BS, now: Long): StatusLevel {
-        val iCfg = profileFunction.getProfile()?.iCfg
-        val peakMs = (iCfg?.peak?.toLong() ?: 75L) * 60_000L
-        val diaMs = ((iCfg?.dia?.takeIf { it > 0 } ?: 4.0) * T.hours(1).msecs()).toLong()
-        val elapsed = now - bolus.timestamp
-        return when {
-            elapsed < peakMs / 4        -> StatusLevel.UNSPECIFIED
-            elapsed < peakMs * 3 / 4    -> StatusLevel.WARNING
-            elapsed < peakMs * 5 / 4    -> StatusLevel.NORMAL
-            elapsed < diaMs * 3 / 4     -> StatusLevel.WARNING
-            else                        -> StatusLevel.CRITICAL
-        }
+        if (bolus.amount <= 0) return StatusLevel.UNSPECIFIED
+        // The bolus carries the insulin it was actually logged with; fall back to the profile's
+        // insulin only for legacy records that predate per-bolus insulin.
+        val iCfg = bolus.iCfg.takeIf { it.isUsable } ?: profileFunction.getRunningOrRequestedICfg() ?: return StatusLevel.UNSPECIFIED
+        return bolusStatusLevel(bolus.copy(iCfg = iCfg), now)
     }
 
     private fun basalLevel(timestamp: Long, now: Long): StatusLevel {
@@ -421,10 +425,19 @@ class StatusViewModel(
         }
     }
 
-    private fun formatAge(timestamp: Long): String {
+    private fun formatAge(timestamp: Long, includeMinutes: Boolean = false): String {
         val diff = dateUtil.computeDiff(timestamp, dateUtil.now())
-        return if (diff.days == 0L) rh.gs(UiStrings.status_age_short_hours, diff.hours)
-        else rh.gs(UiStrings.status_age_short, diff.days, diff.hours)
+        if (!includeMinutes) {
+            return if (diff.days == 0L) rh.gs(UiStrings.status_age_short_hours, diff.hours)
+            else rh.gs(UiStrings.status_age_short, diff.days, diff.hours)
+        }
+        // Keep the minutes for the MDI card: rounding a recent bolus/Lantus dose to whole hours
+        // made it look stale by almost an hour.
+        return when {
+            diff.days > 0 -> rh.gs(UiStrings.status_age_short_days_hours_minutes, diff.days, diff.hours, diff.minutes)
+            diff.hours > 0 -> rh.gs(UiStrings.status_age_short_hours_minutes, diff.hours, diff.minutes)
+            else -> rh.gs(UiStrings.status_age_short_minutes, diff.minutes)
+        }
     }
 
     private fun getAgeStatus(timestamp: Long, warnKey: IntPreferenceKey, urgentKey: IntPreferenceKey): StatusLevel {

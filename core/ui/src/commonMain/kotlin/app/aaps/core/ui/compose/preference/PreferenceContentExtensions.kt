@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -106,16 +107,18 @@ private fun RenderPreferenceItems(
                 )
 
                 if (shouldShow) {
-                    // Render nested subscreen as simple collapsible section (no extra card)
+                    // Nested sections keep their own remembered state. They used to depend on the
+                    // parent's PreferenceSectionState; a missing/restored state left the header
+                    // unclickable (the Lantus (MDI) screen could not be opened).
                     val subSectionKey = "${parentKey}_${item.key}"
-                    val isSubExpanded = sectionState?.isExpanded(subSectionKey) ?: false
+                    var isSubExpanded by rememberSaveable(subSectionKey) { mutableStateOf(false) }
 
                     // Header without card (no icon for nested subscreens)
                     ClickablePreferenceCategoryHeader(
                         title = item.title,
                         summaryItems = item.effectiveSummaryItems(),
                         expanded = isSubExpanded,
-                        onToggle = { sectionState?.toggle(subSectionKey, SectionLevel.SUB_SECTION, parentKey = parentKey) },
+                        onToggle = { isSubExpanded = !isSubExpanded },
                         insideCard = true
                     )
 

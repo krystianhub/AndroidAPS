@@ -25,5 +25,13 @@ data class TDD(
     val icRatio: Double?
         get() = if (carbs > 0 && bolusAmount > 0) carbs / bolusAmount else null
 
+    /** Stored total, or the sum of basal and bolus when it was not recorded. */
+    val total: Double
+        get() = if (totalAmount > 0) totalAmount else basalAmount + bolusAmount
+
+    /** Basal share of [total] in percent; 0 when nothing was recorded. */
+    val basalPercent: Double
+        get() = if (total > 0) basalAmount / total * 100 else 0.0
+
     companion object
 }

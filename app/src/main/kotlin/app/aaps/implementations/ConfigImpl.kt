@@ -106,7 +106,11 @@ class ConfigImpl(
     // want between tests, so a cached answer from the first one would stick for the whole run. The file
     // lookup below stays cached - that really is fixed for the life of the process.
     override fun isEnabled(option: ExternalOptions): Boolean =
-        option in externalOptionsOverride.enabled() ||
+        // MDI fork: Autotune stays available without the upstream "enable_autotune" flag file.
+        // The 4.0 merge replaced the old enableAutotune() override with ExternalOptions, which
+        // force-disabled (and therefore hid) the plugin unless that file existed.
+        option == ExternalOptions.ENABLE_AUTOTUNE ||
+            option in externalOptionsOverride.enabled() ||
             enabledOptionsCache.getOrPut(option) {
                 fileListProvider().ensureExtraDirExists()?.findFile(option.filename) != null
             }

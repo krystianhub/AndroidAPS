@@ -68,6 +68,20 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToLong
 
+/** Pump-enactment settings with no effect on an MDI pen. */
+private val MDI_HIDDEN_AUTOISF_SETTINGS = setOf<Any>(
+    DoubleKey.ApsMaxBasal,
+    BooleanKey.ApsUseSmb,
+    BooleanKey.ApsUseSmbWithHighTt,
+    BooleanKey.ApsUseSmbAlways,
+    BooleanKey.ApsUseSmbWithCob,
+    BooleanKey.ApsUseSmbWithLowTt,
+    BooleanKey.ApsUseSmbAfterCarbs,
+    IntKey.ApsMaxSmbFrequency,
+    IntKey.ApsMaxMinutesOfBasalToLimitSmb,
+    IntKey.ApsUamMaxMinutesOfBasalToLimitSmb
+)
+
 @SingleIn(AppScope::class)
 @Inject
 open class OpenAPSAutoISFPlugin(
@@ -923,7 +937,10 @@ open class OpenAPSAutoISFPlugin(
                     BooleanKey.ApsAutoIsfSmbOnEvenTarget
                 )
             )
-        ),
+        ).filterNot {
+            activePlugin.activePump.isMDI() &&
+                (it in MDI_HIDDEN_AUTOISF_SETTINGS || (it is PreferenceSubScreenDef && it.key == "smb_delivery_settings"))
+        },
         icon = pluginDescription.icon
     )
 

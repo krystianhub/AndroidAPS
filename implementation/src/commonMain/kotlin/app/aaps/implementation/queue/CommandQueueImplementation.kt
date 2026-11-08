@@ -247,8 +247,18 @@ class CommandQueueImplementation(
                 // Internal also when a scene marked this switch: while the pump was busy the events queued up, and
                 // the one that led here can be an unrelated one, a Nightscout id arriving, with no silent flag.
                 val silentWrite = silent || profileSwitchSilentGate.isSilent(it.id, dateUtil.now())
-                if (result?.enacted == true && !silentWrite && report != BasalReport.Rejected)
-                    notifyProfileSet(asked = nonCustomized.basalBlocks, given = basalBlocks)
+                // MDI has no programmable pump basal, so "Basal profile in pump updated" is wrong there.
+                // Say that the profile itself is active instead; the local store is updated as usual.
+                if (result?.enacted == true && !silentWrite && report != BasalReport.Rejected) {
+                    if (activePlugin.activePump.isMDI())
+                        notificationManager.post(
+                            NotificationId.PROFILE_SET_OK,
+                            rh.gs(ImplementationStrings.profile_set_ok_mdi, it.getCustomizedName(decimalFormatter)),
+                            validMinutes = 60
+                        )
+                    else
+                        notifyProfileSet(asked = nonCustomized.basalBlocks, given = basalBlocks)
+                }
                 // A PS that is already effective only had to be set in the pump again. It gets no second EPS,
                 // unless this pump gives another basal than the EPS holds, e.g. a new pump with another step.
                 if (alreadyEffective && active?.basalBlocks == basalBlocks) return@let

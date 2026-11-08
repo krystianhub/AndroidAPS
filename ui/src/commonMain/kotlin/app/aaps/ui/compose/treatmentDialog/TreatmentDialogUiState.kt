@@ -14,6 +14,8 @@ data class TreatmentDialogUiState(
     val isAapsClient: Boolean = false,
     /** True when the entry must be recorded only (no pump delivery): pump unavailable or the mode forbids bolus. (A client delivers via the master, not record-only.) */
     val forcedRecordOnly: Boolean = false,
+    /** MDI: record-only is the normal path, so the warning banner would be noise. */
+    val isMdi: Boolean = false,
     /** An SMB is being delivered on this phone (always false on a client: its master decides). */
     val smbBeingDelivered: Boolean = false,
     /** MDI fork: injection position (1..12), opt-in in the overview settings. */

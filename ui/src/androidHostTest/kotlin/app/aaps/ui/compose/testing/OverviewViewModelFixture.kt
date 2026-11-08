@@ -1,7 +1,9 @@
 package app.aaps.ui.compose.testing
 
 import app.aaps.core.data.iob.CobInfo
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.EB
+import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TB
@@ -125,6 +127,9 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
         // modules, so it would throw. Answered from the real resources, like everything else here.
         doReturn(RuntimeEnvironment.getApplication().getString(R.string.status_age_short)).whenever(rh).gs(UiStrings.status_age_short)
         doReturn(RuntimeEnvironment.getApplication().getString(R.string.status_age_short_hours)).whenever(rh).gs(UiStrings.status_age_short_hours)
+        doReturn(RuntimeEnvironment.getApplication().getString(R.string.status_age_short_minutes)).whenever(rh).gs(UiStrings.status_age_short_minutes)
+        doReturn(RuntimeEnvironment.getApplication().getString(R.string.status_age_short_hours_minutes)).whenever(rh).gs(UiStrings.status_age_short_hours_minutes)
+        doReturn(RuntimeEnvironment.getApplication().getString(R.string.status_age_short_days_hours_minutes)).whenever(rh).gs(UiStrings.status_age_short_days_hours_minutes)
 
         // ----- shared ambient -----
         whenever(screen.dateUtil.now()).thenReturn(NOW)
@@ -177,6 +182,8 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
         whenever(rxBus.toFlow(EventNsClientStatusUpdated::class)).thenReturn(emptyFlow())
         whenever(rxBus.toFlow(EventCustomActionsChanged::class)).thenReturn(emptyFlow())
         whenever(persistenceLayer.observeChanges(TE::class)).thenReturn(emptyFlow())
+        whenever(persistenceLayer.observeChanges(BS::class)).thenReturn(emptyFlow())
+        whenever(persistenceLayer.observeChanges(EPS::class)).thenReturn(emptyFlow())
         whenever(persistenceLayer.observeChanges(EB::class)).thenReturn(emptyFlow())
         whenever(persistenceLayer.observeChanges(TB::class)).thenReturn(emptyFlow())
         whenever(persistenceLayer.databaseClearedFlow).thenReturn(emptyFlow())
@@ -187,7 +194,7 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
     }
 
     val graphViewModel: GraphViewModel by lazy {
-        GraphViewModel(cache, false, graphConfigRepository, aapsLogger, screen.preferences, screen.dateUtil, rh)
+        GraphViewModel(cache, false, graphConfigRepository, aapsLogger, screen.preferences, screen.dateUtil, rh, activePlugin)
     }
 
     val chipsViewModel: ChipsViewModel by lazy {

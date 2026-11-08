@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.notifications.AapsNotification
 import app.aaps.core.interfaces.notifications.AlarmSound
 import app.aaps.core.interfaces.notifications.AlarmSoundPlayer
 import app.aaps.core.interfaces.notifications.NotificationHolder
+import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.notifications.SystemNotificationPlatform
@@ -90,7 +91,12 @@ class AndroidSystemNotificationPlatform(
                 body = notification.text,
                 urgent = true
             )
-        } else if (preferences.get(BooleanKey.AlertUrgentAsAndroidNotification) && notification.actions.isEmpty()) {
+        } else if (notification.actions.isEmpty() &&
+            (notification.id == NotificationId.PEN_BOLUS_SUGGESTION || preferences.get(BooleanKey.AlertUrgentAsAndroidNotification))
+        ) {
+            // The "urgent alarms" switch is about alarms, not advisory pen suggestions. Keeping the
+            // latter independent means a user who turned alarm notifications off still gets the
+            // pen notification they enabled in the Loop settings.
             raiseSystemNotification(notification, title)
         }
     }

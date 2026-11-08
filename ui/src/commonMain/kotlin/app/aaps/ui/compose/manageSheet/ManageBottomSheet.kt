@@ -58,6 +58,7 @@ import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.MasterOfflineBanner
 import app.aaps.core.ui.compose.consumeOverscroll
 import app.aaps.core.ui.compose.icons.IcCancelExtendedBolus
+import app.aaps.core.ui.compose.icons.IcPluginAutotune
 import app.aaps.core.ui.compose.icons.IcTbrCancel
 import app.aaps.core.ui.compose.masterEditingEnabled
 import app.aaps.core.ui.compose.navigation.NavigationRequest
@@ -68,6 +69,7 @@ import app.aaps.core.ui.compose.navigation.label
 import app.aaps.core.ui.compose.rememberBringIntoViewOnExpand
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.compose.stringResourceOrNull
+import app.aaps.ui.UiStrings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,6 +84,7 @@ fun ManageBottomSheet(
     showCancelExtendedBolus: Boolean,
     showBatteryChange: Boolean,
     showFill: Boolean,
+    showAutotune: Boolean,
     showAuthorizedClients: Boolean,
     showPairWithMaster: Boolean,
     showMutatingActions: Boolean,
@@ -93,12 +96,6 @@ fun ManageBottomSheet(
     isPatchPump: Boolean,
     pumpPlugin: PluginBase,
     customActions: List<CustomAction>,
-    // MDI stats
-    isMdi: Boolean = false,
-    lastBolusAge: String? = null,
-    lastBolusDose: String? = null,
-    lastBasalAge: String? = null,
-    lastBasalDose: String? = null,
     // Callbacks
     onNavigate: (NavigationRequest) -> Unit,
     onCancelTempBasalClick: () -> Unit,
@@ -121,6 +118,7 @@ fun ManageBottomSheet(
             showCancelExtendedBolus = showCancelExtendedBolus,
             showBatteryChange = showBatteryChange,
             showFill = showFill,
+            showAutotune = showAutotune,
             showAuthorizedClients = showAuthorizedClients,
             showPairWithMaster = showPairWithMaster,
             showMutatingActions = showMutatingActions,
@@ -130,11 +128,6 @@ fun ManageBottomSheet(
             isPatchPump = isPatchPump,
             pumpPlugin = pumpPlugin,
             customActions = customActions,
-            isMdi = isMdi,
-            lastBolusAge = lastBolusAge,
-            lastBolusDose = lastBolusDose,
-            lastBasalAge = lastBasalAge,
-            lastBasalDose = lastBasalDose,
             onDismiss = onDismiss,
             onNavigate = onNavigate,
             onCancelTempBasalClick = onCancelTempBasalClick,
@@ -157,6 +150,7 @@ internal fun ManageBottomSheetContent(
     showCancelExtendedBolus: Boolean,
     showBatteryChange: Boolean = false,
     showFill: Boolean = false,
+    showAutotune: Boolean = false,
     showAuthorizedClients: Boolean = false,
     showPairWithMaster: Boolean = false,
     showMutatingActions: Boolean = true,
@@ -166,11 +160,6 @@ internal fun ManageBottomSheetContent(
     isPatchPump: Boolean = false,
     pumpPlugin: PluginBase? = null,
     customActions: List<CustomAction>,
-    isMdi: Boolean = false,
-    lastBolusAge: String? = null,
-    lastBolusDose: String? = null,
-    lastBasalAge: String? = null,
-    lastBasalDose: String? = null,
     onDismiss: () -> Unit = {},
     onNavigate: (NavigationRequest) -> Unit = {},
     onCancelTempBasalClick: () -> Unit = {},
@@ -188,14 +177,6 @@ internal fun ManageBottomSheetContent(
     ) {
         // Explains offline vs. control-disabled; renders nothing when editing is enabled.
         MasterOfflineBanner(editingEnabled = editingEnabled)
-        if (isMdi) {
-            MdiManageStats(
-                lastBolusAge = lastBolusAge,
-                lastBolusDose = lastBolusDose,
-                lastBasalAge = lastBasalAge,
-                lastBasalDose = lastBasalDose
-            )
-        }
         // A paired read-only client gets almost nothing here; say why. Not an error, so not the offline banner.
         // (The role first: it is Admin in previews, so LocalConfig, which previews do not provide, is never read there.)
         if (LocalClientRole.current == ClientRole.ReadOnly && editingEnabled && showMutatingActions && LocalConfig.current.AAPSCLIENT)
@@ -260,6 +241,19 @@ internal fun ManageBottomSheetContent(
                         onNavigate = onNavigate,
                         modifier = modifier
                     )
+                }
+                if (showAutotune) {
+                    add { modifier ->
+                        ManageGridItem(
+                            text = stringResource(CoreUiStrings.autotune),
+                            icon = IcPluginAutotune,
+                            color = ElementType.PROFILE_MANAGEMENT.color(),
+                            onDismiss = onDismiss,
+                            onClick = { onNavigate(NavigationRequest.Plugin("AutotunePlugin")) },
+                            description = stringResource(UiStrings.manage_autotune_desc),
+                            modifier = modifier
+                        )
+                    }
                 }
                 add(ElementType.FOOD_MANAGEMENT) { modifier ->
                     ManageGridItem(
@@ -688,43 +682,6 @@ private fun ManageGridItem(
                 )
             }
         }
-    }
-}
-
-/** MDI fork: the old Actions “last bolus / last basal” stats. */
-@Composable
-private fun MdiManageStats(
-    lastBolusAge: String?,
-    lastBolusDose: String?,
-    lastBasalAge: String?,
-    lastBasalDose: String?
-) {
-    if (lastBolusAge == null && lastBasalAge == null) return
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            MdiStatRow(stringResource(CoreUiStrings.statuslights_last_bolus_age), lastBolusAge, lastBolusDose)
-            MdiStatRow(stringResource(CoreUiStrings.statuslights_last_basal_age), lastBasalAge, lastBasalDose)
-        }
-    }
-}
-
-@Composable
-private fun MdiStatRow(label: String, age: String?, dose: String?) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(
-            listOfNotNull(age ?: "-", dose).joinToString(" / "),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
     }
 }
 

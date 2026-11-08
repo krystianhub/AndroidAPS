@@ -18,6 +18,7 @@ data class ManageUiState(
     val showHistoryBrowser: Boolean = false,
     val showBatteryChange: Boolean = false,
     val showFill: Boolean = false,
+    val showAutotune: Boolean = false,
     val showAuthorizedClients: Boolean = false,
     val showPairWithMaster: Boolean = false,
     // True on a master; on a client true only once paired. Gates EVERY Client-Control grid action — the mutating
@@ -35,12 +36,5 @@ data class ManageUiState(
 
     // Pump
     val pumpPlugin: PluginBase,
-    val customActions: List<CustomAction> = emptyList(),
-
-    // MDI fork: the old Actions stats (also shown in the Overview MDI card)
-    val isMdi: Boolean = false,
-    val lastBolusAge: String? = null,
-    val lastBolusDose: String? = null,
-    val lastBasalAge: String? = null,
-    val lastBasalDose: String? = null
+    val customActions: List<CustomAction> = emptyList()
 )

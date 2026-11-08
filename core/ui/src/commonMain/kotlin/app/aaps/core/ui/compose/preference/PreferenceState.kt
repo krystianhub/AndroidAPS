@@ -54,13 +54,18 @@ data class PreferenceVisibilityState(
  * Wrapper around PreferenceVisibilityContext that reads IntKeys through
  * the shared state map, making visibility checks reactive.
  */
-private class ReactiveVisibilityContext(
+internal class ReactiveVisibilityContext(
     private val delegate: VisibilityContext,
     private val delegatePreferences: Preferences,
     private val sharedStates: SnapshotStateMap<String, Any?>
 ) : VisibilityContext {
 
     override val isPatchPump: Boolean get() = delegate.isPatchPump
+
+    // Without this the wrapper fell back to the interface default (false), so every MDI_ONLY
+    // preference — hypo treatment carbs, deferred carbs, the insulinReq median — was hidden in
+    // MDI even though the underlying context reports MDI.
+    override val isMdi: Boolean get() = delegate.isMdi
     override val isBatteryReplaceable: Boolean get() = delegate.isBatteryReplaceable
     override val isBatteryChangeLoggingEnabled: Boolean get() = delegate.isBatteryChangeLoggingEnabled
     override val isRefillingCapable: Boolean get() = delegate.isRefillingCapable

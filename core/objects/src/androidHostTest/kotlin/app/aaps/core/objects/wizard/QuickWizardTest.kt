@@ -3,6 +3,8 @@ package app.aaps.core.objects.wizard
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+import app.aaps.core.interfaces.pump.PumpWithConcentration
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
@@ -15,6 +17,7 @@ import org.mockito.Mock
 import org.mockito.kotlin.any
 import org.mockito.kotlin.clearInvocations
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -47,14 +50,15 @@ class QuickWizardTest : TestBaseWithProfile() {
 
     private val mockedTime = MockedTime()
     private lateinit var quickWizard: QuickWizard
+    private lateinit var entry: QuickWizardEntry
 
     @BeforeEach
     fun setup() {
         whenever(preferences.get(StringNonKey.QuickWizard)).thenReturn("[]")
         whenever(preferences.observe(StringNonKey.QuickWizard)).thenReturn(MutableStateFlow("[]"))
-        val quickWizardEntry = QuickWizardEntry(aapsLogger, preferences, activePlugin, profileFunction, loop, iobCobCalculator, persistenceLayer, dateUtil, glucoseStatusProvider, { bolusWizard }, { quickWizardMock })
-        quickWizardEntry.time = mockedTime
-        quickWizard = QuickWizard(preferences) { quickWizardEntry }
+        entry = QuickWizardEntry(aapsLogger, preferences, activePlugin, profileFunction, loop, iobCobCalculator, persistenceLayer, dateUtil, glucoseStatusProvider, { bolusWizard }, { quickWizardMock })
+        entry.time = mockedTime
+        quickWizard = QuickWizard(preferences) { entry }
     }
 
     @Test
@@ -94,6 +98,20 @@ class QuickWizardTest : TestBaseWithProfile() {
         q.position = 0
         quickWizard.addOrUpdate(q)
         assertThat(quickWizard.size()).isEqualTo(3)
+    }
+
+    @Test
+    fun defaultPercentageUsesThePreferenceForPumpsAnd100ForMdi() {
+        val pump = mock<PumpWithConcentration>()
+        whenever(activePlugin.activePump).thenReturn(pump)
+        whenever(preferences.get(IntKey.OverviewBolusPercentage)).thenReturn(80)
+
+        whenever(pump.isMDI()).thenReturn(false)
+        assertThat(entry.defaultBolusPercentage()).isEqualTo(80)
+
+        // the partial-bolus pref is hidden in MDI - it must not scale a pen dose
+        whenever(pump.isMDI()).thenReturn(true)
+        assertThat(entry.defaultBolusPercentage()).isEqualTo(100)
     }
 
     @Test

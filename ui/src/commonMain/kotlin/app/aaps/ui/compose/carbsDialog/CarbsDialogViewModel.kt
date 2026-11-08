@@ -203,16 +203,21 @@ class CarbsDialogViewModel(
         }
     }
 
-    /** MDI fork: fill the configured hypo treatment carbs and note in one tap. */
+    /** MDI fork: add the configured hypo treatment carbs and note in one tap. */
     fun applyHypoTreatment() {
         val amount = uiState.value.hypoTreatmentCarbs
         if (amount <= 0) return
+        val hypoNote = rh.gs(UiStrings.hypo_treatment)
         _uiState.update {
+            // Append rather than overwrite the user's own note, and only once however often the button is tapped.
+            val notes = when {
+                it.notes.isBlank()                              -> hypoNote
+                it.notes.contains(hypoNote, ignoreCase = true)  -> it.notes
+                else                                            -> it.notes.trimEnd() + ", " + hypoNote
+            }
             it.copy(
-                carbs = amount,
-                timeOffsetMinutes = 0,
-                eventTime = it.eventTimeOriginal,
-                notes = if (it.notes.isBlank()) rh.gs(UiStrings.hypo_treatment) else it.notes
+                carbs = (it.carbs + amount).coerceAtMost(it.maxCarbs),
+                notes = notes
             )
         }
     }

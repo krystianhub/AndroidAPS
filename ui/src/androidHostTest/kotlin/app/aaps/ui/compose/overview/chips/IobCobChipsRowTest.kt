@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -35,11 +36,13 @@ class IobCobChipsRowTest {
     @get:Rule
     val compose = createComposeRule()
 
+    private lateinit var iobLabel: String
     private lateinit var cobLabel: String
 
     @Before
     fun setUp() {
         val ctx: Context = RuntimeEnvironment.getApplication()
+        iobLabel = ctx.getString(CoreUiR.string.iob)
         cobLabel = ctx.getString(CoreUiR.string.cob)
     }
 
@@ -57,6 +60,22 @@ class IobCobChipsRowTest {
         assertThat(cobTextOffset().value).isGreaterThan(AapsSpacing.chipIconSize.value)
     }
 
+    /** Without a request the two pills stay the same width. */
+    @Test
+    fun equalWidthsWithoutACarbsRequest() {
+        setRow(carbsReq = 0, width = WIDE_ROW)
+        assertThat(placedWidth(hasContentDescription(cobLabel)).value)
+            .isWithin(0.5f).of(placedWidth(hasContentDescription(iobLabel)).value)
+    }
+
+    /** The appended "16 req" needs room, so COB takes the larger share instead of scrolling. */
+    @Test
+    fun carbsRequestGivesCobTheWiderChip() {
+        setRow(carbsReq = 16, width = WIDE_ROW)
+        assertThat(placedWidth(hasContentDescription(cobLabel)).value)
+            .isGreaterThan(placedWidth(hasContentDescription(iobLabel)).value)
+    }
+
     /** Distance from the left edge of the COB chip to its text: more than an icon when the icon is there. */
     private fun cobTextOffset(): Dp =
         placedLeft(hasText(COB_TEXT)) - placedLeft(hasContentDescription(cobLabel))
@@ -65,17 +84,21 @@ class IobCobChipsRowTest {
      * Left edge of the placed node. When the icons do not fit, the row subcomposes the chips twice
      * (with icons to measure, without to place) and the unused slot leaves a zero-size twin behind.
      */
-    private fun placedLeft(matcher: SemanticsMatcher): Dp {
-        val node = compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes()
-            .single { it.boundsInRoot.width > 0f }
-        return with(compose.density) { node.boundsInRoot.left.toDp() }
-    }
+    private fun placedLeft(matcher: SemanticsMatcher): Dp = with(compose.density) { placedBounds(matcher).left.toDp() }
 
-    private fun setRow(carbsReq: Int) {
+    private fun placedWidth(matcher: SemanticsMatcher): Dp = with(compose.density) { placedBounds(matcher).width.toDp() }
+
+    private fun placedBounds(matcher: SemanticsMatcher): Rect =
+        compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes()
+            .single { it.boundsInRoot.width > 0f }
+            .boundsInRoot
+
+    private fun setRow(carbsReq: Int, width: Dp = NARROW_ROW) {
         compose.setContent {
             MaterialTheme {
-                // Portrait next to the BG circle: wide enough for the texts, not for the icons as well.
-                Box(Modifier.width(NARROW_ROW)) {
+                // NARROW_ROW is the portrait layout next to the BG circle: wide enough for the
+                // texts, not for the icons as well. WIDE_ROW fits both chips with their texts.
+                Box(Modifier.width(width)) {
                     IobCobChipsRow(
                         iobUiState = IobUiState(text = "2.66 U", iobTotal = 2.66),
                         cobUiState = CobUiState(text = COB_TEXT, carbsReq = carbsReq, cobValue = 43.0),
@@ -90,5 +113,6 @@ class IobCobChipsRowTest {
 
         const val COB_TEXT = "43 g(6) 16req"
         val NARROW_ROW = 200.dp
+        val WIDE_ROW = 360.dp
     }
 }

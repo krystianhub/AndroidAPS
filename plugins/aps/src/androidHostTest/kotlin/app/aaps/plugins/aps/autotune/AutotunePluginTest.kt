@@ -6,6 +6,8 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.profile.PureProfile
+import app.aaps.core.interfaces.pump.PumpWithConcentration
 import app.aaps.plugins.aps.R
 import app.aaps.plugins.aps.autotune.data.ATProfile
 import app.aaps.shared.tests.TestBaseWithProfile
@@ -170,5 +172,29 @@ class AutotunePluginTest : TestBaseWithProfile() {
 
         assertThat(autotunePlugin.result).isEqualTo("The pump cannot take it")
         assertThat(autotunePlugin.updateButtonVisibility).isEqualTo(View.VISIBLE)
+    }
+
+    /** MDI: basal is set by the once-daily Lantus injection, so autotune must keep the input basal blocks. */
+    @Test fun `mdi profile application keeps the input basal`() = runBlocking {
+        val mdiPump = mock<PumpWithConcentration>()
+        whenever(mdiPump.isMDI()).thenReturn(true)
+        whenever(activePlugin.activePump).thenReturn(mdiPump)
+
+        autotunePlugin.pumpProfile = ATProfile(preferences, profileUtil, dateUtil, rh, { profileStoreProvider() }, aapsLogger)
+            .with(validProfile, someICfg)
+        val tuned = ATProfile(preferences, profileUtil, dateUtil, rh, { profileStoreProvider() }, aapsLogger)
+            .with(validProfile, someICfg)
+        tuned.basal = DoubleArray(24) { 2.0 }
+        tuned.updateProfile()
+        tuned.profileName = "NotInStore"
+
+        whenever(profileRepository.copyFrom(any(), any())).thenReturn(mock())
+        autotunePlugin.updateProfile(tuned)
+
+        val applied = argumentCaptor<PureProfile>()
+        verify(profileRepository).copyFrom(applied.capture(), any())
+        assertThat(applied.firstValue.basalBlocks).isNotEmpty()
+        // The input (pump) basal is 1.0 U/h; the tuned 2.0 U/h must not be written to a stored profile in MDI.
+        assertThat(applied.firstValue.basalBlocks.all { it.amount == 1.0 }).isTrue()
     }
 }

@@ -22,6 +22,23 @@ data class CobUiState(
     val cobValue: Double = 0.0
 )
 
+/** Direction of the estimated I:C difference, used only to colour the difference line. */
+enum class IcDiffDirection {
+    UP,
+    DOWN,
+    SAME
+}
+
+/** Minimal I:C dialog: today, profile, and the difference with its percentage. */
+@Immutable
+data class IcInfoUiState(
+    val today: String = "",
+    val profile: String = "",
+    val difference: String? = null,
+    val direction: IcDiffDirection = IcDiffDirection.SAME,
+    val unavailable: Boolean = false
+)
+
 @Immutable
 data class SensitivityUiState(
     val asText: String = "",

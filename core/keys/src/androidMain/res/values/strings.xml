@@ -439,7 +439,7 @@
     <string name="pref_title_mdi_max_bolus_suggestion">Max pen bolus suggestion (MDI)</string>
     <string name="pref_title_mdi_max_basal_injection">Max Lantus dose (MDI)</string>
     <string name="pref_title_hypo_treatment_carbs">Hypo treatment carbs</string>
-    <string name="pref_title_insulin_req_median_minutes">InsulinReq median window</string>
+    <string name="pref_title_insulin_req_median_minutes">Suggested insulin median window</string>
     <string name="pref_title_mdi_bolus_suggestion_median_minutes">Pen suggestion median window (MDI)</string>
     <string name="pref_title_mdi_missed_lantus_grace_period_minutes">Missed Lantus grace period (MDI)</string>
     <string name="pref_title_mdi_missed_lantus_re_raise_interval_minutes">Missed Lantus re-raise interval (MDI)</string>

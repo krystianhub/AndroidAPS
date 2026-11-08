@@ -50,8 +50,8 @@ import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.Switch
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TooltipAnchorPosition
@@ -118,6 +118,7 @@ import app.aaps.core.ui.compose.rememberBringIntoViewOnExpand
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.compose.stringResourceOrNull
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.components.InjectionPositionRow
 import app.aaps.ui.compose.components.RecordOnlyBanner
 import app.aaps.ui.compose.components.SmbBeingDeliveredBanner
 import kotlinx.coroutines.launch
@@ -287,7 +288,7 @@ internal fun WizardDialogContent(
                         }
                     }
                 )
-                if (uiState.forcedRecordOnly) RecordOnlyBanner()
+                if (uiState.forcedRecordOnly && !uiState.isMdi) RecordOnlyBanner()
                 if (uiState.waitsForSmb) SmbBeingDeliveredBanner()
             }
         },
@@ -439,11 +440,14 @@ internal fun WizardDialogContent(
                         )
                     }
 
-                    // Toggle buttons row (always visible)
+                    // Toggle buttons row (always visible). MDI has no temp target, so its button is
+                    // left out instead of showing a permanently disabled control.
                     Row(
                         modifier = Modifier.padding(top = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val showTtToggle = !uiState.isMdi
+                        val includeCount = if (showTtToggle) 5 else 4
                         MultiChoiceSegmentedButtonRow(
                             modifier = Modifier.weight(1f)
                         ) {
@@ -451,7 +455,7 @@ internal fun WizardDialogContent(
                             SegmentedButton(
                                 checked = uiState.useBg,
                                 onCheckedChange = onBgToggle,
-                                shape = SegmentedButtonDefaults.itemShape(0, 5),
+                                shape = SegmentedButtonDefaults.itemShape(0, includeCount),
                                 icon = {}
                             ) {
                                 Icon(
@@ -461,24 +465,26 @@ internal fun WizardDialogContent(
                                 )
                             }
                             // TT
-                            SegmentedButton(
-                                checked = uiState.useTT && uiState.hasTempTarget && uiState.useBg,
-                                onCheckedChange = onTTToggle,
-                                shape = SegmentedButtonDefaults.itemShape(1, 5),
-                                enabled = uiState.hasTempTarget && uiState.useBg,
-                                icon = {}
-                            ) {
-                                Icon(
-                                    imageVector = IcTtManual,
-                                    contentDescription = stringResource(CoreUiStrings.wizard_include_tt),
-                                    modifier = Modifier.size(24.dp)
-                                )
+                            if (showTtToggle) {
+                                SegmentedButton(
+                                    checked = uiState.useTT && uiState.hasTempTarget && uiState.useBg,
+                                    onCheckedChange = onTTToggle,
+                                    shape = SegmentedButtonDefaults.itemShape(1, includeCount),
+                                    enabled = uiState.hasTempTarget && uiState.useBg,
+                                    icon = {}
+                                ) {
+                                    Icon(
+                                        imageVector = IcTtManual,
+                                        contentDescription = stringResource(CoreUiStrings.wizard_include_tt),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
                             }
                             // Trend
                             SegmentedButton(
                                 checked = uiState.useTrend,
                                 onCheckedChange = onTrendToggle,
-                                shape = SegmentedButtonDefaults.itemShape(2, 5),
+                                shape = SegmentedButtonDefaults.itemShape(if (showTtToggle) 2 else 1, includeCount),
                                 icon = {}
                             ) {
                                 Icon(
@@ -491,7 +497,7 @@ internal fun WizardDialogContent(
                             SegmentedButton(
                                 checked = uiState.useIOB,
                                 onCheckedChange = onIOBToggle,
-                                shape = SegmentedButtonDefaults.itemShape(3, 5),
+                                shape = SegmentedButtonDefaults.itemShape(if (showTtToggle) 3 else 2, includeCount),
                                 icon = {}
                             ) {
                                 Icon(
@@ -504,7 +510,7 @@ internal fun WizardDialogContent(
                             SegmentedButton(
                                 checked = uiState.useCOB,
                                 onCheckedChange = onCOBToggle,
-                                shape = SegmentedButtonDefaults.itemShape(4, 5),
+                                shape = SegmentedButtonDefaults.itemShape(if (showTtToggle) 4 else 3, includeCount),
                                 icon = {}
                             ) {
                                 Icon(
@@ -751,27 +757,32 @@ internal fun WizardDialogContent(
                                 }
                             }
                         }
+
                     }
 
-                        if (uiState.deferredCarbLoggingAvailable) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = stringResource(CoreUiStrings.defer_carbs),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Spacer(modifier = Modifier.weight(1f))
-                                Switch(
-                                    checked = uiState.deferCarbs,
-                                    onCheckedChange = onDeferCarbsChange,
-                                    enabled = uiState.carbsType == CarbsType.BREAD && uiState.carbTime == 0
-                                )
-                            }
+                    // Defer carbs is its own row, like Profile: it is a logging choice for the
+                    // whole entry, not part of the carbs input. Only the switch toggles it; the
+                    // label is text, not a second tap target.
+                    if (uiState.deferredCarbLoggingAvailable) {
+                        val deferLabel = stringResource(CoreUiStrings.defer_carbs)
+                        Row(
+                            modifier = itemModifier,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = deferLabel,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Switch(
+                                checked = uiState.deferCarbs,
+                                onCheckedChange = onDeferCarbsChange,
+                                enabled = uiState.carbsType == CarbsType.BREAD && uiState.carbTime == 0,
+                                modifier = Modifier.semantics { contentDescription = deferLabel }
+                            )
                         }
+                    }
 
                     // Direct Correction: collapsed, so there is no second open field under the carbs
                     // one. They looked alike, and grams typed into this one were bolused as units
@@ -881,23 +892,12 @@ internal fun WizardDialogContent(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
                         ) {
-                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                NumberInputRow(
-                                    labelRef = InterfacesStrings.position_label,
-                                    value = uiState.position.toDouble(),
-                                    onValueChange = { onPositionChange(it.toInt()) },
-                                    valueRange = 1.0..app.aaps.core.interfaces.pump.InjectionPosition.MAX_POSITION.toDouble(),
-                                    step = 1.0,
-                                    unitLabel = TextRef.Literal("")
-                                )
-                                uiState.lastPosition?.let {
-                                    Text(
-                                        text = "prev $it",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
+                            InjectionPositionRow(
+                                position = uiState.position,
+                                lastPosition = uiState.lastPosition,
+                                onPositionChange = onPositionChange,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
                         }
                     }
 

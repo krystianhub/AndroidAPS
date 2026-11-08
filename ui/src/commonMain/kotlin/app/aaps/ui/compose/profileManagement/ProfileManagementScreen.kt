@@ -413,11 +413,14 @@ fun ProfileManagementScreen(
 
                 // Floating Toolbar with FAB (M3 style) — both are absolutely positioned over the
                 // cards, so they are hidden while sorting rather than left floating over the sort controls.
-                if (!isReorderMode) AapsFloatingToolbarRow(modifier = Modifier.align(Alignment.BottomCenter)) {
-                    // Floating Toolbar — hidden in PLAY mode
-                    if (!isPlayMode) {
-                        AapsFloatingToolbar {
-                            if (uiState.isMdi && uiState.editAllowed) {
+                if (!isReorderMode) Column(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    AapsFloatingToolbarRow {
+                        // MDI: keep the old minimal sync icon, but show it outside edit mode too.
+                        if (uiState.isMdi && uiState.editAllowed) {
+                            AapsFloatingToolbar {
                                 IconButton(
                                     onClick = { viewModel.syncBasal() },
                                     enabled = uiState.canSyncBasal
@@ -428,49 +431,54 @@ fun ProfileManagementScreen(
                                     )
                                 }
                             }
-                            IconButton(onClick = onAddProfile) {
-                                Icon(
-                                    imageVector = Icons.Filled.Add,
-                                    contentDescription = stringResource(UiStrings.add_new_profile)
-                                )
-                            }
-                            IconButton(onClick = { onEditProfile(currentPage) }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Edit,
-                                    contentDescription = stringResource(UiStrings.edit_label)
-                                )
-                            }
-                            IconButton(onClick = {
-                                profileToClone = currentPage
-                                showCloneDialog = true
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Filled.ContentCopy,
-                                    contentDescription = stringResource(UiStrings.clone_label)
-                                )
-                            }
-                            AapsFloatingToolbarDeleteButton(
-                                onClick = {
-                                    profileToDelete = currentPage
-                                    showDeleteDialog = true
-                                },
-                                enabled = uiState.profileNames.size > 1
-                                    && uiState.profileNames.getOrNull(currentPage) != uiState.activeProfileName,
-                                contentDescription = stringResource(UiStrings.remove_label)
-                            )
                         }
-                    }
+                        // Floating Toolbar — hidden in PLAY mode
+                        if (!isPlayMode) {
+                            AapsFloatingToolbar {
+                                IconButton(onClick = onAddProfile) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = stringResource(UiStrings.add_new_profile)
+                                    )
+                                }
+                                IconButton(onClick = { onEditProfile(currentPage) }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Edit,
+                                        contentDescription = stringResource(UiStrings.edit_label)
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    profileToClone = currentPage
+                                    showCloneDialog = true
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.ContentCopy,
+                                        contentDescription = stringResource(UiStrings.clone_label)
+                                    )
+                                }
+                                AapsFloatingToolbarDeleteButton(
+                                    onClick = {
+                                        profileToDelete = currentPage
+                                        showDeleteDialog = true
+                                    },
+                                    enabled = uiState.profileNames.size > 1
+                                        && uiState.profileNames.getOrNull(currentPage) != uiState.activeProfileName,
+                                    contentDescription = stringResource(UiStrings.remove_label)
+                                )
+                            }
+                        }
 
-                    // FAB for primary action (Activate). Hidden on an unpaired client — activating is a
-                    // command the master has to run, and there is no master to send it to.
-                    if (uiState.commandsAllowed) {
-                        AapsFab(
-                            onClick = { onActivateProfile(currentPage) }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = stringResource(UiStrings.activate_label)
-                            )
+                        // FAB for primary action (Activate). Hidden on an unpaired client — activating is a
+                        // command the master has to run, and there is no master to send it to.
+                        if (uiState.commandsAllowed) {
+                            AapsFab(
+                                onClick = { onActivateProfile(currentPage) }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = stringResource(UiStrings.activate_label)
+                                )
+                            }
                         }
                     }
                 }

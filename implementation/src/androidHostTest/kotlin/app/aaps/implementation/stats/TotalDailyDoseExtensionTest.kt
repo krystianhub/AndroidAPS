@@ -12,8 +12,28 @@ class TotalDailyDoseExtensionTest : TestBase() {
 
     @Mock lateinit var rh: ResourceHelper
 
-    private fun tdd(carbs: Double = 0.0, bolus: Double = 0.0) =
-        TDD(timestamp = 0L, carbs = carbs, bolusAmount = bolus)
+    private fun tdd(carbs: Double = 0.0, bolus: Double = 0.0, basal: Double = 0.0, total: Double = 0.0) =
+        TDD(timestamp = 0L, carbs = carbs, bolusAmount = bolus, basalAmount = basal, totalAmount = total)
+
+    @Test
+    fun `basalPercent is the basal share of basal plus bolus`() {
+        val tdd = tdd(basal = 12.0, bolus = 18.0)
+        assertThat(tdd.total).isWithin(1e-9).of(30.0)
+        assertThat(tdd.basalPercent).isWithin(1e-9).of(40.0)
+    }
+
+    @Test
+    fun `a stored total is used for basalPercent`() {
+        val tdd = tdd(basal = 12.0, bolus = 18.0, total = 20.0)
+        assertThat(tdd.total).isWithin(1e-9).of(20.0)
+        assertThat(tdd.basalPercent).isWithin(1e-9).of(60.0)
+    }
+
+    @Test
+    fun `basalPercent is zero without insulin`() {
+        assertThat(tdd().total).isWithin(1e-9).of(0.0)
+        assertThat(tdd().basalPercent).isWithin(1e-9).of(0.0)
+    }
 
     @Test
     fun `icRatio is carbs per bolus`() {

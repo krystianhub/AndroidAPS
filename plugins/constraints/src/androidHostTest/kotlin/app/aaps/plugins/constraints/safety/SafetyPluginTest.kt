@@ -102,6 +102,53 @@ class SafetyPluginTest : TestBaseWithProfile() {
     }
 
     @Test
+    fun mdiAllowsLoopInvocationWithoutTempBasalCapability() {
+        // Loop invocation (APS computation) needs no temp basals; MDI runs the APS in open loop.
+        whenever(pumpWithConcentration.isMDI()).thenReturn(true)
+        pumpDescription.isTempBasalCapable = false
+        val c = safetyPlugin.isLoopInvocationAllowed(ConstraintObject(true, aapsLogger))
+        assertThat(c.value()).isTrue()
+    }
+
+    @Test
+    fun closedLoopIsDisabledForMdi() = runTest {
+        // MDI delivers insulin by pen and basal is a fixed Lantus injection: closed loop (and LGS, which
+        // enacts temp basals too) must be refused even though loop invocation is allowed.
+        whenever(config.isEngineeringModeOrRelease()).thenReturn(true)
+        whenever(pumpWithConcentration.isMDI()).thenReturn(true)
+        pumpDescription.isTempBasalCapable = false
+        val c = safetyPlugin.isClosedLoopAllowed(ConstraintObject(true, aapsLogger))
+        assertThat(c.value()).isFalse()
+        assertThat(c.getReasons()).contains("Closed loop and LGS are not available with MDI (pen) therapy")
+    }
+
+    @Test
+    fun mdiHasNoPumpLimitOnBasalRate() {
+        // MDI cannot run a temp basal at all - there is no pump limit to report. Critically the
+        // missing limit must not be treated as "limit to 0", that would zero the pen suggestion.
+        whenever(pumpWithConcentration.isMDI()).thenReturn(true)
+        pumpDescription.isTempBasalCapable = false
+        pumpDescription.tempBasalStyle = PumpDescription.ABSOLUTE
+        whenever(preferences.get(StringKey.SafetyAge)).thenReturn("child")
+        val c = ConstraintObject(Double.MAX_VALUE, aapsLogger)
+        safetyPlugin.applyBasalConstraints(c, validProfile)
+        assertThat(c.value()).isWithin(0.01).of(2.0)
+        // the "U/h ... pump limit" variant is the one only a temp basal capable pump can add
+        assertThat(c.getReasons()).doesNotContain("U/h because of pump limit")
+    }
+
+    @Test
+    fun mdiHasNoPumpLimitOnPercentBasalRate() {
+        whenever(pumpWithConcentration.isMDI()).thenReturn(true)
+        pumpDescription.isTempBasalCapable = false
+        pumpDescription.tempBasalStyle = PumpDescription.PERCENT
+        whenever(preferences.get(StringKey.SafetyAge)).thenReturn("child")
+        val i = ConstraintObject(Int.MAX_VALUE, aapsLogger)
+        safetyPlugin.applyBasalPercentConstraints(i, validProfile)
+        assertThat(i.getReasons()).doesNotContain("U/h because of pump limit")
+    }
+
+    @Test
     fun disabledEngineeringModeShouldLimitClosedLoop() = runTest {
         whenever(loop.runningMode()).thenReturn(RM.Mode.CLOSED_LOOP)
         whenever(config.isEngineeringModeOrRelease()).thenReturn(false)

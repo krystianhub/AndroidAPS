@@ -45,6 +45,8 @@ fun OverviewChipsColumn(
     tempTargetReason: TT.Reason?,
     tempTargetSceneManaged: Boolean = false,
     tbrState: TbrState,
+    /** MDI: the profile/APS target stays visible but can't be edited; temp basal is not applicable. */
+    isMdi: Boolean = false,
     iobUiState: IobUiState,
     cobUiState: CobUiState,
     sensitivityUiState: SensitivityUiState,
@@ -78,6 +80,7 @@ fun OverviewChipsColumn(
             tempTargetReason = tempTargetReason,
             tempTargetSceneManaged = tempTargetSceneManaged,
             tbrState = tbrState,
+            isMdi = isMdi,
             onNavigate = onNavigate,
             onTbrChipClick = onTbrChipClick,
             commandsAllowed = commandsAllowed
@@ -85,7 +88,9 @@ fun OverviewChipsColumn(
         IobCobChipsRow(
             iobUiState = iobUiState,
             cobUiState = cobUiState,
-            onIobChipClick = onIobChipClick,
+            // MDI has no basal IOB to break down, so the IOB dialog would only show zeros; the chip
+            // stays a read-only status value there. COB still opens today's I:C estimate.
+            onIobChipClick = if (isMdi) null else onIobChipClick,
             onCobChipClick = onCobChipClick
         )
         SensitivityChipBlock(
@@ -113,6 +118,7 @@ private fun NarrowChips(
     tempTargetReason: TT.Reason?,
     tempTargetSceneManaged: Boolean,
     tbrState: TbrState,
+    isMdi: Boolean,
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
     commandsAllowed: Boolean
@@ -148,22 +154,27 @@ private fun NarrowChips(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AapsSpacing.small)
     ) {
-        if (tempTargetText.isNotEmpty()) {
+        // A real temp target can only be a leftover in MDI; hide it rather than offer editing.
+        if (tempTargetText.isNotEmpty() && (!isMdi || tempTargetState != TempTargetChipState.Active)) {
             TempTargetChip(
                 targetText = tempTargetText,
                 state = tempTargetState,
                 progress = tempTargetProgress,
                 reason = tempTargetReason,
                 modifier = Modifier.weight(1f),
-                onClick = { onNavigate(NavigationRequest.Element(ElementType.TEMP_TARGET_MANAGEMENT)) },
+                onClick = if (isMdi) null else {
+                    { onNavigate(NavigationRequest.Element(ElementType.TEMP_TARGET_MANAGEMENT)) }
+                },
                 sceneManaged = tempTargetSceneManaged,
-                enabled = commandsAllowed && LocalClientRole.current.allows(ElementType.TEMP_TARGET_MANAGEMENT.role)
+                enabled = !isMdi && commandsAllowed && LocalClientRole.current.allows(ElementType.TEMP_TARGET_MANAGEMENT.role)
             )
         }
-        TbrChip(
-            state = tbrState,
-            onClick = onTbrChipClick
-        )
+        if (!isMdi) {
+            TbrChip(
+                state = tbrState,
+                onClick = onTbrChipClick
+            )
+        }
     }
 }
 

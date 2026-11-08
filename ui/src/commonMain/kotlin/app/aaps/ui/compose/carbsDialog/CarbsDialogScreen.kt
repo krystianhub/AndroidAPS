@@ -22,13 +22,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -256,7 +256,7 @@ internal fun CarbsDialogContent(
             )
         },
         bottomBar = {
-            val hasAction = uiState.carbs != 0 || uiState.hypoTtChecked || uiState.eatingSoonTtChecked || uiState.activityTtChecked
+            val hasAction = uiState.carbs != 0 || (!uiState.isMdi && (uiState.hypoTtChecked || uiState.eatingSoonTtChecked || uiState.activityTtChecked))
             // The button shows only a value, so a screen reader would say just "20 g" and never what
             // pressing it does. Name it, but with the verb ONLY - a contentDescription on a merging
             // node is added beside the children rather than replacing them, so repeating the amount
@@ -330,11 +330,6 @@ internal fun CarbsDialogContent(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     // Carbs + Quick add
                     Column(modifier = itemModifier) {
-                        if (uiState.hypoTreatmentCarbs > 0) {
-                            TextButton(onClick = onHypoTreatment) {
-                                Text(stringResource(UiStrings.hypo_treatment))
-                            }
-                        }
                         NumberInputRow(
                             labelRef = InterfacesStrings.carbs,
                             value = uiState.carbs.toDouble(),
@@ -357,7 +352,18 @@ internal fun CarbsDialogContent(
                             increment1 = uiState.carbsButtonIncrement1,
                             increment2 = uiState.carbsButtonIncrement2,
                             increment3 = uiState.carbsButtonIncrement3,
-                            onAddCarbs = onAddCarbs
+                            onAddCarbs = onAddCarbs,
+                            extraContent = if (uiState.hypoTreatmentCarbs > 0) {
+                                {
+                                    val description = stringResource(UiStrings.hypo_treatment)
+                                    FilledTonalButton(
+                                        onClick = onHypoTreatment,
+                                        modifier = Modifier.semantics { contentDescription = description }
+                                    ) {
+                                        Text("🍬")
+                                    }
+                                }
+                            } else null
                         )
                     }
 

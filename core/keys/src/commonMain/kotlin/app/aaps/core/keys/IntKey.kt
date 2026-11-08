@@ -314,6 +314,9 @@ enum class IntKey(
         title = KeysStrings.pref_title_open_mode_min_change,
         summary = KeysStrings.loop_open_mode_min_change_summary,
         defaultedBySM = true,
+        // Only used to decide whether a non-MDI open-loop run raises a notification; MDI has its
+        // own pen-suggestion path and never calls isChangeRequested().
+        visibility = ElementVisibility.NON_MDI,
         unitType = UnitType.PERCENT
     ),
     ApsMaxSmbFrequency(
@@ -461,7 +464,9 @@ enum class IntKey(
     // MDI fork
     OverviewHypoTreatmentCarbs(
         "hypo_treatment_carbs", 0, 0, 50, KeysStrings.pref_title_hypo_treatment_carbs,
-        defaultedBySM = true, dependency = BooleanKey.OverviewShowCarbsButton, visibility = ElementVisibility.MDI_ONLY, unitType = UnitType.GRAMS
+        // No dependency on the carbs button: hiding that button used to hide this setting with it,
+        // so the value could not be set for a button the user turned back on later.
+        defaultedBySM = true, visibility = ElementVisibility.MDI_ONLY, unitType = UnitType.GRAMS
     ),
     OverviewInsulinReqMedianMinutes(
         "statuslights_insulin_req_median_minutes", 15, 5, 60, KeysStrings.pref_title_insulin_req_median_minutes,
@@ -469,19 +474,19 @@ enum class IntKey(
     ),
     MdiBolusSuggestionMedianMinutes(
         "mdi_bolus_suggestion_median_minutes", 15, 5, 15, KeysStrings.pref_title_mdi_bolus_suggestion_median_minutes,
-        dependency = BooleanKey.MdiBolusSuggestionSmoothing, visibility = ElementVisibility.MDI_ONLY, unitType = UnitType.MIN
+        dependency = BooleanKey.MdiBolusSuggestionSmoothing, unitType = UnitType.MIN
     ),
     MdiMissedLantusGracePeriodMinutes(
         "mdi_missed_lantus_grace_period_minutes", 120, 0, 240, KeysStrings.pref_title_mdi_missed_lantus_grace_period_minutes,
-        dependency = BooleanKey.MdiMissedLantusReminderEnabled, visibility = ElementVisibility.MDI_ONLY, unitType = UnitType.MIN
+        dependency = BooleanKey.MdiMissedLantusReminderEnabled, unitType = UnitType.MIN
     ),
     MdiMissedLantusReRaiseIntervalMinutes(
         "mdi_missed_lantus_re_raise_interval_minutes", 60, 15, 240, KeysStrings.pref_title_mdi_missed_lantus_re_raise_interval_minutes,
-        dependency = BooleanKey.MdiMissedLantusReminderEnabled, visibility = ElementVisibility.MDI_ONLY, unitType = UnitType.MIN
+        dependency = BooleanKey.MdiMissedLantusReminderEnabled, unitType = UnitType.MIN
     ),
     MdiMissedLantusLookbackDays(
         "mdi_missed_lantus_lookback_days", 5, 2, 30, KeysStrings.pref_title_mdi_missed_lantus_lookback_days,
-        dependency = BooleanKey.MdiMissedLantusReminderEnabled, visibility = ElementVisibility.MDI_ONLY, unitType = UnitType.DAYS
+        dependency = BooleanKey.MdiMissedLantusReminderEnabled, unitType = UnitType.DAYS
     ),
 
     ;

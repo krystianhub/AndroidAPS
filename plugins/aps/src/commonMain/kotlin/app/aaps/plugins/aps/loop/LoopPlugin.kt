@@ -781,7 +781,10 @@ class LoopPlugin(
                     if (allowNotification) {
                         if (activePlugin.activePump.isMDI()) {
                             // MDI: temp basal changes cannot be administered with a pen;
-                            // suggest manual boluses rounded to the pen's minimum step instead
+                            // suggest manual boluses rounded to the pen's minimum step instead.
+                            // Drop any non-MDI "new suggestion" notification from before the pump
+                            // type was switched, or from a stale open-loop run.
+                            loopNotifier.dismiss()
                             presentCarbsRequiredAlert(resultAfterConstraints)
                             presentPenBolusSuggestion(resultAfterConstraints, profile)
                         } else if (resultAfterConstraints.isChangeRequested()) {
@@ -858,6 +861,7 @@ class LoopPlugin(
         val pump = activePlugin.activePump
         val bolusStep = pump.pumpDescription.bolusStep
         if (!preferences.get(BooleanKey.MdiBolusSuggestionEnabled)) {
+            aapsLogger.debug(LTag.APS, "Pen suggestion skipped: disabled")
             notificationManager.dismiss(NotificationId.PEN_BOLUS_SUGGESTION)
             return
         }
@@ -866,6 +870,7 @@ class LoopPlugin(
         // microBolusAllowed is false and the engine's SMB path (incl. its `minGuardBG < threshold`
         // suppression) never runs.
         if (result.predictedLow) {
+            aapsLogger.debug(LTag.APS, "Pen suggestion skipped: predicted low")
             notificationManager.dismiss(NotificationId.PEN_BOLUS_SUGGESTION)
             return
         }
@@ -903,16 +908,26 @@ class LoopPlugin(
         )
         val minSuggestion = preferences.get(DoubleKey.MdiMinBolusSuggestion)
             .coerceIn(bolusStep, preferences.get(DoubleKey.MdiMaxBolusSuggestion))
+        aapsLogger.debug(
+            LTag.APS,
+            "Pen suggestion: insulinReq=$effectiveInsulinReq, suggested=$suggestedUnits U, min=$minSuggestion U, step=$bolusStep U"
+        )
         if (suggestedUnits < minSuggestion) {
             // nothing actionable with a pen
             notificationManager.dismiss(NotificationId.PEN_BOLUS_SUGGESTION)
             return
         }
         // throttle: do not re-suggest within 60 minutes
-        if (lastPenSuggestion + T.mins(60).msecs() > dateUtil.now()) return
+        if (lastPenSuggestion + T.mins(60).msecs() > dateUtil.now()) {
+            aapsLogger.debug(LTag.APS, "Pen suggestion throttled for another ${(lastPenSuggestion + T.mins(60).msecs() - dateUtil.now()) / 60000} min")
+            return
+        }
         lastPenSuggestion = dateUtil.now()
-        val text = rh.gs(ApsStrings.bolus_suggestion_text, String.format("%.1f", suggestedUnits)) + "\n" + result.reason
+        // Only the suggestion: the engine's reason is a debug log line, not something a pen user
+        // should read in a notification.
+        val text = rh.gs(ApsStrings.bolus_suggestion_text, String.format("%.1f", suggestedUnits))
         notificationManager.post(NotificationId.PEN_BOLUS_SUGGESTION, text, validMinutes = 30)
+        aapsLogger.debug(LTag.APS, "Pen suggestion posted: $suggestedUnits U")
     }
 
     private fun sendToWear(contentText: String) {
@@ -1298,7 +1313,8 @@ class LoopPlugin(
         key = "loop_settings",
         title = CoreUiStrings.loop,
         items = buildList {
-            add(IntKey.LoopOpenModeMinChange)
+            // Open-loop minimum change only sizes non-MDI loop notifications.
+            if (!activePlugin.activePump.isMDI()) add(IntKey.LoopOpenModeMinChange)
             if (activePlugin.activePump.isMDI()) {
                 // Pen suggestion settings live with the loop: they are raised from the loop run.
                 add(BooleanKey.MdiBolusSuggestionEnabled)

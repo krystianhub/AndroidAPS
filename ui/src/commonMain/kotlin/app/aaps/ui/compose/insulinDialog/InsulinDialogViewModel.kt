@@ -12,6 +12,8 @@ import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.data.ui.ConfirmationLine
+import app.aaps.core.data.ui.ConfirmationRole
+import app.aaps.core.data.ui.confirmationLines
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.automation.Automation
@@ -49,6 +51,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.runningMode.PumpCommandGate
+import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.ui.UiStrings
 import dev.zacsweers.metro.AppScope
@@ -119,6 +122,9 @@ class InsulinDialogViewModel(
          * or [discard] it on Cancel. Close it at [closeAt]: the master's SMB pause for the dose has run out by then.
          */
         data class ShowConfirmation(val bolusId: Long, val lines: List<ConfirmationLine>, val closeAt: TimeMark) : SideEffect()
+
+        /** A basal (Lantus) injection has no pump batch to prepare; show its own summary, then record it. */
+        data class ShowBasalConfirmation(val state: InsulinDialogUiState, val lines: List<ConfirmationLine>) : SideEffect()
     }
 
     private val _sideEffect = MutableSharedFlow<SideEffect>(
@@ -199,8 +205,9 @@ class InsulinDialogViewModel(
             val mode = loop.runningMode()
             val cantDeliverBolus = PumpCommandGate.check(mode, PumpCommandGate.CommandKind.BOLUS) is PumpCommandGate.Decision.Reject
             // A client delivers via the master (the batch round-trip), so its local pump state must NOT force
-            // record-only; only a master's own can't-deliver conditions do. The record-only toggle still works.
-            val forcedRecordOnly = if (isAapsClient) false else (cantDeliverBolus || !pumpInitialized)
+            // record-only; only a master's own can't-deliver conditions do. MDI is always record-only: there is
+            // no pump to deliver a rapid-acting bolus.
+            val forcedRecordOnly = if (isAapsClient) false else (cantDeliverBolus || !pumpInitialized || pump.isMDI())
             _uiState.update {
                 it.copy(
                     selectedIcfg = runningIcfg,
@@ -227,8 +234,10 @@ class InsulinDialogViewModel(
     }
 
     fun updateInsulin(value: Double) {
-        val clamped = value.coerceIn(0.0, uiState.value.maxAmount)
-        _uiState.update { it.copy(insulin = clamped) }
+        val state = uiState.value
+        // A Lantus pen cannot be dialled in half units; snap typed input to its whole-unit grid.
+        val stepped = if (state.recordBasal) BasalInjection.snapDose(value) else value
+        _uiState.update { it.copy(insulin = stepped.coerceIn(0.0, it.maxAmount)) }
     }
 
     /** MDI: switch the dialog between a rapid-acting bolus and a long-acting (Lantus) injection. */
@@ -238,7 +247,8 @@ class InsulinDialogViewModel(
                 recordBasal = checked,
                 recordOnlyChecked = if (checked) true else it.recordOnlyChecked,
                 eatingSoonTtChecked = if (checked) false else it.eatingSoonTtChecked,
-                insulin = if (checked) (it.lastBasalDose ?: 0.0) else it.insulin
+                // Leaving basal mode must not carry a Lantus-sized amount into the (uncapped) rapid-acting field.
+                insulin = if (checked) BasalInjection.snapDose(it.lastBasalDose ?: 0.0).coerceAtMost(it.maxBasalDose) else 0.0
             )
         }
     }
@@ -250,7 +260,11 @@ class InsulinDialogViewModel(
         // by the concentration; asked at the target, in case a pump steps by amount. Floor, never up.
         // A record-only dose (a pen) never reaches the pump, so it is not put on the pump's grid.
         val target = max(0.0, state.insulin + increment).coerceAtMost(state.maxAmount)
-        val newValue = if (state.recordOnlyChecked) target else Round.floorTo(target, ch.bolusStep(target))
+        val newValue = when {
+            state.recordBasal      -> BasalInjection.snapDose(target).coerceAtMost(state.maxAmount)
+            state.recordOnlyChecked -> target
+            else                   -> Round.floorTo(target, ch.bolusStep(target))
+        }
         _uiState.update { it.copy(insulin = newValue) }
     }
 
@@ -319,7 +333,13 @@ class InsulinDialogViewModel(
         appScope.launch {
             val state = uiState.value
             if (state.recordBasal) {
-                recordBasalInjection(state)
+                val basalState = state.copy(insulin = BasalInjection.snapDose(state.insulin))
+                val max = preferences.get(DoubleKey.MdiMaxBasalInjection)
+                when {
+                    basalState.insulin > max -> rxBus.send(EventShowDialog.Ok(title = rh.gs(InterfacesStrings.bolus), message = rh.gs(UiStrings.basal_insulin_above_max, max)))
+                    basalState.insulin <= 0.0 -> _sideEffect.tryEmit(SideEffect.ShowNoActionDialog)
+                    else                      -> _sideEffect.tryEmit(SideEffect.ShowBasalConfirmation(basalState, basalConfirmationLines(basalState)))
+                }
                 return@launch
             }
             confirmedState = state
@@ -368,13 +388,50 @@ class InsulinDialogViewModel(
         }
     }
 
+    /** Runs the basal recording after the user confirmed its summary. */
+    fun commitBasal(state: InsulinDialogUiState) {
+        appScope.launch { recordBasalInjection(state) }
+    }
+
+    /** The summary the pre-4.0 insulin dialog showed before a Lantus injection was written. */
+    private suspend fun basalConfirmationLines(state: InsulinDialogUiState): List<ConfirmationLine> {
+        val previousFromNote = findLastBasalDose()
+        val previousDose = previousFromNote ?: storedProfileBasalSum()
+        return confirmationLines {
+            val doseText = rh.gs(CoreUiStrings.value_with_unit, decimalFormatter.to0Decimal(state.insulin), rh.gs(CoreUiStrings.insulin_unit_shortname))
+            line(ConfirmationRole.BOLUS, rh.gs(InterfacesStrings.confirmation_line, rh.gs(UiStrings.record_basal_insulin), doseText))
+            if (previousDose != null) {
+                // Mirror the rewrite decision: a profile-derived reference compares against the rate-quantized dose.
+                val effectiveDose = if (previousFromNote == null) BasalInjection.flatRateTotal(state.insulin) else state.insulin
+                if (!BasalInjection.matchesProfile(effectiveDose, previousDose))
+                    line(
+                        ConfirmationRole.WARNING,
+                        rh.gs(
+                            UiStrings.basal_insulin_profile_updated,
+                            state.insulin, previousDose,
+                            BasalInjection.flatRateTotal(state.insulin), BasalInjection.flatRate(state.insulin)
+                        )
+                    )
+            }
+            if (state.timeOffsetMinutes != 0)
+                line(ConfirmationRole.NORMAL, rh.gs(InterfacesStrings.confirmation_line, rh.gs(CoreUiStrings.time), dateUtil.dateAndTimeString(state.eventTime)))
+            if (state.showPosition)
+                line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.confirmation_line, rh.gs(InterfacesStrings.position_label), state.position.toString()))
+            val notes = InjectionPosition.stripPosition(notesWithPosition(state)).trim()
+            if (notes.isNotEmpty())
+                line(ConfirmationRole.NORMAL, rh.gs(InterfacesStrings.confirmation_line, rh.gs(CoreUiStrings.notes_label), notes))
+        }
+    }
+
     private suspend fun recordBasalInjection(state: InsulinDialogUiState) {
+        // Defensive: the picker and typed input already snap, but nothing may write a half unit.
+        val dose = BasalInjection.snapDose(state.insulin)
         val max = preferences.get(DoubleKey.MdiMaxBasalInjection)
-        if (state.insulin > max) {
+        if (dose > max) {
             rxBus.send(EventShowDialog.Ok(title = rh.gs(InterfacesStrings.bolus), message = rh.gs(UiStrings.basal_insulin_above_max, max)))
             return
         }
-        if (state.insulin <= 0.0) {
+        if (dose <= 0.0) {
             _sideEffect.tryEmit(SideEffect.ShowNoActionDialog)
             return
         }
@@ -382,7 +439,7 @@ class InsulinDialogViewModel(
         val previousFromNote = findLastBasalDose()
         val storedProfileDose = storedProfileBasalSum()
         val previousDose = previousFromNote ?: storedProfileDose
-        val doseText = decimalFormatter.toPumpSupportedBolus(state.insulin, activePlugin.activePump.pumpDescription.bolusStep)
+        val doseText = decimalFormatter.to0Decimal(dose)
         val notes = notesWithPosition(state).trim()
         val basalNotes = "Lantus ${doseText}U" + if (notes.isNotEmpty()) " $notes" else ""
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
@@ -396,12 +453,12 @@ class InsulinDialogViewModel(
             action = Action.CAREPORTAL,
             source = Sources.InsulinDialog,
             note = basalNotes,
-            listValues = listOf(ValueWithUnit.TEType(TE.Type.NOTE), ValueWithUnit.Insulin(state.insulin))
+            listValues = listOf(ValueWithUnit.TEType(TE.Type.NOTE), ValueWithUnit.Insulin(dose))
         )
         if (previousDose != null) {
-            val effectiveDose = if (previousFromNote == null) BasalInjection.flatRateTotal(state.insulin) else state.insulin
+            val effectiveDose = if (previousFromNote == null) BasalInjection.flatRateTotal(dose) else dose
             if (!BasalInjection.matchesProfile(effectiveDose, previousDose))
-                rewriteBasalProfile(state.insulin, previousDose)
+                rewriteBasalProfile(dose, previousDose)
         }
         automation.removeAutomationEventBolusReminder()
         _sideEffect.tryEmit(SideEffect.NavigateBack)
@@ -417,8 +474,8 @@ class InsulinDialogViewModel(
     private suspend fun findLastBasalDose(): Double? =
         try {
             persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.days(7).msecs(), TE.Type.NOTE, false)
-                .mapNotNull { BasalInjection.extractDose(it.note) }
-                .maxOrNull()
+                .sortedByDescending { it.timestamp }
+                .firstNotNullOfOrNull { BasalInjection.extractDose(it.note) }
         } catch (e: Exception) {
             null
         }
@@ -439,12 +496,22 @@ class InsulinDialogViewModel(
             return
         }
         val newFlatRate = BasalInjection.flatRate(amount)
+        // Resolve everything the switch needs BEFORE the profile is rewritten, so a failure cannot leave the
+        // stored profile updated without the matching profile switch (and without telling the user).
+        val iCfg = profileFunction.getRunningOrRequestedICfg()
+        if (iCfg == null) {
+            rxBus.send(EventShowDialog.Ok(title = rh.gs(InterfacesStrings.bolus), message = rh.gs(UiStrings.basal_insulin_profile_update_failed, amount, previousDose)))
+            return
+        }
         profileRepository.replace(
             index,
             profiles[index].copy(basal = listOf(Block(T.hours(24).msecs(), newFlatRate)))
         )
-        val newStore = profileRepository.profile.value ?: return
-        val iCfg = profileFunction.getRunningOrRequestedICfg() ?: return
+        val newStore = profileRepository.profile.value
+        if (newStore == null) {
+            rxBus.send(EventShowDialog.Ok(title = rh.gs(InterfacesStrings.bolus), message = rh.gs(UiStrings.basal_insulin_profile_update_failed, amount, previousDose)))
+            return
+        }
         val now = dateUtil.now()
         // keep a running profile switch (percentage / time shift / remaining duration) alive across the rewrite
         val activeSwitch = persistenceLayer.getEffectiveProfileSwitchActiveAt(now)
@@ -474,7 +541,7 @@ class InsulinDialogViewModel(
         val units = profileFunction.getUnits()
         val iCfg = if (state.recordOnlyChecked) state.selectedIcfg else null
         return buildList {
-            if (state.eatingSoonTtChecked) {
+            if (!state.isMdi && state.eatingSoonTtChecked) {
                 val mgdl = profileUtil.convertToMgdl(state.eatingSoonTtTarget, units)
                 add(BatchAction.TempTarget(reason = TT.Reason.EATING_SOON.text, lowMgdl = mgdl, highMgdl = mgdl, durationMinutes = state.eatingSoonTtDuration, startOffsetMinutes = 0))
             }

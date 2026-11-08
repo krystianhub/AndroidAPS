@@ -341,7 +341,7 @@ class OpenAPSAMAPlugin(
                     DoubleKey.ApsAmaBolusSnoozeDivisor
                 )
             )
-        ),
+        ).filterNot { activePlugin.activePump.isMDI() && it == DoubleKey.ApsMaxBasal },
         icon = pluginDescription.icon
     )
 

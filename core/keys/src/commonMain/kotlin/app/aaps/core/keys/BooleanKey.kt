@@ -290,12 +290,16 @@ enum class BooleanKey(
         "show_position_entry_dialogs", true, KeysStrings.pref_title_show_position_in_dialogs, defaultedBySM = true,
         visibility = ElementVisibility.MDI_ONLY
     ),
-    MdiBolusSuggestionEnabled("mdi_bolus_suggestion_enabled", true, KeysStrings.pref_title_mdi_bolus_suggestion_enabled, visibility = ElementVisibility.MDI_ONLY),
+    // These keys are added only by MDI-only screens (LoopPlugin / its Lantus sub-screen). They do
+    // not need a second runtime visibility gate: if that gate's context is stale, the whole block
+    // vanishes. DeferredCarbLoggingEnabled below is also on the general wizard screen, so it keeps
+    // MDI_ONLY visibility.
+    MdiBolusSuggestionEnabled("mdi_bolus_suggestion_enabled", true, KeysStrings.pref_title_mdi_bolus_suggestion_enabled),
     MdiBolusSuggestionSmoothing(
         "mdi_bolus_suggestion_smoothing", false, KeysStrings.pref_title_mdi_bolus_suggestion_smoothing,
-        dependency = MdiBolusSuggestionEnabled, visibility = ElementVisibility.MDI_ONLY
+        dependency = MdiBolusSuggestionEnabled
     ),
-    MdiMissedLantusReminderEnabled("mdi_missed_lantus_reminder_enabled", true, KeysStrings.pref_title_mdi_missed_lantus_reminder_enabled, visibility = ElementVisibility.MDI_ONLY),
+    MdiMissedLantusReminderEnabled("mdi_missed_lantus_reminder_enabled", true, KeysStrings.pref_title_mdi_missed_lantus_reminder_enabled),
     DeferredCarbLoggingEnabled(
         "deferred_carb_logging_enabled", false, KeysStrings.pref_title_deferred_carb_logging_enabled,
         KeysStrings.pref_summary_deferred_carb_logging_enabled, visibility = ElementVisibility.MDI_ONLY

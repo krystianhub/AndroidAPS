@@ -52,7 +52,8 @@ fun TempTargetChip(
     state: TempTargetChipState,
     progress: Float,
     reason: TT.Reason?,
-    onClick: () -> Unit,
+    /** Null makes the chip a read-only target display (MDI: no temp targets can be set). */
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     sceneManaged: Boolean = false,
     enabled: Boolean = true
@@ -80,19 +81,14 @@ fun TempTargetChip(
         TempTargetChipState.Adjusted -> stringResource(UiStrings.a11y_tt_adjusted)
         TempTargetChipState.None     -> stringResource(UiStrings.a11y_tt_none)
     }
-    Surface(
-        onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
-        enabled = enabled,
-        shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
-        color = containerColor,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(AapsSpacing.chipHeight * LocalAapsScale.current)
-            .then(
-                if (reasonState != null) Modifier.semantics { stateDescription = reasonState }
-                else Modifier
-            )
-    ) {
+    val surfaceModifier = modifier
+        .fillMaxWidth()
+        .height(AapsSpacing.chipHeight * LocalAapsScale.current)
+        .then(
+            if (reasonState != null) Modifier.semantics { stateDescription = reasonState }
+            else Modifier
+        )
+    val chipContent: @Composable () -> Unit = {
         Box(modifier = Modifier.fillMaxSize()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -135,6 +131,21 @@ fun TempTargetChip(
                 )
             }
         }
+    }
+    if (onClick != null) {
+        Surface(
+            onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
+            enabled = enabled,
+            shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
+            color = containerColor,
+            modifier = surfaceModifier
+        ) { chipContent() }
+    } else {
+        Surface(
+            shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
+            color = containerColor,
+            modifier = surfaceModifier
+        ) { chipContent() }
     }
 }
 

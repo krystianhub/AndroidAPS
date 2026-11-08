@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.overview.statusLights
 
+import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.TDD
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.pump.defs.PumpDescription
@@ -86,6 +88,8 @@ internal class StatusViewModelTest {
         whenever(rxBus.toFlow(EventConfigBuilderChange::class)).thenReturn(emptyFlow())
         whenever(rxBus.toFlow(EventNsClientStatusUpdated::class)).thenReturn(emptyFlow())
         whenever(persistenceLayer.observeChanges(TE::class)).thenReturn(teChanges)
+        whenever(persistenceLayer.observeChanges(BS::class)).thenReturn(emptyFlow())
+        whenever(persistenceLayer.observeChanges(EPS::class)).thenReturn(emptyFlow())
         whenever(persistenceLayer.databaseClearedFlow).thenReturn(emptyFlow())
     }
 

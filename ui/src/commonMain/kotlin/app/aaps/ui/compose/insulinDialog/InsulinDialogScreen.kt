@@ -70,6 +70,7 @@ import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.EventDatePicker
 import app.aaps.ui.compose.EventTimePicker
 import app.aaps.ui.compose.components.DialogStatusBar
+import app.aaps.ui.compose.components.InjectionPositionRow
 import app.aaps.ui.compose.components.RecordOnlyBanner
 import app.aaps.ui.compose.components.SmbBeingDeliveredBanner
 import app.aaps.ui.compose.overview.chips.CobUiState
@@ -95,6 +96,7 @@ fun InsulinDialogScreen(
     // Dialog states
     // The master's prepared confirmation (bolusId + its merged lines), set via the ShowConfirmation side effect.
     var confirmation by remember { mutableStateOf<InsulinDialogViewModel.SideEffect.ShowConfirmation?>(null) }
+    var basalConfirmation by remember { mutableStateOf<InsulinDialogViewModel.SideEffect.ShowBasalConfirmation?>(null) }
     var showNoAction by rememberSaveable { mutableStateOf(false) }
 
     // Observe side effects
@@ -114,6 +116,8 @@ fun InsulinDialogScreen(
                     confirmation?.let { viewModel.discard(it.bolusId) }
                     confirmation = effect
                 }
+
+                is InsulinDialogViewModel.SideEffect.ShowBasalConfirmation -> basalConfirmation = effect
 
                 InsulinDialogViewModel.SideEffect.NavigateBack -> onNavigateBack()
             }
@@ -138,6 +142,19 @@ fun InsulinDialogScreen(
                 confirmation = null
             },
             closeAt = shown.closeAt
+        )
+    }
+
+    // Basal (Lantus) confirmation — no pump batch to prepare, just the summary the pre-4.0 dialog showed.
+    basalConfirmation?.let { shown ->
+        ElementConfirmationDialog(
+            elementType = ElementType.INSULIN,
+            lines = shown.lines,
+            onConfirm = {
+                viewModel.commitBasal(shown.state)
+                basalConfirmation = null
+            },
+            onDismiss = { basalConfirmation = null }
         )
     }
 
@@ -187,8 +204,11 @@ fun InsulinDialogScreen(
         cob = cob,
         dateString = viewModel.dateUtil.dateString(uiState.eventTime),
         timeString = viewModel.dateUtil.timeString(uiState.eventTime),
-        bolusFormat = viewModel.decimalFormatter.pumpSupportedBolusFormat(uiState.displayStep),
-        formatAmount = { viewModel.decimalFormatter.toPumpSupportedBolus(it, uiState.bolusStep) },
+        bolusFormat = if (uiState.recordBasal) NumberFormat.INTEGER else viewModel.decimalFormatter.pumpSupportedBolusFormat(uiState.displayStep),
+        formatAmount = {
+            if (uiState.recordBasal) viewModel.decimalFormatter.to0Decimal(it)
+            else viewModel.decimalFormatter.toPumpSupportedBolus(it, uiState.bolusStep)
+        },
         onEatingSoonChange = viewModel::updateEatingSoonTt,
         onRecordOnlyChange = viewModel::updateRecordOnly,
         onRecordBasalChange = viewModel::updateRecordBasal,
@@ -265,7 +285,7 @@ internal fun InsulinDialogContent(
                 )
                 // Same as the treatment dialog. Here it was only a red label, so a screen reader user
                 // was never told that this insulin will be recorded and NOT given by the pump.
-                if (uiState.forcedRecordOnly) RecordOnlyBanner()
+                if (uiState.forcedRecordOnly && !uiState.isMdi) RecordOnlyBanner()
                 if (uiState.waitsForSmb) SmbBeingDeliveredBanner()
             }
         },
@@ -353,14 +373,12 @@ internal fun InsulinDialogContent(
                         value = uiState.insulin,
                         onValueChange = onInsulinChange,
                         valueRange = 0.0..uiState.maxAmount,
-                        step = uiState.bolusStep,
+                        step = uiState.amountStep,
                         valueFormat = bolusFormat,
                         unitLabel = CoreUiStrings.insulin_unit_shortname
                     )
                     InsulinQuickAddButtons(
-                        increment1 = uiState.insulinButtonIncrement1,
-                        increment2 = uiState.insulinButtonIncrement2,
-                        increment3 = uiState.insulinButtonIncrement3,
+                        increments = uiState.quickAddIncrements,
                         formatAmount = formatAmount,
                         onAddInsulin = onAddInsulin
                     )
@@ -368,7 +386,10 @@ internal fun InsulinDialogContent(
             }
 
             // --- Card 3: Insulin type selection (visible when recordOnly) ---
-            if (uiState.recordOnlyChecked && !uiState.recordBasal) {
+            // MDI is always record-only for a rapid bolus, but the pen does not need a pump insulin
+            // selection: the running insulin is already in the profile. Showing this card only after
+            // toggling Record basal made it appear as if from nowhere.
+            if (uiState.recordOnlyChecked && !uiState.recordBasal && !uiState.isMdi) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
@@ -422,13 +443,11 @@ internal fun InsulinDialogContent(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
                 ) {
-                    NumberInputRow(
-                        labelRef = InterfacesStrings.position_label,
-                        value = uiState.position.toDouble(),
-                        onValueChange = { onPositionChange(it.toInt()) },
-                        valueRange = 1.0..InjectionPosition.MAX_POSITION.toDouble(),
-                        step = 1.0,
-                        unitLabel = app.aaps.core.keys.interfaces.TextRef.Literal("")
+                    InjectionPositionRow(
+                        position = uiState.position,
+                        lastPosition = uiState.lastPosition,
+                        onPositionChange = onPositionChange,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
             }
@@ -459,13 +478,10 @@ internal fun InsulinDialogContent(
 
 @Composable
 private fun InsulinQuickAddButtons(
-    increment1: Double,
-    increment2: Double,
-    increment3: Double,
+    increments: List<Double>,
     formatAmount: (Double) -> String,
     onAddInsulin: (Double) -> Unit
 ) {
-    val increments = listOf(increment1, increment2, increment3).filter { it != 0.0 }
     if (increments.isEmpty()) return
 
     val focusManager = LocalFocusManager.current

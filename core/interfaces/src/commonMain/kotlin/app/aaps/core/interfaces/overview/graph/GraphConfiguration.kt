@@ -42,11 +42,13 @@ data class SecondaryGraph(
  *
  * Fixed graphs (not removable):
  * - BG graph: blood glucose with optional activity overlay (toggled via [bgOverlays]).
- * - IOB graph: IOB line with bolus markers + flipped basal overlay, with optional activity
- *   overlay (toggled via [iobOverlays]).
+ * - IOB graph: IOB line with bolus markers + flipped basal overlay (hidden for MDI,
+ *   where a pen has no pump basal), with optional activity and COB overlays (toggled via
+ *   [iobOverlays]). COB takes the right axis; enabling it replaces the basal band.
  *
  * @param bgOverlays       Overlay toggles for the BG graph (currently only [SeriesType.ACTIVITY]).
- * @param iobOverlays      Overlay toggles for the fixed IOB graph (currently only [SeriesType.ACTIVITY]).
+ * @param iobOverlays      Overlay toggles for the fixed IOB graph ([SeriesType.ACTIVITY],
+ *   [SeriesType.COB]).
  * @param secondaryGraphs  Ordered list of user-configurable secondary graph configurations.
  *   IOB cannot appear here (it has a dedicated fixed slot). Each graph is a List (not Set) to
  *   preserve selection order:

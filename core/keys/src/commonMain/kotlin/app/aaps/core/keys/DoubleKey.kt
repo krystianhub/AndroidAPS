@@ -358,13 +358,13 @@ enum class DoubleKey(
     // MDI fork
     MdiMinBolusSuggestion(
         "mdi_min_bolus_suggestion", 0.5, 0.5, 15.0, KeysStrings.pref_title_mdi_min_bolus_suggestion,
-        dependency = BooleanKey.MdiBolusSuggestionEnabled, visibility = ElementVisibility.MDI_ONLY, unitType = UnitType.INSULIN
+        dependency = BooleanKey.MdiBolusSuggestionEnabled, unitType = UnitType.INSULIN
     ),
     MdiMaxBolusSuggestion(
         "mdi_max_bolus_suggestion", 4.0, 0.5, 15.0, KeysStrings.pref_title_mdi_max_bolus_suggestion,
-        dependency = BooleanKey.MdiBolusSuggestionEnabled, visibility = ElementVisibility.MDI_ONLY, unitType = UnitType.INSULIN
+        dependency = BooleanKey.MdiBolusSuggestionEnabled, unitType = UnitType.INSULIN
     ),
-    MdiMaxBasalInjection("mdi_max_basal_injection", 30.0, 1.0, 200.0, KeysStrings.pref_title_mdi_max_basal_injection, visibility = ElementVisibility.MDI_ONLY, unitType = UnitType.INSULIN),
+    MdiMaxBasalInjection("mdi_max_basal_injection", 30.0, 1.0, 200.0, KeysStrings.pref_title_mdi_max_basal_injection, unitType = UnitType.INSULIN),
 
     ;
 

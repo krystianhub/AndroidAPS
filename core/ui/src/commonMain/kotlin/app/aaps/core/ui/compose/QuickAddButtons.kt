@@ -20,10 +20,12 @@ fun QuickAddButtons(
     increment2: Int,
     increment3: Int,
     onAddCarbs: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Extra trailing buttons in the same row, e.g. the MDI hypo-treatment button. */
+    extraContent: (@Composable () -> Unit)? = null
 ) {
     val increments = listOf(increment1, increment2, increment3).filter { it > 0 }
-    if (increments.isEmpty()) return
+    if (increments.isEmpty() && extraContent == null) return
 
     val focusManager = LocalFocusManager.current
 
@@ -42,5 +44,6 @@ fun QuickAddButtons(
                 Text(stringResource(CoreUiStrings.value_with_plus_sign, amount.toString()))
             }
         }
+        extraContent?.invoke()
     }
 }
